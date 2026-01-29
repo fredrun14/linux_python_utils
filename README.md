@@ -621,14 +621,23 @@ else:
 ## Tests
 
 ```bash
+# Afficher les commandes disponibles
+make help
+
 # Installer les dépendances de dev
-pip install -e ".[dev]"
+make install-dev
 
 # Lancer les tests
-pytest tests/ -v
+make test
+
+# Lancer les tests en mode verbose
+make test-verbose
 
 # Vérifier PEP8
-pycodestyle linux_python_utils/
+make lint
+
+# Tout lancer (lint + tests + build)
+make all
 ```
 
 ## Licence

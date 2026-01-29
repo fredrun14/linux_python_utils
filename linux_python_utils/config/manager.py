@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, TextIO, Union
 
 from linux_python_utils.config.loader import load_config
 
@@ -204,7 +204,7 @@ class ConfigurationManager:
         with open(path, 'w', encoding='utf-8') as f:
             self._write_toml_section(f, data, prefix)
 
-    def _write_toml_section(self, f, data: Dict, prefix: str) -> None:
+    def _write_toml_section(self, f: TextIO, data: Dict, prefix: str) -> None:
         """Écrit une section TOML récursivement."""
         # D'abord les valeurs simples
         for key, value in data.items():

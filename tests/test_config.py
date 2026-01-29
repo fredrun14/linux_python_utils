@@ -120,3 +120,71 @@ class TestConfigurationManager:
         manager = ConfigurationManager(config_file)
 
         assert set(manager.list_profiles()) == {"profile1", "profile2"}
+
+    def test_get_section(self, tmp_path):
+        """Test de la récupération d'une section complète."""
+        config_file = tmp_path / "config.json"
+        config_data = {
+            "logging": {
+                "level": "DEBUG",
+                "format": "%(message)s"
+            },
+            "other": {"key": "value"}
+        }
+        config_file.write_text(json.dumps(config_data))
+
+        manager = ConfigurationManager(config_file)
+        section = manager.get_section("logging")
+
+        assert section == {"level": "DEBUG", "format": "%(message)s"}
+        assert manager.get_section("nonexistent") == {}
+
+    def test_create_default_config_json(self, tmp_path):
+        """Test de la création d'un fichier de config JSON par défaut."""
+        default = {"key": "value", "nested": {"a": 1}}
+        manager = ConfigurationManager(default_config=default)
+
+        output_file = tmp_path / "output.json"
+        manager.create_default_config(output_file)
+
+        assert output_file.exists()
+        result = load_config(output_file)
+        assert result == default
+
+    def test_create_default_config_toml(self, tmp_path):
+        """Test de la création d'un fichier de config TOML par défaut."""
+        default = {
+            "simple": "value",
+            "number": 42,
+            "enabled": True,
+            "section": {
+                "nested_key": "nested_value"
+            }
+        }
+        manager = ConfigurationManager(default_config=default)
+
+        output_file = tmp_path / "output.toml"
+        manager.create_default_config(output_file)
+
+        assert output_file.exists()
+        result = load_config(output_file)
+        assert result["simple"] == "value"
+        assert result["number"] == 42
+        assert result["enabled"] is True
+        assert result["section"]["nested_key"] == "nested_value"
+
+    def test_search_paths(self, tmp_path):
+        """Test de la recherche dans plusieurs emplacements."""
+        # Créer un fichier de config dans le deuxième chemin
+        config_file = tmp_path / "found.toml"
+        config_file.write_text('[test]\nfound = true\n')
+
+        search_paths = [
+            tmp_path / "nonexistent.toml",
+            config_file,
+            tmp_path / "another.toml"
+        ]
+
+        manager = ConfigurationManager(search_paths=search_paths)
+
+        assert manager.get("test.found") is True
