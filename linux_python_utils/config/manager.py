@@ -4,10 +4,11 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Union
 
-from linux_python_utils.config.loader import load_config
+from linux_python_utils.config.base import ConfigManager
+from linux_python_utils.config.loader import ConfigLoader, FileConfigLoader
 
 
-class ConfigurationManager:
+class ConfigurationManager(ConfigManager):
     """
     Gestionnaire de configuration avec fonctionnalités avancées.
 
@@ -17,13 +18,17 @@ class ConfigurationManager:
     - Fusion profonde avec configuration par défaut
     - Accès par chemin pointé (ex: "backup.rsync.options")
     - Gestion de profils
+
+    Respecte le principe DIP en acceptant un ConfigLoader
+    en injection de dépendance, facilitant les tests unitaires.
     """
 
     def __init__(
         self,
         config_path: Optional[Union[str, Path]] = None,
         default_config: Optional[Dict[str, Any]] = None,
-        search_paths: Optional[List[Union[str, Path]]] = None
+        search_paths: Optional[List[Union[str, Path]]] = None,
+        config_loader: Optional[ConfigLoader] = None
     ) -> None:
         """
         Initialise le gestionnaire de configuration.
@@ -32,9 +37,12 @@ class ConfigurationManager:
             config_path: Chemin vers le fichier de configuration
             default_config: Configuration par défaut (fusion avec fichier)
             search_paths: Liste de chemins de recherche du fichier
+            config_loader: Instance de ConfigLoader (optionnel).
+                Si non fourni, utilise FileConfigLoader par défaut.
         """
         self.default_config = default_config or {}
         self.search_paths = search_paths or []
+        self._loader = config_loader or FileConfigLoader()
 
         if config_path is None and self.search_paths:
             config_path = self._find_config_file()
@@ -55,10 +63,10 @@ class ConfigurationManager:
         return None
 
     def _load_config(self) -> Dict[str, Any]:
-        """Charge la configuration depuis le fichier."""
+        """Charge la configuration depuis le fichier via le loader injecté."""
         if self.config_path and self.config_path.exists():
             try:
-                user_config = load_config(self.config_path)
+                user_config = self._loader.load(self.config_path)
                 # Fusionner avec la config par défaut
                 base = self.default_config.copy()
                 return self._deep_merge(base, user_config)

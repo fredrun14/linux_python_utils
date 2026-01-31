@@ -7,32 +7,66 @@ from typing import Optional
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.integrity.base import (
     IntegrityChecker,
+    ChecksumCalculator,
+    HashLibChecksumCalculator,
     calculate_checksum
 )
 
 
 class SHA256IntegrityChecker(IntegrityChecker):
-    """
-    Vérificateur d'intégrité basé sur SHA256.
+    """Vérificateur d'intégrité basé sur SHA256.
 
     Compare les checksums entre source et destination pour vérifier
     que les fichiers ont été copiés correctement.
+
+    Respecte le principe DIP en acceptant un ChecksumCalculator
+    en injection de dépendance, facilitant les tests unitaires.
     """
 
     def __init__(
         self,
         logger: Logger,
-        algorithm: str = 'sha256'
+        algorithm: str = 'sha256',
+        checksum_calculator: Optional[ChecksumCalculator] = None
     ) -> None:
-        """
-        Initialise le vérificateur d'intégrité.
+        """Initialise le vérificateur d'intégrité.
 
         Args:
-            logger: Instance de Logger pour le logging
-            algorithm: Algorithme de hash (défaut: sha256)
+            logger: Instance de Logger pour le logging.
+            algorithm: Algorithme de hash (défaut: sha256).
+            checksum_calculator: Instance de ChecksumCalculator (optionnel).
+                Si non fourni, utilise HashLibChecksumCalculator par défaut.
         """
         self.logger = logger
         self.algorithm = algorithm
+        self._calculator = checksum_calculator or HashLibChecksumCalculator()
+
+    @staticmethod
+    def calculate_checksum(
+        file_path: str,
+        algorithm: str = 'sha256'
+    ) -> str:
+        """Calcule le checksum d'un fichier (méthode statique).
+
+        Args:
+            file_path: Chemin du fichier.
+            algorithm: Algorithme de hash (défaut: sha256).
+
+        Returns:
+            Checksum hexadécimal du fichier.
+        """
+        return calculate_checksum(file_path, algorithm)
+
+    def _calculate(self, file_path: str) -> str:
+        """Calcule le checksum via l'instance injectée.
+
+        Args:
+            file_path: Chemin du fichier.
+
+        Returns:
+            Checksum hexadécimal du fichier.
+        """
+        return self._calculator.calculate(file_path, self.algorithm)
 
     def verify_file(
         self,
@@ -50,8 +84,8 @@ class SHA256IntegrityChecker(IntegrityChecker):
             True si les checksums correspondent, False sinon
         """
         try:
-            source_checksum = calculate_checksum(source_file, self.algorithm)
-            dest_checksum = calculate_checksum(dest_file, self.algorithm)
+            source_checksum = self._calculate(source_file)
+            dest_checksum = self._calculate(dest_file)
 
             if source_checksum != dest_checksum:
                 self.logger.log_error(
@@ -147,6 +181,6 @@ class SHA256IntegrityChecker(IntegrityChecker):
         Returns:
             Checksum hexadécimal
         """
-        checksum = calculate_checksum(file_path, self.algorithm)
+        checksum = self._calculate(file_path)
         self.logger.log_info(f"Checksum de {file_path}: {checksum}")
         return checksum

@@ -1,117 +1,93 @@
-# Linux Python Utils
+# 🐧 Linux Python Utils
 
-Bibliothèque utilitaire Python pour systèmes Linux. Fournit des classes réutilisables pour le logging, la configuration, la gestion de fichiers, systemd et la vérification d'intégrité.
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/Tests-60%20passed-brightgreen.svg)]()
+[![Code Style](https://img.shields.io/badge/Code%20Style-PEP8-black.svg)]()
+[![SOLID](https://img.shields.io/badge/Architecture-SOLID-purple.svg)]()
 
-## Prérequis
+> Bibliothèque utilitaire Python pour systèmes Linux, conçue avec les principes SOLID.
 
-- Python 3.11+ (utilise `tomllib`)
-- Linux (pour les modules `systemd` et `filesystem`)
+Fournit des classes réutilisables et extensibles pour le logging, la configuration, la gestion de fichiers, les services systemd et la vérification d'intégrité. Architecture basée sur des Abstract Base Classes (ABC) permettant l'injection de dépendances et facilitant les tests unitaires.
 
-## Installation
+## 📋 Table des Matières
 
-### Installation locale (développement)
+- [Fonctionnalités](#-fonctionnalités)
+- [Prérequis](#-prérequis)
+- [Installation](#-installation)
+- [Utilisation](#-utilisation)
+  - [Module logging](#module-logging)
+  - [Module config](#module-config)
+  - [Module filesystem](#module-filesystem)
+  - [Module systemd](#module-systemd)
+  - [Module integrity](#module-integrity)
+- [Documentation API](#-documentation-api)
+- [Architecture des Classes](#-architecture-des-classes)
+- [Structure du Projet](#-structure-du-projet)
+- [Tests](#-tests)
+- [Troubleshooting](#-troubleshooting)
+- [Contribution](#-contribution)
+- [Licence](#-licence)
+
+## ✨ Fonctionnalités
+
+- **📝 Logging robuste** — Logger fichier/console avec encodage UTF-8 et flush immédiat
+- **⚙️ Configuration flexible** — Support TOML/JSON avec fusion profonde et profils
+- **📁 Gestion de fichiers** — CRUD fichiers et sauvegardes préservant les métadonnées
+- **🔧 Systemd complet** — Gestion services, timers et unités de montage (.mount/.automount)
+- **🔐 Vérification d'intégrité** — Checksums SHA256/SHA512/MD5 pour fichiers et répertoires
+- **🏗️ Architecture SOLID** — ABCs, injection de dépendances, testabilité maximale
+- **🧪 Bien testé** — 60 tests unitaires couvrant tous les modules
+
+## 📦 Prérequis
+
+| Prérequis | Version | Vérification |
+|-----------|---------|--------------|
+| Python | 3.11+ | `python --version` |
+| pip | 21.0+ | `pip --version` |
+| Linux | Kernel 4.0+ | `uname -r` |
+
+> **Note** : Python 3.11+ est requis car la bibliothèque utilise `tomllib` (stdlib).
+
+## 🔧 Installation
+
+### Installation depuis les Sources
 
 ```bash
-# Clone du dépôt
-git clone /home/fred/PycharmProjects/linux_python_utils
-cd linux_python_utils
+# 1. Cloner le repository
+git clone https://github.com/user/linux-python-utils.git
+cd linux-python-utils
 
-# Installation en mode éditable
+# 2. Créer un environnement virtuel
+python -m venv venv
+source venv/bin/activate
+
+# 3. Installer en mode développement
 pip install -e .
+
+# 4. (Optionnel) Installer les dépendances de dev
+pip install -e ".[dev]"
 ```
 
 ### Installation via pip
 
 ```bash
-# Depuis un dépôt local
-pip install git+file:///home/fred/PycharmProjects/linux_python_utils
-
-# Depuis GitHub (si publié)
-pip install git+https://github.com/user/linux_python_utils.git
+# Depuis GitHub
+pip install git+https://github.com/user/linux-python-utils.git
 ```
 
-### Vérification de l'installation
+### Vérification de l'Installation
 
 ```python
 import linux_python_utils
 print(linux_python_utils.__version__)  # 0.1.0
 ```
 
-## Modules disponibles
+## 💻 Utilisation
 
-| Module | Description |
-|--------|-------------|
-| `logging` | Système de logging avec fichier et console |
-| `config` | Chargement de configuration TOML/JSON |
-| `filesystem` | Opérations sur fichiers et sauvegardes |
-| `systemd` | Gestion des services et timers systemd |
-| `integrity` | Vérification d'intégrité par checksums |
-
----
-
-## Module `logging`
+### Module `logging`
 
 Système de logging robuste avec support fichier et console.
-
-### Classes
-
-#### `Logger` (ABC)
-
-Interface abstraite définissant les méthodes de logging.
-
-```python
-from abc import ABC, abstractmethod
-
-class Logger(ABC):
-    @abstractmethod
-    def log_info(self, message: str) -> None: ...
-
-    @abstractmethod
-    def log_warning(self, message: str) -> None: ...
-
-    @abstractmethod
-    def log_error(self, message: str) -> None: ...
-```
-
-#### `FileLogger`
-
-Implémentation concrète qui écrit dans un fichier avec option console.
-
-**Caractéristiques :**
-- Logger unique par instance (évite les conflits)
-- Encodage UTF-8 explicite
-- Flush immédiat après chaque log
-- Pas de propagation (évite les doublons)
-- Sortie console optionnelle
-
-**Constructeur :**
-
-```python
-FileLogger(
-    log_file: str,
-    config: Optional[Dict[str, Any]] = None,
-    console_output: bool = False
-)
-```
-
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `log_file` | `str` | Chemin du fichier de log |
-| `config` | `dict` ou `ConfigurationManager` | Configuration optionnelle |
-| `console_output` | `bool` | Activer la sortie console |
-
-**Configuration supportée :**
-
-```python
-config = {
-    "logging": {
-        "level": "DEBUG",  # DEBUG, INFO, WARNING, ERROR
-        "format": "%(asctime)s - %(levelname)s - %(message)s"
-    }
-}
-```
-
-**Exemple d'utilisation :**
 
 ```python
 from linux_python_utils import FileLogger
@@ -122,126 +98,49 @@ logger.log_info("Application démarrée")
 logger.log_warning("Attention: ressource limitée")
 logger.log_error("Erreur critique")
 
-# Avec console
+# Avec sortie console
 logger = FileLogger("/var/log/myapp.log", console_output=True)
 
 # Avec configuration
 config = {"logging": {"level": "DEBUG"}}
 logger = FileLogger("/var/log/myapp.log", config=config)
-
-# Écriture directe sans formatage
-logger.log_to_file("Message brut")
 ```
 
----
-
-## Module `config`
+### Module `config`
 
 Chargement et gestion de configuration TOML et JSON.
 
-### Fonctions
-
-#### `load_config`
-
-Charge un fichier de configuration TOML ou JSON.
-
-```python
-load_config(config_path: Union[str, Path]) -> dict
-```
-
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `config_path` | `str` ou `Path` | Chemin vers le fichier |
-
-**Exemple :**
+#### Fonction `load_config`
 
 ```python
 from linux_python_utils import load_config
 
-# Chargement TOML
+# Chargement TOML ou JSON (détection automatique)
 config = load_config("/etc/myapp/config.toml")
-
-# Chargement JSON
-config = load_config("~/.config/myapp/config.json")
-
-# Accès aux valeurs
 print(config["section"]["key"])
 ```
 
-### Classes
-
-#### `ConfigurationManager`
-
-Gestionnaire de configuration avancé avec fonctionnalités étendues.
-
-**Fonctionnalités :**
-- Support TOML et JSON (détection automatique)
-- Recherche dans plusieurs emplacements
-- Fusion profonde avec configuration par défaut
-- Accès par chemin pointé (`"section.subsection.key"`)
-- Gestion de profils
-
-**Constructeur :**
-
-```python
-ConfigurationManager(
-    config_path: Optional[Union[str, Path]] = None,
-    default_config: Optional[Dict[str, Any]] = None,
-    search_paths: Optional[List[Union[str, Path]]] = None
-)
-```
-
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `config_path` | `str` ou `Path` | Chemin vers le fichier de config |
-| `default_config` | `dict` | Configuration par défaut |
-| `search_paths` | `list` | Liste de chemins de recherche |
-
-**Méthodes :**
-
-| Méthode | Description |
-|---------|-------------|
-| `get(key_path, default)` | Récupère une valeur par chemin pointé |
-| `get_section(section)` | Récupère une section complète |
-| `get_profile(name)` | Récupère un profil avec chemins expandés |
-| `list_profiles()` | Liste tous les profils disponibles |
-| `create_default_config(path)` | Crée un fichier de config par défaut |
-
-**Exemple :**
+#### Classe `ConfigurationManager`
 
 ```python
 from linux_python_utils import ConfigurationManager
 
-# Configuration par défaut
+# Configuration par défaut avec profils
 DEFAULT_CONFIG = {
-    "logging": {
-        "level": "INFO",
-        "format": "%(asctime)s - %(message)s"
-    },
-    "backup": {
-        "destination": "/media/backup",
-        "compression": True
-    },
+    "logging": {"level": "INFO"},
+    "backup": {"destination": "/media/backup"},
     "profiles": {
-        "home": {
-            "source": "~",
-            "destination": "/media/backup/home"
-        },
-        "documents": {
-            "source": "~/Documents",
-            "destination": "/media/backup/docs"
-        }
+        "home": {"source": "~", "destination": "/media/backup/home"},
+        "documents": {"source": "~/Documents", "destination": "/media/backup/docs"}
     }
 }
 
-# Chemins de recherche
+# Chemins de recherche automatique
 SEARCH_PATHS = [
     "~/.config/myapp/config.toml",
-    "~/.myapp.toml",
     "/etc/myapp/config.toml"
 ]
 
-# Initialisation
 config = ConfigurationManager(
     default_config=DEFAULT_CONFIG,
     search_paths=SEARCH_PATHS
@@ -251,16 +150,10 @@ config = ConfigurationManager(
 level = config.get("logging.level", "INFO")
 dest = config.get("backup.destination")
 
-# Accès à une section
-logging_config = config.get_section("logging")
-
 # Gestion des profils
 profiles = config.list_profiles()  # ["home", "documents"]
 home_profile = config.get_profile("home")
 # {"source": "/home/user", "destination": "/media/backup/home"}
-
-# Création d'un fichier de config par défaut
-config.create_default_config("~/.config/myapp/config.toml")
 ```
 
 **Fichier TOML exemple :**
@@ -268,173 +161,46 @@ config.create_default_config("~/.config/myapp/config.toml")
 ```toml
 [logging]
 level = "DEBUG"
-format = "%(asctime)s - %(levelname)s - %(message)s"
 
 [backup]
 destination = "/media/nas/backup"
-compression = true
 
 [profiles.home]
 source = "~"
 destination = "/media/nas/backup/home"
-description = "Sauvegarde du home"
-
-[profiles.documents]
-source = "~/Documents"
-destination = "/media/nas/backup/docs"
 ```
 
----
-
-## Module `filesystem`
+### Module `filesystem`
 
 Opérations sur les fichiers et sauvegardes.
 
-### Classes
-
-#### `FileManager` (ABC)
-
-Interface abstraite pour la gestion des fichiers.
-
 ```python
-class FileManager(ABC):
-    @abstractmethod
-    def create_file(self, file_path: str, content: str) -> bool: ...
-
-    @abstractmethod
-    def file_exists(self, file_path: str) -> bool: ...
-```
-
-#### `LinuxFileManager`
-
-Implémentation Linux avec logging intégré.
-
-**Constructeur :**
-
-```python
-LinuxFileManager(logger: Logger)
-```
-
-**Méthodes :**
-
-| Méthode | Retour | Description |
-|---------|--------|-------------|
-| `create_file(path, content)` | `bool` | Crée un fichier |
-| `file_exists(path)` | `bool` | Vérifie l'existence |
-| `read_file(path)` | `str` | Lit le contenu |
-| `delete_file(path)` | `bool` | Supprime le fichier |
-
-**Exemple :**
-
-```python
-from linux_python_utils import FileLogger, LinuxFileManager
+from linux_python_utils import FileLogger, LinuxFileManager, LinuxFileBackup
 
 logger = FileLogger("/var/log/myapp.log")
-fm = LinuxFileManager(logger)
 
-# Créer un fichier
+# Gestion de fichiers
+fm = LinuxFileManager(logger)
 fm.create_file("/tmp/test.txt", "Contenu du fichier")
 
-# Vérifier l'existence
 if fm.file_exists("/tmp/test.txt"):
     content = fm.read_file("/tmp/test.txt")
     print(content)
 
-# Supprimer
 fm.delete_file("/tmp/test.txt")
-```
 
-#### `FileBackup` (ABC)
-
-Interface abstraite pour les sauvegardes.
-
-```python
-class FileBackup(ABC):
-    @abstractmethod
-    def backup(self, file_path: str, backup_path: str) -> None: ...
-
-    @abstractmethod
-    def restore(self, file_path: str, backup_path: str) -> None: ...
-```
-
-#### `LinuxFileBackup`
-
-Implémentation Linux utilisant `shutil.copy2` (préserve les métadonnées).
-
-**Constructeur :**
-
-```python
-LinuxFileBackup(logger: Logger)
-```
-
-**Méthodes :**
-
-| Méthode | Description |
-|---------|-------------|
-| `backup(file_path, backup_path)` | Crée une sauvegarde |
-| `restore(file_path, backup_path)` | Restaure depuis la sauvegarde |
-
-**Exemple :**
-
-```python
-from linux_python_utils import FileLogger, LinuxFileBackup
-
-logger = FileLogger("/var/log/myapp.log")
+# Sauvegarde avec préservation des métadonnées
 backup = LinuxFileBackup(logger)
-
-# Sauvegarder avant modification
 backup.backup("/etc/myapp.conf", "/etc/myapp.conf.bak")
-
 # ... modifications ...
-
-# Restaurer en cas d'erreur
 backup.restore("/etc/myapp.conf", "/etc/myapp.conf.bak")
 ```
 
----
+### Module `systemd`
 
-## Module `systemd`
+Gestion des services, timers et unités de montage systemd.
 
-Gestion des services et timers systemd.
-
-### Classes
-
-#### `SystemdServiceManager` (ABC)
-
-Interface abstraite pour systemd.
-
-```python
-class SystemdServiceManager(ABC):
-    @abstractmethod
-    def enable_timer(self, timer_name: str) -> bool: ...
-
-    @abstractmethod
-    def reload_systemd(self) -> bool: ...
-```
-
-#### `LinuxSystemdServiceManager`
-
-Implémentation utilisant `systemctl`.
-
-**Constructeur :**
-
-```python
-LinuxSystemdServiceManager(logger: Logger)
-```
-
-**Méthodes :**
-
-| Méthode | Retour | Description |
-|---------|--------|-------------|
-| `enable_timer(name)` | `bool` | Active et démarre un timer |
-| `disable_timer(name)` | `bool` | Désactive et arrête un timer |
-| `reload_systemd()` | `bool` | Recharge systemd (daemon-reload) |
-| `start_service(name)` | `bool` | Démarre un service |
-| `stop_service(name)` | `bool` | Arrête un service |
-| `get_status(name)` | `str` | Récupère le statut |
-| `is_active(name)` | `bool` | Vérifie si actif |
-
-**Exemple :**
+#### Services et Timers
 
 ```python
 from linux_python_utils import FileLogger, LinuxSystemdServiceManager
@@ -445,99 +211,67 @@ sm = LinuxSystemdServiceManager(logger)
 # Recharger après modification des fichiers unit
 sm.reload_systemd()
 
-# Activer un timer
-sm.enable_timer("flatpak-update.timer")
-
-# Vérifier le statut
-if sm.is_active("flatpak-update.timer"):
+# Gestion des timers
+sm.enable_timer("backup.timer")
+if sm.is_active("backup.timer"):
     print("Timer actif")
 
-status = sm.get_status("flatpak-update.timer")
-print(f"Statut: {status}")
-
-# Gestion de services
+# Gestion des services
 sm.start_service("nginx.service")
+status = sm.get_status("nginx.service")
 sm.stop_service("nginx.service")
 ```
 
----
+#### Unités de Montage (.mount / .automount)
 
-## Module `integrity`
+```python
+from linux_python_utils import (
+    FileLogger,
+    LinuxSystemdServiceManager,
+    LinuxMountUnitManager,
+    MountConfig
+)
+
+logger = FileLogger("/var/log/mount.log")
+systemd = LinuxSystemdServiceManager(logger)
+mount_mgr = LinuxMountUnitManager(logger, systemd)
+
+# Configuration du montage NFS
+config = MountConfig(
+    description="NAS Backup",
+    what="192.168.1.10:/share",
+    where="/media/nas/backup",
+    type="nfs",
+    options="defaults,soft,timeo=10"
+)
+
+# Installer avec automount (montage à la demande)
+mount_mgr.install_mount_unit(config, with_automount=True, automount_timeout=60)
+
+# Activer le montage
+mount_mgr.enable_mount("/media/nas/backup", with_automount=True)
+
+# Vérifier le statut
+if mount_mgr.is_mounted("/media/nas/backup"):
+    print("Montage actif")
+
+# Désactiver et supprimer
+mount_mgr.disable_mount("/media/nas/backup")
+mount_mgr.remove_mount_unit("/media/nas/backup")
+```
+
+### Module `integrity`
 
 Vérification d'intégrité par checksums.
 
-### Fonctions
-
-#### `calculate_checksum`
-
-Calcule le checksum d'un fichier.
-
 ```python
-calculate_checksum(
-    file_path: Union[str, Path],
-    algorithm: str = 'sha256'
-) -> str
-```
+from linux_python_utils import FileLogger, SHA256IntegrityChecker, calculate_checksum
 
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `file_path` | `str` ou `Path` | Chemin du fichier |
-| `algorithm` | `str` | Algorithme (sha256, sha512, md5, etc.) |
-
-**Exemple :**
-
-```python
-from linux_python_utils import calculate_checksum
-
-# SHA256 (défaut)
-checksum = calculate_checksum("/path/to/file")
-print(f"SHA256: {checksum}")
-
-# MD5
+# Fonction utilitaire rapide
+checksum = calculate_checksum("/path/to/file")  # SHA256 par défaut
 checksum_md5 = calculate_checksum("/path/to/file", algorithm="md5")
 
-# SHA512
-checksum_512 = calculate_checksum("/path/to/file", algorithm="sha512")
-```
-
-### Classes
-
-#### `IntegrityChecker` (ABC)
-
-Interface abstraite pour la vérification d'intégrité.
-
-```python
-class IntegrityChecker(ABC):
-    @abstractmethod
-    def verify(self, source: str, destination: str) -> bool: ...
-```
-
-#### `SHA256IntegrityChecker`
-
-Vérificateur basé sur SHA256 pour fichiers et répertoires.
-
-**Constructeur :**
-
-```python
-SHA256IntegrityChecker(
-    logger: Logger,
-    algorithm: str = 'sha256'
-)
-```
-
-**Méthodes :**
-
-| Méthode | Retour | Description |
-|---------|--------|-------------|
-| `verify_file(source, dest)` | `bool` | Vérifie un fichier unique |
-| `verify(source, dest, subdir)` | `bool` | Vérifie un répertoire complet |
-| `get_checksum(path)` | `str` | Calcule et log le checksum |
-
-**Exemple :**
-
-```python
-from linux_python_utils import FileLogger, SHA256IntegrityChecker
-
+# Vérificateur avec logging
 logger = FileLogger("/var/log/backup.log")
 checker = SHA256IntegrityChecker(logger)
 
@@ -545,19 +279,17 @@ checker = SHA256IntegrityChecker(logger)
 if checker.verify_file("/source/file.txt", "/dest/file.txt"):
     print("Fichier identique")
 
-# Vérifier un répertoire complet (après rsync par exemple)
+# Vérifier un répertoire complet (après rsync)
 if checker.verify("/home/user/Documents", "/media/backup"):
     print("Sauvegarde vérifiée")
 else:
     print("Erreur d'intégrité!")
 
-# Obtenir le checksum d'un fichier
+# Obtenir le checksum avec logging
 checksum = checker.get_checksum("/path/to/file")
 ```
 
----
-
-## Exemple complet
+### Exemple Complet
 
 Script de sauvegarde utilisant tous les modules :
 
@@ -566,16 +298,13 @@ Script de sauvegarde utilisant tous les modules :
 from linux_python_utils import (
     FileLogger,
     ConfigurationManager,
-    LinuxFileManager,
     LinuxFileBackup,
-    LinuxSystemdServiceManager,
     SHA256IntegrityChecker
 )
 
 # Configuration
 DEFAULT_CONFIG = {
     "logging": {"level": "INFO"},
-    "backup": {"destination": "/media/backup"},
     "profiles": {
         "documents": {
             "source": "~/Documents",
@@ -589,15 +318,8 @@ config = ConfigurationManager(
     default_config=DEFAULT_CONFIG
 )
 
-# Initialisation des composants
-logger = FileLogger(
-    "/var/log/backup.log",
-    config=config,
-    console_output=True
-)
-
-file_manager = LinuxFileManager(logger)
-file_backup = LinuxFileBackup(logger)
+# Initialisation
+logger = FileLogger("/var/log/backup.log", config=config, console_output=True)
 integrity_checker = SHA256IntegrityChecker(logger)
 
 # Récupération du profil
@@ -607,7 +329,7 @@ destination = profile["destination"]
 
 logger.log_info(f"Sauvegarde de {source} vers {destination}")
 
-# ... exécution de la sauvegarde ...
+# ... exécution de la sauvegarde (rsync, etc.) ...
 
 # Vérification d'intégrité
 if integrity_checker.verify(source, destination):
@@ -616,22 +338,152 @@ else:
     logger.log_error("Échec de la vérification d'intégrité")
 ```
 
----
+## 📖 Documentation API
 
-## Tests
+### Classes et Interfaces Exportées
+
+| Module | ABC (Interface) | Implémentation | Description |
+|--------|-----------------|----------------|-------------|
+| `logging` | `Logger` | `FileLogger` | Logging fichier/console |
+| `config` | `ConfigManager` | `ConfigurationManager` | Gestion de configuration |
+| `config` | `ConfigLoader` | `FileConfigLoader` | Chargement TOML/JSON |
+| `filesystem` | `FileManager` | `LinuxFileManager` | CRUD fichiers |
+| `filesystem` | `FileBackup` | `LinuxFileBackup` | Sauvegarde/restauration |
+| `systemd` | `SystemdServiceManager` | `LinuxSystemdServiceManager` | Services/timers |
+| `systemd` | `MountUnitManager` | `LinuxMountUnitManager` | Unités de montage |
+| `integrity` | `IntegrityChecker` | `SHA256IntegrityChecker` | Vérification checksums |
+| `integrity` | `ChecksumCalculator` | `HashLibChecksumCalculator` | Calcul checksums |
+
+### Dataclasses
+
+| Classe | Description |
+|--------|-------------|
+| `MountConfig` | Configuration d'une unité .mount |
+| `AutomountConfig` | Configuration d'une unité .automount |
+
+## 🏗️ Architecture des Classes
+
+### Vue d'Ensemble
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    linux-python-utils                            │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐    │
+│  │  logging  │  │  config   │  │filesystem │  │  systemd  │    │
+│  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘    │
+│        │              │              │              │           │
+│        ▼              ▼              ▼              ▼           │
+│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐    │
+│  │  Logger   │  │ConfigMgr  │  │FileManager│  │ServiceMgr │    │
+│  │   (ABC)   │  │  (ABC)    │  │   (ABC)   │  │   (ABC)   │    │
+│  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘    │
+│        │              │              │              │           │
+│        ▼              ▼              ▼              ▼           │
+│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐    │
+│  │FileLogger │  │ConfigMgr  │  │LinuxFile  │  │LinuxSysd  │    │
+│  │           │  │           │  │Manager    │  │ServiceMgr │    │
+│  └───────────┘  └───────────┘  └───────────┘  └───────────┘    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Principes SOLID Appliqués
+
+| Principe | Application |
+|----------|-------------|
+| **S** - Single Responsibility | `FileManager` (CRUD) séparé de `FileBackup` (sauvegarde) |
+| **O** - Open/Closed | ABCs stables, nouvelles implémentations sans modification |
+| **L** - Liskov Substitution | Toutes les implémentations respectent leurs contrats ABC |
+| **I** - Interface Segregation | `SystemdServiceManager` séparé de `MountUnitManager` |
+| **D** - Dependency Inversion | Injection de `Logger`, `ConfigLoader`, `ChecksumCalculator` |
+
+### Injection de Dépendances
+
+```python
+# Toutes les classes acceptent des abstractions en injection
+class SHA256IntegrityChecker(IntegrityChecker):
+    def __init__(
+        self,
+        logger: Logger,                              # ABC
+        algorithm: str = 'sha256',
+        checksum_calculator: ChecksumCalculator = None  # ABC (optionnel)
+    ): ...
+
+class ConfigurationManager(ConfigManager):
+    def __init__(
+        self,
+        config_path: str = None,
+        default_config: dict = None,
+        search_paths: list = None,
+        config_loader: ConfigLoader = None           # ABC (optionnel)
+    ): ...
+
+# Facilite les tests avec des mocks
+class MockLogger(Logger):
+    def log_info(self, message): pass
+    def log_warning(self, message): pass
+    def log_error(self, message): pass
+
+checker = SHA256IntegrityChecker(MockLogger())
+```
+
+## 🗂️ Structure du Projet
+
+```
+linux-python-utils/
+├── linux_python_utils/
+│   ├── __init__.py              # Exports publics
+│   ├── logging/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABC Logger
+│   │   └── file_logger.py       # FileLogger
+│   ├── config/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABC ConfigManager
+│   │   ├── loader.py            # ABC ConfigLoader + FileConfigLoader
+│   │   └── manager.py           # ConfigurationManager
+│   ├── filesystem/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABCs FileManager, FileBackup
+│   │   ├── linux.py             # LinuxFileManager
+│   │   └── backup.py            # LinuxFileBackup
+│   ├── systemd/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABCs + dataclasses
+│   │   ├── linux.py             # LinuxSystemdServiceManager
+│   │   └── mount.py             # LinuxMountUnitManager
+│   └── integrity/
+│       ├── __init__.py
+│       ├── base.py              # ABCs + calculate_checksum
+│       └── sha256.py            # SHA256IntegrityChecker
+├── tests/
+│   ├── __init__.py
+│   ├── test_logging.py          # 8 tests
+│   ├── test_config.py           # 13 tests
+│   ├── test_integrity.py        # 11 tests
+│   └── test_systemd_mount.py    # 28 tests
+├── pyproject.toml
+├── Makefile
+├── CLAUDE.md
+└── README.md
+```
+
+## 🧪 Tests
+
+### Lancer les Tests
 
 ```bash
 # Afficher les commandes disponibles
 make help
 
-# Installer les dépendances de dev
-make install-dev
-
-# Lancer les tests
+# Lancer tous les tests
 make test
 
 # Lancer les tests en mode verbose
 make test-verbose
+
+# Lancer un test spécifique
+pytest tests/test_logging.py::TestFileLogger::test_log_info -v
 
 # Vérifier PEP8
 make lint
@@ -640,6 +492,139 @@ make lint
 make all
 ```
 
-## Licence
+### Résumé des Tests
 
-MIT
+| Module | Tests | Description |
+|--------|-------|-------------|
+| `test_config.py` | 13 | Chargement TOML/JSON, profils, fusion |
+| `test_logging.py` | 8 | FileLogger, UTF-8, configuration |
+| `test_integrity.py` | 11 | Checksums, vérification fichiers/répertoires |
+| `test_systemd_mount.py` | 28 | Génération .mount/.automount, enable/disable |
+| **Total** | **60** | |
+
+### Tests Paramétrés
+
+```python
+@pytest.mark.parametrize("path,expected", [
+    ("/media/nas", "media-nas"),
+    ("/media/nas/backup/daily", "media-nas-backup-daily"),
+    ("/mnt", "mnt"),
+])
+def test_path_conversion(path, expected):
+    assert mount_mgr.path_to_unit_name(path) == expected
+```
+
+## 🐛 Troubleshooting
+
+<details>
+<summary><b>❌ ModuleNotFoundError: No module named 'linux_python_utils'</b></summary>
+
+**Cause :** Package non installé ou environnement virtuel non activé.
+
+**Solution :**
+```bash
+# Vérifier l'environnement virtuel
+which python
+
+# Réinstaller
+pip install -e .
+```
+</details>
+
+<details>
+<summary><b>❌ ModuleNotFoundError: No module named 'tomllib'</b></summary>
+
+**Cause :** Version Python < 3.11.
+
+**Solution :**
+```bash
+# Vérifier la version
+python --version
+
+# Installer Python 3.11+
+# Ubuntu/Debian
+sudo apt install python3.11
+
+# Fedora
+sudo dnf install python3.11
+```
+</details>
+
+<details>
+<summary><b>❌ PermissionError lors de l'écriture des fichiers .mount</b></summary>
+
+**Cause :** Les fichiers systemd nécessitent des droits root.
+
+**Solution :**
+```bash
+# Exécuter avec sudo
+sudo python mon_script.py
+
+# Ou utiliser le répertoire utilisateur
+~/.config/systemd/user/
+```
+</details>
+
+<details>
+<summary><b>❌ FileNotFoundError pour le fichier de configuration</b></summary>
+
+**Cause :** Le fichier de configuration n'existe pas aux chemins spécifiés.
+
+**Solution :**
+```python
+# Utiliser search_paths avec un fallback
+config = ConfigurationManager(
+    default_config=DEFAULT_CONFIG,  # Toujours fournir des défauts
+    search_paths=["~/.config/app/config.toml"]
+)
+
+# Ou créer le fichier par défaut
+config.create_default_config("~/.config/app/config.toml")
+```
+</details>
+
+## 🤝 Contribution
+
+Les contributions sont les bienvenues !
+
+### Processus
+
+1. **Fork** le projet
+2. **Créer** une branche (`git checkout -b feature/amazing-feature`)
+3. **Commiter** (`git commit -m 'Add amazing feature'`)
+4. **Pusher** (`git push origin feature/amazing-feature`)
+5. **Ouvrir** une Pull Request
+
+### Guidelines
+
+- Suivre PEP 8 (max 79 caractères par ligne)
+- Docstrings en français (PEP 257)
+- Type hints requis (PEP 484)
+- Respecter l'architecture SOLID existante
+- Ajouter des tests pour les nouvelles fonctionnalités
+
+### Développement Local
+
+```bash
+# Installer les dépendances de dev
+make install-dev
+
+# Vérifier le style
+make lint
+
+# Lancer les tests
+make test
+
+# Build complet
+make all
+```
+
+## 📄 Licence
+
+Ce projet est sous licence MIT. Voir le fichier [LICENSE](LICENSE) pour plus de détails.
+
+---
+
+<p align="center">
+  <b>linux-python-utils</b> — Conçu avec les principes SOLID pour une extensibilité maximale
+</p>

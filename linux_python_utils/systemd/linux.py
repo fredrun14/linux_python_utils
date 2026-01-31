@@ -1,17 +1,18 @@
 """Implémentation Linux de la gestion des services systemd."""
 
 import subprocess
-from typing import List, Optional
 
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.systemd.base import SystemdServiceManager
 
 
 class LinuxSystemdServiceManager(SystemdServiceManager):
-    """
-    Implémentation Linux de la gestion des services systemd.
+    """Implémentation Linux de la gestion des services systemd.
 
     Utilise subprocess pour exécuter les commandes systemctl.
+
+    Attributes:
+        logger: Instance de Logger pour le logging.
     """
 
     def __init__(self, logger: Logger) -> None:
@@ -25,7 +26,7 @@ class LinuxSystemdServiceManager(SystemdServiceManager):
 
     def _run_systemctl(
         self,
-        args: List[str],
+        args: list[str],
         check: bool = True
     ) -> subprocess.CompletedProcess:
         """
@@ -60,6 +61,59 @@ class LinuxSystemdServiceManager(SystemdServiceManager):
         except subprocess.CalledProcessError as e:
             self.logger.log_error(
                 f"Erreur lors de l'activation du timer {timer_name}: {e}"
+            )
+            return False
+
+    def enable_unit(self, unit_name: str) -> bool:
+        """
+        Active et démarre une unité systemd.
+
+        Args:
+            unit_name: Nom de l'unité
+
+        Returns:
+            True si succès, False sinon
+        """
+        try:
+            self._run_systemctl(["enable", "--now", unit_name])
+            self.logger.log_info(
+                f"Unité {unit_name} activée et démarrée avec succès."
+            )
+            return True
+        except subprocess.CalledProcessError as e:
+            self.logger.log_error(
+                f"Erreur lors de l'activation de l'unité {unit_name}: {e}"
+            )
+            return False
+
+    def disable_unit(
+        self, unit_name: str, ignore_errors: bool = False
+    ) -> bool:
+        """
+        Désactive et arrête une unité systemd.
+
+        Args:
+            unit_name: Nom de l'unité
+            ignore_errors: Ignorer les erreurs (unité inexistante, etc.)
+
+        Returns:
+            True si succès, False sinon
+        """
+        try:
+            self._run_systemctl(
+                ["disable", "--now", unit_name],
+                check=not ignore_errors
+            )
+            self.logger.log_info(f"Unité {unit_name} désactivée et arrêtée.")
+            return True
+        except subprocess.CalledProcessError as e:
+            if ignore_errors:
+                self.logger.log_warning(
+                    f"Impossible de désactiver {unit_name}: {e}"
+                )
+                return True
+            self.logger.log_error(
+                f"Erreur lors de la désactivation de {unit_name}: {e}"
             )
             return False
 
@@ -142,7 +196,7 @@ class LinuxSystemdServiceManager(SystemdServiceManager):
             )
             return False
 
-    def get_status(self, unit_name: str) -> Optional[str]:
+    def get_status(self, unit_name: str) -> str | None:
         """
         Récupère le statut d'une unité systemd.
 
