@@ -1,0 +1,104 @@
+# Configuration des montages réseau
+# Exemple de fichier de configuration pour les montages NFS, CIFS, etc.
+# À utiliser avec un script externe qui importe linux_python_utils
+
+# Options par défaut pour les différents types de montages
+[nfs]
+default_options = "defaults,_netdev,soft,timeo=30,retrans=2"
+automount_timeout = 300  # Délai d'inactivité avant démontage (secondes)
+
+[cifs]
+default_options = "defaults,_netdev,uid=1000,gid=1000"
+automount_timeout = 300
+
+# Configuration des points de montage
+# Chaque section [mounts.xxx] définit un montage
+
+[mounts.backup]
+description = "Sauvegarde NAS"
+type = "nfs"
+server = "nas.mondomaine.fr"
+share = "/volume1/backup"
+mount_point = "/media/nas/backup"
+options = "defaults,_netdev,noatime"
+
+[mounts.media]
+description = "Médiathèque"
+type = "nfs"
+server = "nas.mondomaine.fr"
+share = "/volume1/media"
+mount_point = "/media/nas/media"
+# Utilise les options par défaut de [nfs]
+
+[mounts.documents]
+description = "Documents partagés"
+type = "nfs"
+server = "192.168.1.10"
+share = "/export/documents"
+mount_point = "/media/nas/documents"
+options = "defaults,_netdev,rw,sync"
+
+[mounts.windows_share]
+description = "Partage Windows"
+type = "cifs"
+server = "//192.168.1.50/Documents"
+mount_point = "/mnt/windows"
+options = "credentials=/etc/samba/credentials,uid=1000,gid=1000,file_mode=0644,dir_mode=0755"
+
+[mounts.sshfs_remote]
+description = "Serveur distant SSH"
+type = "fuse.sshfs"
+server = "user@remote.server.com:/home/user"
+mount_point = "/mnt/remote"
+options = "allow_other,default_permissions,IdentityFile=/home/user/.ssh/id_rsa"
+
+# Exemple de script Python utilisant cette configuration:
+#
+# from linux_python_utils import (
+#     FileLogger,
+#     ConfigurationManager,
+#     LinuxSystemdServiceManager,
+#     LinuxMountUnitManager,
+#     MountConfig
+# )
+#
+# # Initialisation
+# logger = FileLogger("/var/log/mounts.log", console_output=True)
+# systemd = LinuxSystemdServiceManager(logger)
+# mount_manager = LinuxMountUnitManager(logger, systemd)
+#
+# # Charger la configuration
+# config = ConfigurationManager(config_path="/etc/nfs-mounts.toml")
+#
+# # Récupérer les options par défaut
+# nfs_defaults = config.get("nfs.default_options", "defaults,_netdev")
+# automount_timeout = config.get("nfs.automount_timeout", 300)
+#
+# # Installer tous les montages NFS
+# for name, mount_cfg in config.get("mounts", {}).items():
+#     if mount_cfg.get("type") == "nfs":
+#         # Construire l'adresse source
+#         what = f"{mount_cfg['server']}:{mount_cfg['share']}"
+#
+#         # Utiliser les options spécifiques ou les défauts
+#         options = mount_cfg.get("options", nfs_defaults)
+#
+#         mc = MountConfig(
+#             description=mount_cfg.get("description", name),
+#             what=what,
+#             where=mount_cfg["mount_point"],
+#             type="nfs",
+#             options=options
+#         )
+#
+#         # Installer avec automount
+#         mount_manager.install_mount_unit(
+#             mc,
+#             with_automount=True,
+#             automount_timeout=automount_timeout
+#         )
+#
+#         # Activer l'automount
+#         mount_manager.enable_mount(mc.where, with_automount=True)
+#
+#         print(f"Montage {name} installé: {mc.where}")
