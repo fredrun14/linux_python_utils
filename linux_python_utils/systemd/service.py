@@ -33,51 +33,6 @@ class LinuxServiceUnitManager(ServiceUnitManager):
         """
         super().__init__(logger, executor)
 
-    def generate_service_unit(self, config: ServiceConfig) -> str:
-        """
-        Génère le contenu d'un fichier .service systemd.
-
-        Args:
-            config: Configuration du service
-
-        Returns:
-            Contenu du fichier .service
-        """
-        lines = [
-            "[Unit]",
-            f"Description={config.description}",
-            "",
-            "[Service]",
-            f"Type={config.type}",
-            f"ExecStart={config.exec_start}"
-        ]
-
-        # Ajouter les options optionnelles
-        if config.user:
-            lines.append(f"User={config.user}")
-        if config.group:
-            lines.append(f"Group={config.group}")
-        if config.working_directory:
-            lines.append(f"WorkingDirectory={config.working_directory}")
-
-        # Variables d'environnement
-        for key, value in config.environment.items():
-            lines.append(f"Environment={key}={value}")
-
-        # Options de redémarrage
-        if config.restart != "no":
-            lines.append(f"Restart={config.restart}")
-            if config.restart_sec > 0:
-                lines.append(f"RestartSec={config.restart_sec}")
-
-        lines.extend([
-            "",
-            "[Install]",
-            f"WantedBy={config.wanted_by}"
-        ])
-
-        return "\n".join(lines) + "\n"
-
     def _write_unit_file(self, unit_name: str, content: str) -> bool:
         """
         Écrit un fichier unit dans le répertoire systemd.
@@ -136,34 +91,29 @@ class LinuxServiceUnitManager(ServiceUnitManager):
             return False
 
     def install_service_unit(self, config: ServiceConfig) -> bool:
-        """
-        Installe une unité .service.
+        """Installe une unité .service.
 
         Args:
-            config: Configuration du service
+            config: Configuration du service.
 
         Returns:
-            True si succès, False sinon
+            True si succès, False sinon.
         """
-        # Extraire le nom du service depuis la description ou générer un nom
-        # On utilise le premier mot de exec_start comme base
+        # Extraire le nom du service depuis exec_start
         service_name = os.path.basename(
             config.exec_start.split()[0]
         ).replace(".", "-")
 
-        # Générer et écrire le fichier .service
-        service_content = self.generate_service_unit(config)
-        if not self._write_unit_file(
-            f"{service_name}.service",
-            service_content
-        ):
+        service_file = f"{service_name}.service"
+        service_content = config.to_unit_file()
+
+        if not self._write_unit_file(service_file, service_content):
             return False
 
-        # Recharger systemd
         if not self.reload_systemd():
             return False
 
-        self.logger.log_info(f"Service {service_name}.service installé")
+        self.logger.log_info(f"Service {service_file} installé")
         return True
 
     def install_service_unit_with_name(
@@ -171,29 +121,25 @@ class LinuxServiceUnitManager(ServiceUnitManager):
         service_name: str,
         config: ServiceConfig
     ) -> bool:
-        """
-        Installe une unité .service avec un nom spécifique.
+        """Installe une unité .service avec un nom spécifique.
 
         Args:
-            service_name: Nom du service (sans extension)
-            config: Configuration du service
+            service_name: Nom du service (sans extension).
+            config: Configuration du service.
 
         Returns:
-            True si succès, False sinon
+            True si succès, False sinon.
         """
-        # Générer et écrire le fichier .service
-        service_content = self.generate_service_unit(config)
-        if not self._write_unit_file(
-            f"{service_name}.service",
-            service_content
-        ):
+        service_file = f"{service_name}.service"
+        service_content = config.to_unit_file()
+
+        if not self._write_unit_file(service_file, service_content):
             return False
 
-        # Recharger systemd
         if not self.reload_systemd():
             return False
 
-        self.logger.log_info(f"Service {service_name}.service installé")
+        self.logger.log_info(f"Service {service_file} installé")
         return True
 
     def start_service(self, service_name: str) -> bool:

@@ -34,44 +34,6 @@ class LinuxTimerUnitManager(TimerUnitManager):
         """
         super().__init__(logger, executor)
 
-    def generate_timer_unit(self, config: TimerConfig) -> str:
-        """
-        Génère le contenu d'un fichier .timer systemd.
-
-        Args:
-            config: Configuration du timer
-
-        Returns:
-            Contenu du fichier .timer
-        """
-        lines = [
-            "[Unit]",
-            f"Description={config.description}",
-            "",
-            "[Timer]",
-            f"Unit={config.unit}"
-        ]
-
-        # Ajouter les options de planification
-        if config.on_calendar:
-            lines.append(f"OnCalendar={config.on_calendar}")
-        if config.on_boot_sec:
-            lines.append(f"OnBootSec={config.on_boot_sec}")
-        if config.on_unit_active_sec:
-            lines.append(f"OnUnitActiveSec={config.on_unit_active_sec}")
-        if config.persistent:
-            lines.append("Persistent=true")
-        if config.randomized_delay_sec:
-            lines.append(f"RandomizedDelaySec={config.randomized_delay_sec}")
-
-        lines.extend([
-            "",
-            "[Install]",
-            "WantedBy=timers.target"
-        ])
-
-        return "\n".join(lines) + "\n"
-
     def _write_unit_file(self, unit_name: str, content: str) -> bool:
         """
         Écrit un fichier unit dans le répertoire systemd.
@@ -130,30 +92,25 @@ class LinuxTimerUnitManager(TimerUnitManager):
             return False
 
     def install_timer_unit(self, config: TimerConfig) -> bool:
-        """
-        Installe une unité .timer.
+        """Installe une unité .timer.
 
         Args:
-            config: Configuration du timer
+            config: Configuration du timer.
 
         Returns:
-            True si succès, False sinon
+            True si succès, False sinon.
         """
-        # Extraire le nom du timer depuis le nom de l'unité cible
-        # Ex: "backup.service" → "backup"
-        timer_name = config.unit.rsplit(".", 1)[0]
+        timer_file = f"{config.timer_name}.timer"
+        timer_content = config.to_unit_file()
 
-        # Générer et écrire le fichier .timer
-        timer_content = self.generate_timer_unit(config)
-        if not self._write_unit_file(f"{timer_name}.timer", timer_content):
+        if not self._write_unit_file(timer_file, timer_content):
             return False
 
-        # Recharger systemd
         if not self.reload_systemd():
             return False
 
         self.logger.log_info(
-            f"Timer {timer_name}.timer installé pour {config.unit}"
+            f"Timer {timer_file} installé pour {config.unit}"
         )
         return True
 

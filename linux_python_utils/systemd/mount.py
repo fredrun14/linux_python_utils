@@ -38,77 +38,6 @@ class LinuxMountUnitManager(MountUnitManager):
         """
         super().__init__(logger, executor)
 
-    def path_to_unit_name(self, mount_path: str) -> str:
-        """
-        Convertit un chemin de montage en nom d'unité systemd.
-
-        Exemple: /media/nas/backup → media-nas-backup
-
-        Args:
-            mount_path: Chemin du point de montage
-
-        Returns:
-            Nom de l'unité systemd (sans extension)
-        """
-        # Normalise le chemin et supprime le slash initial et final
-        path = mount_path.strip("/")
-        # Remplace les slashs par des tirets
-        return path.replace("/", "-")
-
-    def generate_mount_unit(self, config: MountConfig) -> str:
-        """
-        Génère le contenu d'un fichier .mount systemd.
-
-        Args:
-            config: Configuration du montage
-
-        Returns:
-            Contenu du fichier .mount
-        """
-        options_line = ""
-        if config.options:
-            options_line = f"Options={config.options}\n"
-
-        return f"""[Unit]
-Description={config.description}
-After=network-online.target
-Wants=network-online.target
-
-[Mount]
-What={config.what}
-Where={config.where}
-Type={config.type}
-{options_line}
-[Install]
-WantedBy=multi-user.target
-"""
-
-    def generate_automount_unit(self, config: AutomountConfig) -> str:
-        """
-        Génère le contenu d'un fichier .automount systemd.
-
-        Args:
-            config: Configuration de l'automontage
-
-        Returns:
-            Contenu du fichier .automount
-        """
-        timeout_line = ""
-        if config.timeout_idle_sec > 0:
-            timeout_line = f"TimeoutIdleSec={config.timeout_idle_sec}\n"
-
-        return f"""[Unit]
-Description=Automontage {config.description}
-Requires=network-online.target
-After=network-online.target
-
-[Automount]
-Where={config.where}
-{timeout_line}
-[Install]
-WantedBy=multi-user.target
-"""
-
     def _ensure_mount_point(self, path: str) -> bool:
         """
         Crée le point de montage s'il n'existe pas.
@@ -209,15 +138,14 @@ WantedBy=multi-user.target
         Returns:
             True si succès, False sinon
         """
-        unit_name = self.path_to_unit_name(config.where)
-
         # Créer le point de montage
         if not self._ensure_mount_point(config.where):
             return False
 
         # Générer et écrire le fichier .mount
-        mount_content = self.generate_mount_unit(config)
-        if not self._write_unit_file(f"{unit_name}.mount", mount_content):
+        mount_content = config.to_unit_file()
+        mount_file = f"{config.unit_name}.mount"
+        if not self._write_unit_file(mount_file, mount_content):
             return False
 
         # Optionnellement créer le fichier .automount
@@ -227,9 +155,9 @@ WantedBy=multi-user.target
                 where=config.where,
                 timeout_idle_sec=automount_timeout
             )
-            automount_content = self.generate_automount_unit(automount_config)
+            automount_content = automount_config.to_unit_file()
             if not self._write_unit_file(
-                f"{unit_name}.automount",
+                f"{automount_config.unit_name}.automount",
                 automount_content
             ):
                 return False

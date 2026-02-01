@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-60%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-84%20passed-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/Code%20Style-PEP8-black.svg)]()
 [![SOLID](https://img.shields.io/badge/Architecture-SOLID-purple.svg)]()
 
@@ -37,7 +37,7 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 - **🔧 Systemd complet** — Gestion services, timers et unités de montage (système et utilisateur)
 - **🔐 Vérification d'intégrité** — Checksums SHA256/SHA512/MD5 pour fichiers et répertoires
 - **🏗️ Architecture SOLID** — ABCs, injection de dépendances, testabilité maximale
-- **🧪 Bien testé** — 60 tests unitaires couvrant tous les modules
+- **🧪 Bien testé** — 84 tests unitaires couvrant tous les modules
 
 ## 📦 Prérequis
 
@@ -658,7 +658,9 @@ linux-python-utils/
 │   ├── test_logging.py          # 8 tests
 │   ├── test_config.py           # 13 tests
 │   ├── test_integrity.py        # 11 tests
-│   └── test_systemd_mount.py    # 28 tests
+│   ├── test_systemd_mount.py    # 28 tests
+│   ├── test_systemd_timer.py    # 11 tests
+│   └── test_systemd_service.py  # 13 tests
 ├── pyproject.toml
 ├── Makefile
 ├── CLAUDE.md
@@ -697,7 +699,9 @@ make all
 | `test_logging.py` | 8 | FileLogger, UTF-8, configuration |
 | `test_integrity.py` | 11 | Checksums, vérification fichiers/répertoires |
 | `test_systemd_mount.py` | 28 | Génération .mount/.automount, enable/disable |
-| **Total** | **60** | |
+| `test_systemd_timer.py` | 11 | TimerConfig, to_unit_file(), validation |
+| `test_systemd_service.py` | 13 | ServiceConfig, to_unit_file(), validation |
+| **Total** | **84** | |
 
 ### Tests Paramétrés
 

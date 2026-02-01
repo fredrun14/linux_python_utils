@@ -1,8 +1,9 @@
 """Interfaces abstraites pour la gestion des unités systemd."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
+from datetime import datetime
 
 if TYPE_CHECKING:
     from linux_python_utils.logging.base import Logger
@@ -13,47 +14,133 @@ if TYPE_CHECKING:
 # Dataclasses de configuration
 # =============================================================================
 
-@dataclass
-class MountConfig:
-    """Configuration pour une unité .mount systemd.
+
+@dataclass(frozen=True)
+class BaseSystemdConfig:
+    """Configuration de base pour une unité systemd.
 
     Attributes:
         description: Description de l'unité pour systemd.
+        created_at: Horodatage automatique de la création de la configuration.
+    """
+
+    description: str
+    created_at: datetime = field(
+        default_factory=datetime.now, compare=False, kw_only=True
+    )
+
+
+@dataclass(frozen=True)
+class MountConfig(BaseSystemdConfig):
+    """Configuration pour une unité .mount systemd.
+
+    Attributes:
         what: Source du montage (ex: "192.168.1.10:/share", "//server/share").
         where: Chemin du point de montage local.
         type: Type de système de fichiers (nfs, cifs, sshfs, ext4, etc.).
         options: Options de montage (défaut: chaîne vide).
     """
 
-    description: str
     what: str
     where: str
     type: str
     options: str = ""
 
+    def __post_init__(self) -> None:
+        """Valide que les champs requis sont présents."""
+        if not self.what or not self.where:
+            raise ValueError("'what' et 'where' sont requis")
 
-@dataclass
-class AutomountConfig:
+    @property
+    def unit_name(self) -> str:
+        """Convertit le chemin de montage en nom d'unité systemd.
+
+        Exemple: /media/nas/backup → media-nas-backup
+
+        Returns:
+            Nom de l'unité systemd (sans extension).
+        """
+        return self.where.strip("/").replace("/", "-")
+
+    def to_unit_file(self) -> str:
+        """Génère le contenu d'un fichier .mount systemd.
+
+        Returns:
+            Contenu du fichier .mount.
+        """
+        options_line = f"Options={self.options}\n" if self.options else ""
+        return f"""[Unit]
+Description={self.description}
+After=network-online.target
+Wants=network-online.target
+
+[Mount]
+What={self.what}
+Where={self.where}
+Type={self.type}
+{options_line}
+[Install]
+WantedBy=multi-user.target
+"""
+
+
+@dataclass(frozen=True)
+class AutomountConfig(BaseSystemdConfig):
     """Configuration pour une unité .automount systemd.
 
     Attributes:
-        description: Description de l'unité pour systemd.
+
         where: Chemin du point de montage local.
         timeout_idle_sec: Délai d'inactivité avant démontage automatique
             en secondes (0 = pas de démontage automatique).
     """
 
-    description: str
     where: str
     timeout_idle_sec: int = 0
 
+    def __post_init__(self) -> None:
+        """Valide que les champs requis sont présents."""
+        if not self.where:
+            raise ValueError("'where' est requis")
 
-@dataclass
-class TimerConfig:
+    @property
+    def unit_name(self) -> str:
+        """Convertit le chemin de montage en nom d'unité systemd.
+
+        Exemple: /media/nas/backup → media-nas-backup
+
+        Returns:
+            Nom de l'unité systemd (sans extension).
+        """
+        return self.where.strip("/").replace("/", "-")
+
+    def to_unit_file(self) -> str:
+        """Génère le contenu d'un fichier .automount systemd.
+
+        Returns:
+            Contenu du fichier .automount.
+        """
+        timeout_line = ""
+        if self.timeout_idle_sec > 0:
+            timeout_line = f"TimeoutIdleSec={self.timeout_idle_sec}\n"
+        return f"""[Unit]
+Description=Automontage {self.description}
+Requires=network-online.target
+After=network-online.target
+
+[Automount]
+Where={self.where}
+{timeout_line}
+[Install]
+WantedBy=multi-user.target
+"""
+
+
+@dataclass(frozen=True)
+class TimerConfig(BaseSystemdConfig):
     """Configuration pour une unité .timer systemd.
 
     Attributes:
-        description: Description de l'unité pour systemd.
         unit: Nom de l'unité à déclencher (ex: "backup.service").
         on_calendar: Expression de calendrier (ex: "daily", "*-*-* 06:00:00").
         on_boot_sec: Délai après le démarrage (ex: "5min").
@@ -62,7 +149,6 @@ class TimerConfig:
         randomized_delay_sec: Délai aléatoire ajouté (ex: "1h").
     """
 
-    description: str
     unit: str
     on_calendar: str = ""
     on_boot_sec: str = ""
@@ -70,13 +156,61 @@ class TimerConfig:
     persistent: bool = False
     randomized_delay_sec: str = ""
 
+    def __post_init__(self) -> None:
+        """Valide que les champs requis sont présents."""
+        if not self.unit:
+            raise ValueError("'unit' est requis")
 
-@dataclass
-class ServiceConfig:
+    @property
+    def timer_name(self) -> str:
+        """Extrait le nom du timer depuis le nom de l'unité cible.
+
+        Exemple: backup.service → backup
+
+        Returns:
+            Nom du timer (sans extension).
+        """
+        return self.unit.rsplit(".", 1)[0]
+
+    def to_unit_file(self) -> str:
+        """Génère le contenu d'un fichier .timer systemd.
+
+        Returns:
+            Contenu du fichier .timer.
+        """
+        lines = [
+            "[Unit]",
+            f"Description={self.description}",
+            "",
+            "[Timer]",
+            f"Unit={self.unit}"
+        ]
+
+        if self.on_calendar:
+            lines.append(f"OnCalendar={self.on_calendar}")
+        if self.on_boot_sec:
+            lines.append(f"OnBootSec={self.on_boot_sec}")
+        if self.on_unit_active_sec:
+            lines.append(f"OnUnitActiveSec={self.on_unit_active_sec}")
+        if self.persistent:
+            lines.append("Persistent=true")
+        if self.randomized_delay_sec:
+            lines.append(f"RandomizedDelaySec={self.randomized_delay_sec}")
+
+        lines.extend([
+            "",
+            "[Install]",
+            "WantedBy=timers.target"
+        ])
+
+        return "\n".join(lines) + "\n"
+
+
+@dataclass(frozen=True)
+class ServiceConfig(BaseSystemdConfig):
     """Configuration pour une unité .service systemd.
 
     Attributes:
-        description: Description de l'unité pour systemd.
         exec_start: Commande à exécuter au démarrage.
         type: Type de service (simple, oneshot, forking, notify, dbus, idle).
         user: Utilisateur sous lequel exécuter le service.
@@ -88,7 +222,6 @@ class ServiceConfig:
         wanted_by: Cible d'installation (défaut: multi-user.target).
     """
 
-    description: str
     exec_start: str
     type: str = "simple"
     user: str = ""
@@ -98,6 +231,49 @@ class ServiceConfig:
     restart: str = "no"
     restart_sec: int = 0
     wanted_by: str = "multi-user.target"
+
+    def __post_init__(self) -> None:
+        """Valide que les champs requis sont présents."""
+        if not self.exec_start:
+            raise ValueError("'exec_start' est requis")
+
+    def to_unit_file(self) -> str:
+        """Génère le contenu d'un fichier .service systemd.
+
+        Returns:
+            Contenu du fichier .service.
+        """
+        lines = [
+            "[Unit]",
+            f"Description={self.description}",
+            "",
+            "[Service]",
+            f"Type={self.type}",
+            f"ExecStart={self.exec_start}"
+        ]
+
+        if self.user:
+            lines.append(f"User={self.user}")
+        if self.group:
+            lines.append(f"Group={self.group}")
+        if self.working_directory:
+            lines.append(f"WorkingDirectory={self.working_directory}")
+
+        for key, value in self.environment.items():
+            lines.append(f"Environment={key}={value}")
+
+        if self.restart != "no":
+            lines.append(f"Restart={self.restart}")
+            if self.restart_sec > 0:
+                lines.append(f"RestartSec={self.restart_sec}")
+
+        lines.extend([
+            "",
+            "[Install]",
+            f"WantedBy={self.wanted_by}"
+        ])
+
+        return "\n".join(lines) + "\n"
 
 
 # =============================================================================
@@ -197,46 +373,19 @@ class UnitManager(ABC):
 class MountUnitManager(UnitManager):
     """Interface pour la gestion des unités .mount et .automount systemd."""
 
-    @abstractmethod
-    def path_to_unit_name(self, mount_path: str) -> str:
-        """
-        Convertit un chemin de montage en nom d'unité systemd.
+    @staticmethod
+    def path_to_unit_name(mount_path: str) -> str:
+        """Convertit un chemin de montage en nom d'unité systemd.
 
         Exemple: /media/nas/backup → media-nas-backup
 
         Args:
-            mount_path: Chemin du point de montage
+            mount_path: Chemin du point de montage.
 
         Returns:
-            Nom de l'unité systemd (sans extension)
+            Nom de l'unité systemd (sans extension).
         """
-        pass
-
-    @abstractmethod
-    def generate_mount_unit(self, config: MountConfig) -> str:
-        """
-        Génère le contenu d'un fichier .mount systemd.
-
-        Args:
-            config: Configuration du montage
-
-        Returns:
-            Contenu du fichier .mount
-        """
-        pass
-
-    @abstractmethod
-    def generate_automount_unit(self, config: AutomountConfig) -> str:
-        """
-        Génère le contenu d'un fichier .automount systemd.
-
-        Args:
-            config: Configuration de l'automontage
-
-        Returns:
-            Contenu du fichier .automount
-        """
-        pass
+        return mount_path.strip("/").replace("/", "-")
 
     @abstractmethod
     def install_mount_unit(
@@ -331,19 +480,6 @@ class TimerUnitManager(UnitManager):
     """Interface pour la gestion des unités .timer systemd."""
 
     @abstractmethod
-    def generate_timer_unit(self, config: TimerConfig) -> str:
-        """
-        Génère le contenu d'un fichier .timer systemd.
-
-        Args:
-            config: Configuration du timer
-
-        Returns:
-            Contenu du fichier .timer
-        """
-        pass
-
-    @abstractmethod
     def install_timer_unit(self, config: TimerConfig) -> bool:
         """
         Installe une unité .timer.
@@ -421,19 +557,6 @@ class TimerUnitManager(UnitManager):
 
 class ServiceUnitManager(UnitManager):
     """Interface pour la gestion des unités .service systemd."""
-
-    @abstractmethod
-    def generate_service_unit(self, config: ServiceConfig) -> str:
-        """
-        Génère le contenu d'un fichier .service systemd.
-
-        Args:
-            config: Configuration du service
-
-        Returns:
-            Contenu du fichier .service
-        """
-        pass
 
     @abstractmethod
     def install_service_unit(self, config: ServiceConfig) -> bool:

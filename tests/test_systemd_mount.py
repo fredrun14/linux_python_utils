@@ -128,11 +128,9 @@ class TestPathToUnitName:
 
 
 class TestGenerateMountUnit:
-    """Tests pour la génération de fichiers .mount."""
+    """Tests pour la génération de fichiers .mount via MountConfig.to_unit_file."""
 
-    def test_basic_nfs_mount_contains_required_sections(
-        self, mount_manager: LinuxMountUnitManager
-    ):
+    def test_basic_nfs_mount_contains_required_sections(self):
         """Vérifie que le fichier .mount contient toutes les sections requises."""
         # Arrange
         config = MountConfig(
@@ -143,7 +141,7 @@ class TestGenerateMountUnit:
         )
 
         # Act
-        result = mount_manager.generate_mount_unit(config)
+        result = config.to_unit_file()
 
         # Assert
         assert "[Unit]" in result
@@ -155,9 +153,7 @@ class TestGenerateMountUnit:
         assert "[Install]" in result
         assert "WantedBy=multi-user.target" in result
 
-    def test_mount_with_options_includes_options_line(
-        self, mount_manager: LinuxMountUnitManager
-    ):
+    def test_mount_with_options_includes_options_line(self):
         """Vérifie que les options de montage sont incluses."""
         # Arrange
         config = MountConfig(
@@ -169,14 +165,12 @@ class TestGenerateMountUnit:
         )
 
         # Act
-        result = mount_manager.generate_mount_unit(config)
+        result = config.to_unit_file()
 
         # Assert
         assert "Options=defaults,_netdev,noatime" in result
 
-    def test_cifs_mount_generates_correct_format(
-        self, mount_manager: LinuxMountUnitManager
-    ):
+    def test_cifs_mount_generates_correct_format(self):
         """Vérifie la génération correcte d'un montage CIFS."""
         # Arrange
         config = MountConfig(
@@ -188,16 +182,14 @@ class TestGenerateMountUnit:
         )
 
         # Act
-        result = mount_manager.generate_mount_unit(config)
+        result = config.to_unit_file()
 
         # Assert
         assert "Type=cifs" in result
         assert "What=//192.168.1.50/Documents" in result
         assert "Options=credentials=/etc/samba/credentials,uid=1000" in result
 
-    def test_mount_without_options_omits_options_line(
-        self, mount_manager: LinuxMountUnitManager
-    ):
+    def test_mount_without_options_omits_options_line(self):
         """Vérifie l'absence de ligne Options= quand aucune option n'est définie."""
         # Arrange
         config = MountConfig(
@@ -208,18 +200,16 @@ class TestGenerateMountUnit:
         )
 
         # Act
-        result = mount_manager.generate_mount_unit(config)
+        result = config.to_unit_file()
 
         # Assert
         assert "Options=" not in result
 
 
 class TestGenerateAutomountUnit:
-    """Tests pour la génération de fichiers .automount."""
+    """Tests pour la génération de fichiers .automount via to_unit_file."""
 
-    def test_basic_automount_contains_required_sections(
-        self, mount_manager: LinuxMountUnitManager
-    ):
+    def test_basic_automount_contains_required_sections(self):
         """Vérifie que le fichier .automount contient toutes les sections."""
         # Arrange
         config = AutomountConfig(
@@ -228,7 +218,7 @@ class TestGenerateAutomountUnit:
         )
 
         # Act
-        result = mount_manager.generate_automount_unit(config)
+        result = config.to_unit_file()
 
         # Assert
         assert "[Unit]" in result
@@ -238,9 +228,7 @@ class TestGenerateAutomountUnit:
         assert "[Install]" in result
         assert "WantedBy=multi-user.target" in result
 
-    def test_automount_with_timeout_includes_timeout_line(
-        self, mount_manager: LinuxMountUnitManager
-    ):
+    def test_automount_with_timeout_includes_timeout_line(self):
         """Vérifie que le timeout est inclus quand spécifié."""
         # Arrange
         config = AutomountConfig(
@@ -250,14 +238,12 @@ class TestGenerateAutomountUnit:
         )
 
         # Act
-        result = mount_manager.generate_automount_unit(config)
+        result = config.to_unit_file()
 
         # Assert
         assert "TimeoutIdleSec=300" in result
 
-    def test_automount_without_timeout_omits_timeout_line(
-        self, mount_manager: LinuxMountUnitManager
-    ):
+    def test_automount_without_timeout_omits_timeout_line(self):
         """Vérifie l'absence de TimeoutIdleSec= quand timeout est 0."""
         # Arrange
         config = AutomountConfig(
@@ -267,7 +253,7 @@ class TestGenerateAutomountUnit:
         )
 
         # Act
-        result = mount_manager.generate_automount_unit(config)
+        result = config.to_unit_file()
 
         # Assert
         assert "TimeoutIdleSec=" not in result
