@@ -34,7 +34,7 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 - **📝 Logging robuste** — Logger fichier/console avec encodage UTF-8 et flush immédiat
 - **⚙️ Configuration flexible** — Support TOML/JSON avec fusion profonde et profils
 - **📁 Gestion de fichiers** — CRUD fichiers et sauvegardes préservant les métadonnées
-- **🔧 Systemd complet** — Gestion services, timers et unités de montage (.mount/.automount)
+- **🔧 Systemd complet** — Gestion services, timers et unités de montage (système et utilisateur)
 - **🔐 Vérification d'intégrité** — Checksums SHA256/SHA512/MD5 pour fichiers et répertoires
 - **🏗️ Architecture SOLID** — ABCs, injection de dépendances, testabilité maximale
 - **🧪 Bien testé** — 60 tests unitaires couvrant tous les modules
@@ -198,43 +198,38 @@ backup.restore("/etc/myapp.conf", "/etc/myapp.conf.bak")
 
 ### Module `systemd`
 
-Gestion des services, timers et unités de montage systemd.
+Gestion complète des unités systemd : services, timers et montages, en mode système (root) ou utilisateur.
 
-#### Services et Timers
+#### Architecture
 
-```python
-from linux_python_utils import FileLogger, LinuxSystemdServiceManager
-
-logger = FileLogger("/var/log/myapp.log")
-sm = LinuxSystemdServiceManager(logger)
-
-# Recharger après modification des fichiers unit
-sm.reload_systemd()
-
-# Gestion des timers
-sm.enable_timer("backup.timer")
-if sm.is_active("backup.timer"):
-    print("Timer actif")
-
-# Gestion des services
-sm.start_service("nginx.service")
-status = sm.get_status("nginx.service")
-sm.stop_service("nginx.service")
+```
+┌─────────────────────┐          ┌─────────────────────┐
+│   SystemdExecutor   │          │ UserSystemdExecutor │
+│  systemctl          │          │  systemctl --user   │
+│  /etc/systemd/system│          │  ~/.config/systemd/ │
+└─────────┬───────────┘          └─────────┬───────────┘
+          │                                │
+    ┌─────┼─────┐                    ┌─────┼─────┐
+    ▼     ▼     ▼                    ▼           ▼
+ Mount  Timer Service          UserTimer   UserService
+ UnitMgr UnitMgr UnitMgr       UnitMgr     UnitMgr
 ```
 
-#### Unités de Montage (.mount / .automount)
+#### Unités Système (requiert root)
+
+##### Unités de Montage (.mount / .automount)
 
 ```python
 from linux_python_utils import (
     FileLogger,
-    LinuxSystemdServiceManager,
+    SystemdExecutor,
     LinuxMountUnitManager,
     MountConfig
 )
 
 logger = FileLogger("/var/log/mount.log")
-systemd = LinuxSystemdServiceManager(logger)
-mount_mgr = LinuxMountUnitManager(logger, systemd)
+executor = SystemdExecutor(logger)
+mount_mgr = LinuxMountUnitManager(logger, executor)
 
 # Configuration du montage NFS
 config = MountConfig(
@@ -258,6 +253,135 @@ if mount_mgr.is_mounted("/media/nas/backup"):
 # Désactiver et supprimer
 mount_mgr.disable_mount("/media/nas/backup")
 mount_mgr.remove_mount_unit("/media/nas/backup")
+```
+
+##### Timers Système
+
+```python
+from linux_python_utils import (
+    FileLogger,
+    SystemdExecutor,
+    LinuxTimerUnitManager,
+    TimerConfig
+)
+
+logger = FileLogger("/var/log/timer.log")
+executor = SystemdExecutor(logger)
+timer_mgr = LinuxTimerUnitManager(logger, executor)
+
+# Configuration du timer
+config = TimerConfig(
+    description="Backup quotidien",
+    unit="backup.service",
+    on_calendar="*-*-* 02:00:00",  # Tous les jours à 2h
+    persistent=True,  # Rattraper les exécutions manquées
+    randomized_delay_sec="1h"
+)
+
+# Installer et activer
+timer_mgr.install_timer_unit(config)
+timer_mgr.enable_timer("backup")
+
+# Lister les timers actifs
+timers = timer_mgr.list_timers()
+for t in timers:
+    print(f"{t['unit']}: prochaine exécution {t['next']}")
+```
+
+##### Services Système
+
+```python
+from linux_python_utils import (
+    FileLogger,
+    SystemdExecutor,
+    LinuxServiceUnitManager,
+    ServiceConfig
+)
+
+logger = FileLogger("/var/log/service.log")
+executor = SystemdExecutor(logger)
+service_mgr = LinuxServiceUnitManager(logger, executor)
+
+# Configuration du service
+config = ServiceConfig(
+    description="Mon application web",
+    exec_start="/usr/bin/python /opt/myapp/app.py",
+    type="simple",
+    user="www-data",
+    working_directory="/opt/myapp",
+    restart="on-failure",
+    restart_sec=5,
+    environment={"PYTHONPATH": "/opt/myapp"}
+)
+
+# Installer avec un nom spécifique
+service_mgr.install_service_unit_with_name("myapp", config)
+
+# Contrôler le service
+service_mgr.enable_service("myapp")
+service_mgr.start_service("myapp")
+
+if service_mgr.is_service_active("myapp"):
+    print("Service actif")
+
+service_mgr.restart_service("myapp")
+service_mgr.stop_service("myapp")
+```
+
+#### Unités Utilisateur (sans root)
+
+Les unités utilisateur sont stockées dans `~/.config/systemd/user/` et ne nécessitent pas de privilèges root.
+
+##### Timers Utilisateur
+
+```python
+from linux_python_utils import (
+    FileLogger,
+    UserSystemdExecutor,
+    LinuxUserTimerUnitManager,
+    TimerConfig
+)
+
+logger = FileLogger("~/.local/log/timer.log")
+executor = UserSystemdExecutor(logger)
+timer_mgr = LinuxUserTimerUnitManager(logger, executor)
+
+# Timer pour synchroniser des fichiers toutes les heures
+config = TimerConfig(
+    description="Sync fichiers",
+    unit="sync.service",
+    on_calendar="hourly",
+    persistent=True
+)
+
+timer_mgr.install_timer_unit(config)
+timer_mgr.enable_timer("sync")
+```
+
+##### Services Utilisateur
+
+```python
+from linux_python_utils import (
+    FileLogger,
+    UserSystemdExecutor,
+    LinuxUserServiceUnitManager,
+    ServiceConfig
+)
+
+logger = FileLogger("~/.local/log/service.log")
+executor = UserSystemdExecutor(logger)
+service_mgr = LinuxUserServiceUnitManager(logger, executor)
+
+# Service de synchronisation
+config = ServiceConfig(
+    description="Synchronisation Dropbox",
+    exec_start="/home/user/.local/bin/sync.sh",
+    type="oneshot",
+    working_directory="/home/user"
+)
+
+service_mgr.install_service_unit_with_name("sync", config)
+service_mgr.enable_service("sync")
 ```
 
 ### Module `integrity`
@@ -299,7 +423,12 @@ from linux_python_utils import (
     FileLogger,
     ConfigurationManager,
     LinuxFileBackup,
-    SHA256IntegrityChecker
+    SHA256IntegrityChecker,
+    UserSystemdExecutor,
+    LinuxUserTimerUnitManager,
+    LinuxUserServiceUnitManager,
+    TimerConfig,
+    ServiceConfig
 )
 
 # Configuration
@@ -319,40 +448,74 @@ config = ConfigurationManager(
 )
 
 # Initialisation
-logger = FileLogger("/var/log/backup.log", config=config, console_output=True)
-integrity_checker = SHA256IntegrityChecker(logger)
+logger = FileLogger("~/.local/log/backup.log", config=config, console_output=True)
+executor = UserSystemdExecutor(logger)
 
-# Récupération du profil
-profile = config.get_profile("documents")
-source = profile["source"]
-destination = profile["destination"]
+# Créer le service de backup
+service_mgr = LinuxUserServiceUnitManager(logger, executor)
+service_config = ServiceConfig(
+    description="Sauvegarde documents",
+    exec_start="/home/user/scripts/backup.sh",
+    type="oneshot"
+)
+service_mgr.install_service_unit_with_name("backup", service_config)
 
-logger.log_info(f"Sauvegarde de {source} vers {destination}")
+# Créer le timer (tous les jours à 6h)
+timer_mgr = LinuxUserTimerUnitManager(logger, executor)
+timer_config = TimerConfig(
+    description="Timer backup quotidien",
+    unit="backup.service",
+    on_calendar="*-*-* 06:00:00",
+    persistent=True
+)
+timer_mgr.install_timer_unit(timer_config)
+timer_mgr.enable_timer("backup")
 
-# ... exécution de la sauvegarde (rsync, etc.) ...
-
-# Vérification d'intégrité
-if integrity_checker.verify(source, destination):
-    logger.log_info("Sauvegarde vérifiée avec succès")
-else:
-    logger.log_error("Échec de la vérification d'intégrité")
+logger.log_info("Backup automatique configuré")
 ```
 
 ## 📖 Documentation API
 
 ### Classes et Interfaces Exportées
 
-| Module | ABC (Interface) | Implémentation | Description |
-|--------|-----------------|----------------|-------------|
-| `logging` | `Logger` | `FileLogger` | Logging fichier/console |
-| `config` | `ConfigManager` | `ConfigurationManager` | Gestion de configuration |
-| `config` | `ConfigLoader` | `FileConfigLoader` | Chargement TOML/JSON |
-| `filesystem` | `FileManager` | `LinuxFileManager` | CRUD fichiers |
-| `filesystem` | `FileBackup` | `LinuxFileBackup` | Sauvegarde/restauration |
-| `systemd` | `SystemdServiceManager` | `LinuxSystemdServiceManager` | Services/timers |
-| `systemd` | `MountUnitManager` | `LinuxMountUnitManager` | Unités de montage |
-| `integrity` | `IntegrityChecker` | `SHA256IntegrityChecker` | Vérification checksums |
-| `integrity` | `ChecksumCalculator` | `HashLibChecksumCalculator` | Calcul checksums |
+#### Module `logging`
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `Logger` | `FileLogger` | Logging fichier/console |
+
+#### Module `config`
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `ConfigManager` | `ConfigurationManager` | Gestion de configuration |
+| `ConfigLoader` | `FileConfigLoader` | Chargement TOML/JSON |
+
+#### Module `filesystem`
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `FileManager` | `LinuxFileManager` | CRUD fichiers |
+| `FileBackup` | `LinuxFileBackup` | Sauvegarde/restauration |
+
+#### Module `systemd`
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| — | `SystemdExecutor` | Exécuteur systemctl (système) |
+| — | `UserSystemdExecutor` | Exécuteur systemctl --user |
+| `MountUnitManager` | `LinuxMountUnitManager` | Unités .mount/.automount |
+| `TimerUnitManager` | `LinuxTimerUnitManager` | Unités .timer (système) |
+| `ServiceUnitManager` | `LinuxServiceUnitManager` | Unités .service (système) |
+| `UserTimerUnitManager` | `LinuxUserTimerUnitManager` | Unités .timer (utilisateur) |
+| `UserServiceUnitManager` | `LinuxUserServiceUnitManager` | Unités .service (utilisateur) |
+
+#### Module `integrity`
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `IntegrityChecker` | `SHA256IntegrityChecker` | Vérification checksums |
+| `ChecksumCalculator` | `HashLibChecksumCalculator` | Calcul checksums |
 
 ### Dataclasses
 
@@ -360,6 +523,8 @@ else:
 |--------|-------------|
 | `MountConfig` | Configuration d'une unité .mount |
 | `AutomountConfig` | Configuration d'une unité .automount |
+| `TimerConfig` | Configuration d'une unité .timer |
+| `ServiceConfig` | Configuration d'une unité .service |
 
 ## 🏗️ Architecture des Classes
 
@@ -375,47 +540,70 @@ else:
 │        │              │              │              │           │
 │        ▼              ▼              ▼              ▼           │
 │  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐    │
-│  │  Logger   │  │ConfigMgr  │  │FileManager│  │ServiceMgr │    │
-│  │   (ABC)   │  │  (ABC)    │  │   (ABC)   │  │   (ABC)   │    │
+│  │  Logger   │  │ConfigMgr  │  │FileManager│  │ Executor  │    │
+│  │   (ABC)   │  │  (ABC)    │  │   (ABC)   │  │           │    │
 │  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘    │
 │        │              │              │              │           │
 │        ▼              ▼              ▼              ▼           │
 │  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐    │
-│  │FileLogger │  │ConfigMgr  │  │LinuxFile  │  │LinuxSysd  │    │
-│  │           │  │           │  │Manager    │  │ServiceMgr │    │
-│  └───────────┘  └───────────┘  └───────────┘  └───────────┘    │
+│  │FileLogger │  │ConfigMgr  │  │LinuxFile  │  │UnitManagers│   │
+│  │           │  │           │  │Manager    │  │Mount/Timer│    │
+│  └───────────┘  └───────────┘  └───────────┘  │/Service   │    │
+│                                               └───────────┘    │
 └─────────────────────────────────────────────────────────────────┘
+```
+
+### Architecture Systemd
+
+```
+                    ┌─────────────────────────────────────────────┐
+                    │              SystemdExecutor                 │
+                    │  - _run_systemctl(args)                     │
+                    │  - reload_systemd()                         │
+                    │  - enable_unit() / disable_unit()           │
+                    │  - start_unit() / stop_unit()               │
+                    │  - get_status() / is_active()               │
+                    └─────────────────────┬───────────────────────┘
+                                          │ hérite
+                                          ▼
+                    ┌─────────────────────────────────────────────┐
+                    │            UserSystemdExecutor              │
+                    │  surcharge _run_systemctl pour --user       │
+                    └─────────────────────┬───────────────────────┘
+                                          │
+                                          │ injection
+        ┌─────────────────────────────────┼─────────────────────────────────┐
+        │                                 │                                 │
+        ▼                                 ▼                                 ▼
+┌───────────────────┐           ┌───────────────────┐           ┌───────────────────┐
+│    UnitManager    │           │  UserUnitManager  │           │  (autres futurs)  │
+│ /etc/systemd/sys  │           │ ~/.config/systemd │           │                   │
+├───────────────────┤           ├───────────────────┤           └───────────────────┘
+│ LinuxMountUnitMgr │           │ LinuxUserTimerMgr │
+│ LinuxTimerUnitMgr │           │ LinuxUserServiceMgr│
+│ LinuxServiceUnitMgr│          └───────────────────┘
+└───────────────────┘
 ```
 
 ### Principes SOLID Appliqués
 
 | Principe | Application |
 |----------|-------------|
-| **S** - Single Responsibility | `FileManager` (CRUD) séparé de `FileBackup` (sauvegarde) |
+| **S** - Single Responsibility | `SystemdExecutor` (commandes) séparé de `UnitManager` (fichiers unit) |
 | **O** - Open/Closed | ABCs stables, nouvelles implémentations sans modification |
 | **L** - Liskov Substitution | Toutes les implémentations respectent leurs contrats ABC |
-| **I** - Interface Segregation | `SystemdServiceManager` séparé de `MountUnitManager` |
-| **D** - Dependency Inversion | Injection de `Logger`, `ConfigLoader`, `ChecksumCalculator` |
+| **I** - Interface Segregation | `MountUnitManager`, `TimerUnitManager`, `ServiceUnitManager` séparés |
+| **D** - Dependency Inversion | Injection de `Logger` et `SystemdExecutor` dans les managers |
 
 ### Injection de Dépendances
 
 ```python
 # Toutes les classes acceptent des abstractions en injection
-class SHA256IntegrityChecker(IntegrityChecker):
+class LinuxMountUnitManager(MountUnitManager):
     def __init__(
         self,
-        logger: Logger,                              # ABC
-        algorithm: str = 'sha256',
-        checksum_calculator: ChecksumCalculator = None  # ABC (optionnel)
-    ): ...
-
-class ConfigurationManager(ConfigManager):
-    def __init__(
-        self,
-        config_path: str = None,
-        default_config: dict = None,
-        search_paths: list = None,
-        config_loader: ConfigLoader = None           # ABC (optionnel)
+        logger: Logger,           # ABC injectée
+        executor: SystemdExecutor  # Executor injecté
     ): ...
 
 # Facilite les tests avec des mocks
@@ -424,7 +612,12 @@ class MockLogger(Logger):
     def log_warning(self, message): pass
     def log_error(self, message): pass
 
-checker = SHA256IntegrityChecker(MockLogger())
+class MockExecutor(SystemdExecutor):
+    def reload_systemd(self): return True
+    def enable_unit(self, name): return True
+    # ...
+
+mount_mgr = LinuxMountUnitManager(MockLogger(), MockExecutor(MockLogger()))
 ```
 
 ## 🗂️ Structure du Projet
@@ -448,10 +641,14 @@ linux-python-utils/
 │   │   ├── linux.py             # LinuxFileManager
 │   │   └── backup.py            # LinuxFileBackup
 │   ├── systemd/
-│   │   ├── __init__.py
-│   │   ├── base.py              # ABCs + dataclasses
-│   │   ├── linux.py             # LinuxSystemdServiceManager
-│   │   └── mount.py             # LinuxMountUnitManager
+│   │   ├── __init__.py          # Exports module systemd
+│   │   ├── base.py              # ABCs + dataclasses (configs)
+│   │   ├── executor.py          # SystemdExecutor, UserSystemdExecutor
+│   │   ├── mount.py             # LinuxMountUnitManager
+│   │   ├── timer.py             # LinuxTimerUnitManager
+│   │   ├── service.py           # LinuxServiceUnitManager
+│   │   ├── user_timer.py        # LinuxUserTimerUnitManager
+│   │   └── user_service.py      # LinuxUserServiceUnitManager
 │   └── integrity/
 │       ├── __init__.py
 │       ├── base.py              # ABCs + calculate_checksum
@@ -551,17 +748,32 @@ sudo dnf install python3.11
 </details>
 
 <details>
-<summary><b>❌ PermissionError lors de l'écriture des fichiers .mount</b></summary>
+<summary><b>❌ PermissionError lors de l'écriture des fichiers .mount/.timer/.service</b></summary>
 
-**Cause :** Les fichiers systemd nécessitent des droits root.
+**Cause :** Les fichiers systemd système nécessitent des droits root.
 
 **Solution :**
 ```bash
-# Exécuter avec sudo
+# Exécuter avec sudo pour les unités système
 sudo python mon_script.py
 
-# Ou utiliser le répertoire utilisateur
-~/.config/systemd/user/
+# Ou utiliser les classes User* pour les unités utilisateur (sans root)
+from linux_python_utils import UserSystemdExecutor, LinuxUserTimerUnitManager
+```
+</details>
+
+<details>
+<summary><b>❌ Failed to connect to bus: No such file or directory (systemctl --user)</b></summary>
+
+**Cause :** Le bus D-Bus utilisateur n'est pas disponible (session non graphique).
+
+**Solution :**
+```bash
+# Activer le lingering pour l'utilisateur
+sudo loginctl enable-linger $USER
+
+# Ou définir XDG_RUNTIME_DIR
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
 ```
 </details>
 

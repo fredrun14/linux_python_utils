@@ -7,9 +7,9 @@ from linux_python_utils.logging.base import Logger
 from linux_python_utils.systemd.base import (
     MountUnitManager,
     MountConfig,
-    AutomountConfig,
-    SystemdServiceManager
+    AutomountConfig
 )
+from linux_python_utils.systemd.executor import SystemdExecutor
 
 
 class LinuxMountUnitManager(MountUnitManager):
@@ -20,26 +20,23 @@ class LinuxMountUnitManager(MountUnitManager):
 
     Attributes:
         logger: Instance de Logger pour le logging.
-        systemd: Gestionnaire systemd pour les opérations systemctl.
+        executor: Instance de SystemdExecutor pour les opérations systemctl.
         SYSTEMD_UNIT_PATH: Chemin du répertoire des unités systemd.
     """
-
-    SYSTEMD_UNIT_PATH: str = "/etc/systemd/system"
 
     def __init__(
         self,
         logger: Logger,
-        systemd_manager: SystemdServiceManager
+        executor: SystemdExecutor
     ) -> None:
         """
         Initialise le gestionnaire d'unités mount.
 
         Args:
             logger: Instance de Logger pour le logging
-            systemd_manager: Gestionnaire systemd pour les opérations systemctl
+            executor: Instance de SystemdExecutor pour les opérations systemctl
         """
-        self.logger = logger
-        self.systemd = systemd_manager
+        super().__init__(logger, executor)
 
     def path_to_unit_name(self, mount_path: str) -> str:
         """
@@ -238,7 +235,7 @@ WantedBy=multi-user.target
                 return False
 
         # Recharger systemd
-        if not self.systemd.reload_systemd():
+        if not self.reload_systemd():
             return False
 
         self.logger.log_info(
@@ -247,7 +244,9 @@ WantedBy=multi-user.target
         return True
 
     def enable_mount(
-        self, mount_path: str, with_automount: bool = False
+        self,
+        mount_path: str,
+        with_automount: bool = False
     ) -> bool:
         """
         Active une unité .mount (ou .automount si spécifié).
@@ -266,7 +265,7 @@ WantedBy=multi-user.target
         else:
             unit = f"{unit_name}.mount"
 
-        return self.systemd.enable_unit(unit)
+        return self.enable(unit)
 
     def disable_mount(self, mount_path: str) -> bool:
         """
@@ -282,11 +281,11 @@ WantedBy=multi-user.target
 
         # Désactiver d'abord l'automount s'il existe (ignorer erreurs)
         automount_unit = f"{unit_name}.automount"
-        self.systemd.disable_unit(automount_unit, ignore_errors=True)
+        self.disable(automount_unit, ignore_errors=True)
 
         # Désactiver le mount
         mount_unit = f"{unit_name}.mount"
-        return self.systemd.disable_unit(mount_unit)
+        return self.disable(mount_unit)
 
     def remove_mount_unit(self, mount_path: str) -> bool:
         """
@@ -312,7 +311,7 @@ WantedBy=multi-user.target
 
         # Recharger systemd
         if success:
-            self.systemd.reload_systemd()
+            self.reload_systemd()
             self.logger.log_info(
                 f"Unités de montage supprimées pour {mount_path}"
             )
@@ -330,7 +329,7 @@ WantedBy=multi-user.target
             Statut de l'unité ou None si erreur
         """
         unit_name = self.path_to_unit_name(mount_path)
-        return self.systemd.get_status(f"{unit_name}.mount")
+        return self.get_status(f"{unit_name}.mount")
 
     def is_mounted(self, mount_path: str) -> bool:
         """
