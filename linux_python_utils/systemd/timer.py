@@ -244,14 +244,8 @@ class LinuxTimerUnitManager(TimerUnitManager):
                 parts = line.split()
                 if len(parts) >= 6:
                     # Format: NEXT LEFT LAST PASSED UNIT ACTIVATES
-                    next_val = " ".join(parts[0:3]) if len(parts) > 6 \
-                        else parts[0]
-                    last_val = " ".join(parts[4:7]) if len(parts) > 9 \
-                        else parts[2]
                     timers.append({
-                        "next": next_val,
                         "left": parts[3] if len(parts) > 6 else parts[1],
-                        "last": last_val,
                         "passed": parts[7] if len(parts) > 9 else parts[3],
                         "unit": parts[-2],
                         "activates": parts[-1]
