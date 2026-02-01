@@ -26,12 +26,32 @@ from linux_python_utils.filesystem import (
     LinuxFileBackup
 )
 from linux_python_utils.systemd import (
-    SystemdServiceManager,
-    LinuxSystemdServiceManager,
+    # Exécuteurs systemctl
+    SystemdExecutor,
+    UserSystemdExecutor,
+    # Classes abstraites système
+    UnitManager,
     MountUnitManager,
+    TimerUnitManager,
+    ServiceUnitManager,
+    # Classes abstraites utilisateur
+    UserUnitManager,
+    UserTimerUnitManager,
+    UserServiceUnitManager,
+    # Configurations
     MountConfig,
     AutomountConfig,
-    LinuxMountUnitManager
+    TimerConfig,
+    ServiceConfig,
+    # Implémentations système
+    LinuxMountUnitManager,
+    LinuxTimerUnitManager,
+    LinuxServiceUnitManager,
+    # Implémentations utilisateur
+    LinuxUserTimerUnitManager,
+    LinuxUserServiceUnitManager,
+    # Rétrocompatibilité
+    LinuxSystemdServiceManager,
 )
 from linux_python_utils.integrity import (
     ChecksumCalculator,
@@ -56,13 +76,32 @@ __all__ = [
     "LinuxFileManager",
     "FileBackup",
     "LinuxFileBackup",
-    # Systemd
-    "SystemdServiceManager",
-    "LinuxSystemdServiceManager",
+    # Systemd - Exécuteurs
+    "SystemdExecutor",
+    "UserSystemdExecutor",
+    # Systemd - Classes abstraites système
+    "UnitManager",
     "MountUnitManager",
+    "TimerUnitManager",
+    "ServiceUnitManager",
+    # Systemd - Classes abstraites utilisateur
+    "UserUnitManager",
+    "UserTimerUnitManager",
+    "UserServiceUnitManager",
+    # Systemd - Configurations
     "MountConfig",
     "AutomountConfig",
+    "TimerConfig",
+    "ServiceConfig",
+    # Systemd - Implémentations système
     "LinuxMountUnitManager",
+    "LinuxTimerUnitManager",
+    "LinuxServiceUnitManager",
+    # Systemd - Implémentations utilisateur
+    "LinuxUserTimerUnitManager",
+    "LinuxUserServiceUnitManager",
+    # Systemd - Rétrocompatibilité
+    "LinuxSystemdServiceManager",
     # Integrity
     "ChecksumCalculator",
     "HashLibChecksumCalculator",
