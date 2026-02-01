@@ -9,7 +9,11 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 
-from linux_python_utils.dotconf.base import IniConfig, IniConfigManager, IniSection
+from linux_python_utils.dotconf.base import (
+    IniConfig,
+    IniConfigManager,
+    IniSection,
+)
 from linux_python_utils.logging.base import Logger
 
 
@@ -100,10 +104,15 @@ class LinuxIniConfigManager(IniConfigManager):
         with open(path, "w", encoding="utf-8") as f:
             parser.write(f)
 
-        self.logger.log_info(f"Section [{section.section_name()}] écrite dans {path}.")
+        self.logger.log_info(
+            f"Section [{section.section_name()}] écrite dans {path}."
+        )
 
     def update_section(
-        self, path: Path, section: IniSection, validators: dict[str, Any] | None = None
+        self,
+        path: Path,
+        section: IniSection,
+        validators: dict[str, Any] | None = None,
     ) -> bool:
         """Met à jour une section dans un fichier INI existant.
 

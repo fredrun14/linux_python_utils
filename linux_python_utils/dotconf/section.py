@@ -12,7 +12,9 @@ from typing import Any, ClassVar
 from linux_python_utils.dotconf.base import IniSection
 
 
-def parse_validator(value: list[str] | str) -> list[str] | Callable[[str], bool]:
+def parse_validator(
+    value: list[str] | str,
+) -> list[str] | Callable[[str], bool]:
     """Convertit une valeur de validateur en fonction ou liste.
 
     Supporte deux formats :
@@ -46,7 +48,9 @@ def build_validators(
     Returns:
         Dictionnaire des validateurs prêts à l'emploi.
     """
-    return {key: parse_validator(value) for key, value in validators_dict.items()}
+    return {
+        key: parse_validator(value) for key, value in validators_dict.items()
+    }
 
 
 @dataclass(frozen=True)
@@ -133,7 +137,8 @@ class ValidatedSection(IniSection):
             if isinstance(validator, list):
                 if value not in validator:
                     raise ValueError(
-                        f"{f.name}={value!r} invalide. Valeurs autorisées : {validator}"
+                        f"{f.name}={value!r} invalide. "
+                        f"Valeurs autorisées : {validator}"
                     )
             elif not validator(value):
                 raise ValueError(f"{f.name}={value!r} échoue la validation.")

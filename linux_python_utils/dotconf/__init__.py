@@ -19,7 +19,9 @@ Fonctions utilitaires:
 
 Example:
     >>> from dataclasses import dataclass
-    >>> from linux_python_utils.dotconf import ValidatedSection, LinuxIniConfigManager
+    >>> from linux_python_utils.dotconf import (
+    ...     ValidatedSection, LinuxIniConfigManager
+    ... )
     >>> from linux_python_utils import FileLogger
     >>>
     >>> @dataclass(frozen=True)
@@ -38,7 +40,9 @@ Example:
     ... })
     >>>
     >>> # Créer une section validée
-    >>> section = CommandsSection(upgrade_type="security", download_updates="yes")
+    >>> section = CommandsSection(
+    ...     upgrade_type="security", download_updates="yes"
+    ... )
     >>>
     >>> # Écrire dans un fichier
     >>> logger = FileLogger("/var/log/test.log")

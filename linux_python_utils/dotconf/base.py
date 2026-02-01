@@ -21,7 +21,7 @@ class IniSection(ABC):
     @staticmethod
     @abstractmethod
     def section_name() -> str:
-        """Retourne le nom de la section tel qu'il apparaît dans le fichier INI.
+        """Retourne le nom de la section dans le fichier INI.
 
         Returns:
             Nom de la section (ex: "commands", "main").
@@ -127,7 +127,10 @@ class IniConfigManager(ABC):
 
     @abstractmethod
     def update_section(
-        self, path: Path, section: IniSection, validators: dict[str, Any] | None = None
+        self,
+        path: Path,
+        section: IniSection,
+        validators: dict[str, Any] | None = None,
     ) -> bool:
         """Met à jour une section dans un fichier INI existant.
 
