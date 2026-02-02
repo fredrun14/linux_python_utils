@@ -8,6 +8,8 @@ Modules disponibles:
 - systemd: Gestion des services systemd
 - integrity: Vérification d'intégrité (checksums)
 - dotconf: Gestion de fichiers de configuration INI (.conf)
+- notification: Configuration des notifications desktop (NotificationConfig)
+- scripts: Génération de scripts bash (BashScriptConfig)
 """
 
 __version__ = "0.1.0"
@@ -70,6 +72,8 @@ from linux_python_utils.dotconf import (
     parse_validator,
     build_validators,
 )
+from linux_python_utils.notification import NotificationConfig
+from linux_python_utils.scripts import BashScriptConfig
 
 __all__ = [
     # Logging
@@ -128,4 +132,8 @@ __all__ = [
     # DotConf - Utilitaires
     "parse_validator",
     "build_validators",
+    # Notification
+    "NotificationConfig",
+    # Scripts
+    "BashScriptConfig",
 ]
