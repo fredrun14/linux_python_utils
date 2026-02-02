@@ -73,7 +73,11 @@ from linux_python_utils.dotconf import (
     build_validators,
 )
 from linux_python_utils.notification import NotificationConfig
-from linux_python_utils.scripts import BashScriptConfig
+from linux_python_utils.scripts import (
+    BashScriptConfig,
+    ScriptInstaller,
+    BashScriptInstaller,
+)
 
 __all__ = [
     # Logging
@@ -136,4 +140,6 @@ __all__ = [
     "NotificationConfig",
     # Scripts
     "BashScriptConfig",
+    "ScriptInstaller",
+    "BashScriptInstaller",
 ]
