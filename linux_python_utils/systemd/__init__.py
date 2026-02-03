@@ -92,6 +92,21 @@ from linux_python_utils.systemd.service import LinuxServiceUnitManager
 from linux_python_utils.systemd.user_timer import LinuxUserTimerUnitManager
 from linux_python_utils.systemd.user_service import LinuxUserServiceUnitManager
 
+# Installateur de tâches planifiées
+from linux_python_utils.systemd.scheduled_task import (
+    ScheduledTaskInstaller,
+    SystemdScheduledTaskInstaller,
+)
+
+# Chargeurs de configuration TOML
+from linux_python_utils.systemd.config_loaders import (
+    TomlConfigLoader,
+    ServiceConfigLoader,
+    TimerConfigLoader,
+    MountConfigLoader,
+    BashScriptConfigLoader,
+)
+
 # Rétrocompatibilité avec l'ancienne API
 # (LinuxSystemdServiceManager est remplacé par SystemdExecutor)
 LinuxSystemdServiceManager = SystemdExecutor
@@ -121,6 +136,15 @@ __all__ = [
     # Implémentations utilisateur
     "LinuxUserTimerUnitManager",
     "LinuxUserServiceUnitManager",
+    # Installateur de tâches planifiées
+    "ScheduledTaskInstaller",
+    "SystemdScheduledTaskInstaller",
+    # Chargeurs de configuration TOML
+    "TomlConfigLoader",
+    "ServiceConfigLoader",
+    "TimerConfigLoader",
+    "MountConfigLoader",
+    "BashScriptConfigLoader",
     # Rétrocompatibilité
     "LinuxSystemdServiceManager",
 ]

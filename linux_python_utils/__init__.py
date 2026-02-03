@@ -53,6 +53,15 @@ from linux_python_utils.systemd import (
     # Implémentations utilisateur
     LinuxUserTimerUnitManager,
     LinuxUserServiceUnitManager,
+    # Installateur de tâches planifiées
+    ScheduledTaskInstaller,
+    SystemdScheduledTaskInstaller,
+    # Chargeurs de configuration TOML
+    TomlConfigLoader,
+    ServiceConfigLoader,
+    TimerConfigLoader,
+    MountConfigLoader,
+    BashScriptConfigLoader,
     # Rétrocompatibilité
     LinuxSystemdServiceManager,
 )
@@ -118,6 +127,15 @@ __all__ = [
     # Systemd - Implémentations utilisateur
     "LinuxUserTimerUnitManager",
     "LinuxUserServiceUnitManager",
+    # Systemd - Installateur de tâches planifiées
+    "ScheduledTaskInstaller",
+    "SystemdScheduledTaskInstaller",
+    # Systemd - Chargeurs de configuration TOML
+    "TomlConfigLoader",
+    "ServiceConfigLoader",
+    "TimerConfigLoader",
+    "MountConfigLoader",
+    "BashScriptConfigLoader",
     # Systemd - Rétrocompatibilité
     "LinuxSystemdServiceManager",
     # Integrity

@@ -1,0 +1,136 @@
+"""Chargeur de configuration pour les unités .service systemd.
+
+Ce module fournit une classe pour charger un fichier TOML et créer
+un ServiceConfig pour les unités systemd .service.
+
+Example:
+    Chargement d'un ServiceConfig depuis un fichier TOML:
+
+        loader = ServiceConfigLoader("config/app.toml")
+        service_config = loader.load()
+
+    Fichier TOML attendu:
+
+        [service]
+        description = "Mon service"
+        exec_start = "/usr/bin/mon-app"
+        type = "simple"
+"""
+
+from pathlib import Path
+from typing import Any
+
+from linux_python_utils.config import ConfigLoader
+from linux_python_utils.systemd import ServiceConfig
+from linux_python_utils.systemd.config_loaders.base import TomlConfigLoader
+
+
+class ServiceConfigLoader(TomlConfigLoader[ServiceConfig]):
+    """Chargeur de configuration TOML pour ServiceConfig.
+
+    Cette classe lit un fichier TOML et crée un ServiceConfig
+    à partir de la section [service].
+
+    Attributes:
+        DEFAULT_SECTION: Nom de la section par défaut ("service").
+
+    Example:
+        >>> loader = ServiceConfigLoader("config/flatpak.toml")
+        >>> config = loader.load()
+        >>> print(config.description)
+        Flatpak Update Service
+    """
+
+    DEFAULT_SECTION: str = "service"
+
+    def __init__(
+        self,
+        toml_path: str | Path,
+        config_loader: ConfigLoader | None = None
+    ) -> None:
+        """Initialise le loader pour ServiceConfig.
+
+        Args:
+            toml_path: Chemin vers le fichier de configuration TOML.
+            config_loader: Chargeur de configuration injectable (DIP).
+
+        Raises:
+            FileNotFoundError: Si le fichier TOML n'existe pas.
+            tomllib.TOMLDecodeError: Si le TOML est invalide.
+        """
+        super().__init__(toml_path, config_loader)
+
+    def load(self, section: str | None = None) -> ServiceConfig:
+        """Charge et retourne un ServiceConfig.
+
+        Args:
+            section: Nom de la section à charger.
+                Par défaut "service".
+
+        Returns:
+            Instance de ServiceConfig avec les valeurs du TOML.
+
+        Raises:
+            KeyError: Si la section n'existe pas.
+            TypeError: Si les champs requis sont manquants.
+
+        Example:
+            >>> loader = ServiceConfigLoader("config/app.toml")
+            >>> config = loader.load()
+            >>> config.type
+            'oneshot'
+        """
+        section_name = section or self.DEFAULT_SECTION
+        data: dict[str, Any] = self._get_section(section_name)
+
+        return ServiceConfig(
+            description=data["description"],
+            exec_start=data["exec_start"],
+            type=data.get("type", "simple"),
+            user=data.get("user", ""),
+            group=data.get("group", ""),
+            working_directory=data.get("working_directory", ""),
+            environment=data.get("environment", {}),
+            restart=data.get("restart", "no"),
+            restart_sec=data.get("restart_sec", 0),
+            wanted_by=data.get("wanted_by", "multi-user.target"),
+        )
+
+    def load_with_exec_override(
+        self,
+        exec_start: str,
+        section: str | None = None
+    ) -> ServiceConfig:
+        """Charge un ServiceConfig avec un exec_start personnalisé.
+
+        Utile quand exec_start doit pointer vers un script généré
+        dynamiquement plutôt que la valeur du TOML.
+
+        Args:
+            exec_start: Commande à utiliser à la place de celle du TOML.
+            section: Nom de la section à charger.
+
+        Returns:
+            Instance de ServiceConfig avec exec_start personnalisé.
+
+        Example:
+            >>> loader = ServiceConfigLoader("config/app.toml")
+            >>> config = loader.load_with_exec_override("/usr/local/bin/s.sh")
+            >>> config.exec_start
+            '/usr/local/bin/s.sh'
+        """
+        section_name = section or self.DEFAULT_SECTION
+        data: dict[str, Any] = self._get_section(section_name)
+
+        return ServiceConfig(
+            description=data["description"],
+            exec_start=exec_start,
+            type=data.get("type", "simple"),
+            user=data.get("user", ""),
+            group=data.get("group", ""),
+            working_directory=data.get("working_directory", ""),
+            environment=data.get("environment", {}),
+            restart=data.get("restart", "no"),
+            restart_sec=data.get("restart_sec", 0),
+            wanted_by=data.get("wanted_by", "multi-user.target"),
+        )

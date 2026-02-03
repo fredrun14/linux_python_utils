@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-84%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-177%20passed-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/Code%20Style-PEP8-black.svg)]()
 [![SOLID](https://img.shields.io/badge/Architecture-SOLID-purple.svg)]()
 
@@ -35,9 +35,10 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 - **⚙️ Configuration flexible** — Support TOML/JSON avec fusion profonde et profils
 - **📁 Gestion de fichiers** — CRUD fichiers et sauvegardes préservant les métadonnées
 - **🔧 Systemd complet** — Gestion services, timers et unités de montage (système et utilisateur)
+- **📄 Chargeurs de config TOML** — Loaders typés pour créer des dataclasses depuis TOML
 - **🔐 Vérification d'intégrité** — Checksums SHA256/SHA512/MD5 pour fichiers et répertoires
 - **🏗️ Architecture SOLID** — ABCs, injection de dépendances, testabilité maximale
-- **🧪 Bien testé** — 84 tests unitaires couvrant tous les modules
+- **🧪 Bien testé** — 177 tests unitaires couvrant tous les modules
 
 ## 📦 Prérequis
 
@@ -384,6 +385,62 @@ service_mgr.install_service_unit_with_name("sync", config)
 service_mgr.enable_service("sync")
 ```
 
+### Module `systemd.config_loaders`
+
+Chargeurs de configuration TOML pour créer des dataclasses systemd.
+
+```python
+from linux_python_utils.systemd.config_loaders import (
+    ServiceConfigLoader,
+    TimerConfigLoader,
+    MountConfigLoader,
+    BashScriptConfigLoader,
+)
+
+# Charger un ServiceConfig depuis un fichier TOML
+service_loader = ServiceConfigLoader("config/app.toml")
+service_config = service_loader.load()
+print(service_config.description)
+
+# Charger un TimerConfig pour un service spécifique
+timer_loader = TimerConfigLoader("config/app.toml")
+timer_config = timer_loader.load_for_service("my-service")
+print(timer_config.unit)  # "my-service.service"
+
+# Charger un BashScriptConfig avec notifications
+script_loader = BashScriptConfigLoader("config/app.toml")
+script_config = script_loader.load()
+if script_config.notification:
+    print("Notifications activées")
+
+# Charger plusieurs montages depuis une liste TOML
+mount_loader = MountConfigLoader("config/mounts.toml")
+mounts = mount_loader.load_multiple("mounts")  # [[mounts]] dans TOML
+for mount in mounts:
+    print(f"{mount.what} → {mount.where}")
+```
+
+**Fichier TOML exemple :**
+
+```toml
+[service]
+description = "Mon service"
+exec_start = "/usr/bin/mon-app"
+type = "oneshot"
+
+[timer]
+description = "Timer quotidien"
+unit = "mon-service.service"
+on_calendar = "daily"
+persistent = true
+
+[notification]
+enabled = true
+title = "Mon App"
+message_success = "Succès!"
+message_failure = "Échec!"
+```
+
 ### Module `integrity`
 
 Vérification d'intégrité par checksums.
@@ -509,6 +566,17 @@ logger.log_info("Backup automatique configuré")
 | `ServiceUnitManager` | `LinuxServiceUnitManager` | Unités .service (système) |
 | `UserTimerUnitManager` | `LinuxUserTimerUnitManager` | Unités .timer (utilisateur) |
 | `UserServiceUnitManager` | `LinuxUserServiceUnitManager` | Unités .service (utilisateur) |
+| `ScheduledTaskInstaller` | `SystemdScheduledTaskInstaller` | Installation tâche planifiée complète |
+
+#### Module `systemd.config_loaders`
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `TomlConfigLoader[T]` | — | Classe de base générique |
+| — | `ServiceConfigLoader` | TOML → ServiceConfig |
+| — | `TimerConfigLoader` | TOML → TimerConfig |
+| — | `MountConfigLoader` | TOML → MountConfig |
+| — | `BashScriptConfigLoader` | TOML → BashScriptConfig |
 
 #### Module `integrity`
 
@@ -525,6 +593,8 @@ logger.log_info("Backup automatique configuré")
 | `AutomountConfig` | Configuration d'une unité .automount |
 | `TimerConfig` | Configuration d'une unité .timer |
 | `ServiceConfig` | Configuration d'une unité .service |
+| `BashScriptConfig` | Configuration d'un script bash |
+| `NotificationConfig` | Configuration des notifications desktop |
 
 ## 🏗️ Architecture des Classes
 
@@ -648,7 +718,15 @@ linux-python-utils/
 │   │   ├── timer.py             # LinuxTimerUnitManager
 │   │   ├── service.py           # LinuxServiceUnitManager
 │   │   ├── user_timer.py        # LinuxUserTimerUnitManager
-│   │   └── user_service.py      # LinuxUserServiceUnitManager
+│   │   ├── user_service.py      # LinuxUserServiceUnitManager
+│   │   ├── scheduled_task.py    # SystemdScheduledTaskInstaller
+│   │   └── config_loaders/      # Chargeurs de configuration TOML
+│   │       ├── __init__.py
+│   │       ├── base.py          # TomlConfigLoader[T] (ABC)
+│   │       ├── service_loader.py # ServiceConfigLoader
+│   │       ├── timer_loader.py  # TimerConfigLoader
+│   │       ├── mount_loader.py  # MountConfigLoader
+│   │       └── script_loader.py # BashScriptConfigLoader
 │   └── integrity/
 │       ├── __init__.py
 │       ├── base.py              # ABCs + calculate_checksum
@@ -701,7 +779,9 @@ make all
 | `test_systemd_mount.py` | 28 | Génération .mount/.automount, enable/disable |
 | `test_systemd_timer.py` | 11 | TimerConfig, to_unit_file(), validation |
 | `test_systemd_service.py` | 13 | ServiceConfig, to_unit_file(), validation |
-| **Total** | **84** | |
+| `test_systemd_scheduled_task.py` | 10 | SystemdScheduledTaskInstaller |
+| `test_systemd_config_loaders.py` | 28 | Tous les loaders TOML |
+| **Total** | **177** | |
 
 ### Tests Paramétrés
 
