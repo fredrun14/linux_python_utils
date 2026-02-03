@@ -1,23 +1,29 @@
-"""Chargeurs de configuration TOML pour les unités systemd.
+"""Chargeurs de configuration pour les unités systemd.
 
-Ce module fournit des classes pour charger des fichiers TOML et créer
-les dataclasses de configuration systemd correspondantes.
+Ce module fournit des classes pour charger des fichiers de configuration
+(TOML ou JSON) et créer les dataclasses de configuration systemd correspondantes.
 
 Classes disponibles:
-    TomlConfigLoader: Classe de base abstraite pour tous les loaders.
-    ServiceConfigLoader: Charge un TOML vers ServiceConfig.
-    TimerConfigLoader: Charge un TOML vers TimerConfig.
-    MountConfigLoader: Charge un TOML vers MountConfig.
-    BashScriptConfigLoader: Charge un TOML vers BashScriptConfig.
+    ConfigFileLoader: Classe de base abstraite pour tous les loaders.
+    ServiceConfigLoader: Charge un fichier vers ServiceConfig.
+    TimerConfigLoader: Charge un fichier vers TimerConfig.
+    MountConfigLoader: Charge un fichier vers MountConfig.
+    BashScriptConfigLoader: Charge un fichier vers BashScriptConfig.
+    TomlConfigLoader: Alias deprecated pour ConfigFileLoader.
 
 Example:
-    Chargement d'une configuration de service:
+    Chargement d'une configuration de service depuis TOML:
 
         from linux_python_utils.systemd.config_loaders import (
             ServiceConfigLoader,
         )
 
         loader = ServiceConfigLoader("config/app.toml")
+        service_config = loader.load()
+
+    Chargement depuis JSON:
+
+        loader = ServiceConfigLoader("config/app.json")
         service_config = loader.load()
 
     Chargement d'une configuration de timer:
@@ -28,14 +34,18 @@ Example:
         timer_config = loader.load_for_service("my-service")
 
 Architecture:
-    Tous les loaders héritent de TomlConfigLoader[T] qui fournit:
-    - Chargement du fichier TOML via ConfigLoader injectable (DIP)
+    Tous les loaders héritent de ConfigFileLoader[T] qui fournit:
+    - Chargement du fichier via ConfigLoader injectable (DIP)
+    - Support automatique TOML et JSON (détection par extension)
     - Méthodes utilitaires pour extraire des sections
     - Propriété config pour accéder au dictionnaire brut
 
 """
 
-from linux_python_utils.systemd.config_loaders.base import TomlConfigLoader
+from linux_python_utils.systemd.config_loaders.base import (
+    ConfigFileLoader,
+    TomlConfigLoader,
+)
 from linux_python_utils.systemd.config_loaders.service_loader import (
     ServiceConfigLoader,
 )
@@ -51,10 +61,12 @@ from linux_python_utils.systemd.config_loaders.script_loader import (
 
 __all__ = [
     # Classe de base
-    "TomlConfigLoader",
+    "ConfigFileLoader",
     # Loaders spécialisés
     "ServiceConfigLoader",
     "TimerConfigLoader",
     "MountConfigLoader",
     "BashScriptConfigLoader",
+    # Alias deprecated pour rétrocompatibilité
+    "TomlConfigLoader",
 ]

@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-177%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-180%20passed-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/Code%20Style-PEP8-black.svg)]()
 [![SOLID](https://img.shields.io/badge/Architecture-SOLID-purple.svg)]()
 
@@ -35,10 +35,10 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 - **⚙️ Configuration flexible** — Support TOML/JSON avec fusion profonde et profils
 - **📁 Gestion de fichiers** — CRUD fichiers et sauvegardes préservant les métadonnées
 - **🔧 Systemd complet** — Gestion services, timers et unités de montage (système et utilisateur)
-- **📄 Chargeurs de config TOML** — Loaders typés pour créer des dataclasses depuis TOML
+- **📄 Chargeurs de config** — Loaders typés pour créer des dataclasses depuis TOML ou JSON
 - **🔐 Vérification d'intégrité** — Checksums SHA256/SHA512/MD5 pour fichiers et répertoires
 - **🏗️ Architecture SOLID** — ABCs, injection de dépendances, testabilité maximale
-- **🧪 Bien testé** — 177 tests unitaires couvrant tous les modules
+- **🧪 Bien testé** — 180 tests unitaires couvrant tous les modules
 
 ## 📦 Prérequis
 
@@ -387,7 +387,8 @@ service_mgr.enable_service("sync")
 
 ### Module `systemd.config_loaders`
 
-Chargeurs de configuration TOML pour créer des dataclasses systemd.
+Chargeurs de configuration pour créer des dataclasses systemd depuis TOML ou JSON.
+Le format est automatiquement détecté par l'extension du fichier.
 
 ```python
 from linux_python_utils.systemd.config_loaders import (
@@ -397,8 +398,8 @@ from linux_python_utils.systemd.config_loaders import (
     BashScriptConfigLoader,
 )
 
-# Charger un ServiceConfig depuis un fichier TOML
-service_loader = ServiceConfigLoader("config/app.toml")
+# Charger un ServiceConfig depuis TOML ou JSON
+service_loader = ServiceConfigLoader("config/app.toml")  # ou .json
 service_config = service_loader.load()
 print(service_config.description)
 
@@ -572,11 +573,11 @@ logger.log_info("Backup automatique configuré")
 
 | ABC (Interface) | Implémentation | Description |
 |-----------------|----------------|-------------|
-| `TomlConfigLoader[T]` | — | Classe de base générique |
-| — | `ServiceConfigLoader` | TOML → ServiceConfig |
-| — | `TimerConfigLoader` | TOML → TimerConfig |
-| — | `MountConfigLoader` | TOML → MountConfig |
-| — | `BashScriptConfigLoader` | TOML → BashScriptConfig |
+| `ConfigFileLoader[T]` | — | Classe de base générique (TOML/JSON) |
+| — | `ServiceConfigLoader` | Config → ServiceConfig |
+| — | `TimerConfigLoader` | Config → TimerConfig |
+| — | `MountConfigLoader` | Config → MountConfig |
+| — | `BashScriptConfigLoader` | Config → BashScriptConfig |
 
 #### Module `integrity`
 
@@ -720,9 +721,9 @@ linux-python-utils/
 │   │   ├── user_timer.py        # LinuxUserTimerUnitManager
 │   │   ├── user_service.py      # LinuxUserServiceUnitManager
 │   │   ├── scheduled_task.py    # SystemdScheduledTaskInstaller
-│   │   └── config_loaders/      # Chargeurs de configuration TOML
+│   │   └── config_loaders/      # Chargeurs de configuration (TOML/JSON)
 │   │       ├── __init__.py
-│   │       ├── base.py          # TomlConfigLoader[T] (ABC)
+│   │       ├── base.py          # ConfigFileLoader[T] (ABC)
 │   │       ├── service_loader.py # ServiceConfigLoader
 │   │       ├── timer_loader.py  # TimerConfigLoader
 │   │       ├── mount_loader.py  # MountConfigLoader
@@ -780,8 +781,8 @@ make all
 | `test_systemd_timer.py` | 11 | TimerConfig, to_unit_file(), validation |
 | `test_systemd_service.py` | 13 | ServiceConfig, to_unit_file(), validation |
 | `test_systemd_scheduled_task.py` | 10 | SystemdScheduledTaskInstaller |
-| `test_systemd_config_loaders.py` | 28 | Tous les loaders TOML |
-| **Total** | **177** | |
+| `test_systemd_config_loaders.py` | 31 | Tous les loaders (TOML/JSON) |
+| **Total** | **180** | |
 
 ### Tests Paramétrés
 

@@ -1,7 +1,7 @@
 """Chargeur de configuration pour les unités .timer systemd.
 
-Ce module fournit une classe pour charger un fichier TOML et créer
-un TimerConfig pour les unités systemd .timer.
+Ce module fournit une classe pour charger un fichier de configuration
+(TOML ou JSON) et créer un TimerConfig pour les unités systemd .timer.
 
 Example:
     Chargement d'un TimerConfig depuis un fichier TOML:
@@ -9,7 +9,12 @@ Example:
         loader = TimerConfigLoader("config/app.toml")
         timer_config = loader.load()
 
-    Fichier TOML attendu:
+    Chargement depuis un fichier JSON:
+
+        loader = TimerConfigLoader("config/app.json")
+        timer_config = loader.load()
+
+    Fichier de configuration attendu:
 
         [timer]
         description = "Mon timer quotidien"
@@ -23,14 +28,14 @@ from typing import Any
 
 from linux_python_utils.config import ConfigLoader
 from linux_python_utils.systemd import TimerConfig
-from linux_python_utils.systemd.config_loaders.base import TomlConfigLoader
+from linux_python_utils.systemd.config_loaders.base import ConfigFileLoader
 
 
-class TimerConfigLoader(TomlConfigLoader[TimerConfig]):
-    """Chargeur de configuration TOML pour TimerConfig.
+class TimerConfigLoader(ConfigFileLoader[TimerConfig]):
+    """Chargeur de configuration pour TimerConfig.
 
-    Cette classe lit un fichier TOML et crée un TimerConfig
-    à partir de la section [timer].
+    Cette classe lit un fichier de configuration (TOML ou JSON) et crée
+    un TimerConfig à partir de la section [timer].
 
     Attributes:
         DEFAULT_SECTION: Nom de la section par défaut ("timer").
@@ -46,20 +51,20 @@ class TimerConfigLoader(TomlConfigLoader[TimerConfig]):
 
     def __init__(
         self,
-        toml_path: str | Path,
+        config_path: str | Path,
         config_loader: ConfigLoader | None = None
     ) -> None:
         """Initialise le loader pour TimerConfig.
 
         Args:
-            toml_path: Chemin vers le fichier de configuration TOML.
+            config_path: Chemin vers le fichier de configuration (.toml ou .json).
             config_loader: Chargeur de configuration injectable (DIP).
 
         Raises:
-            FileNotFoundError: Si le fichier TOML n'existe pas.
-            tomllib.TOMLDecodeError: Si le TOML est invalide.
+            FileNotFoundError: Si le fichier n'existe pas.
+            ValueError: Si l'extension n'est pas supportée.
         """
-        super().__init__(toml_path, config_loader)
+        super().__init__(config_path, config_loader)
 
     def load(self, section: str | None = None) -> TimerConfig:
         """Charge et retourne un TimerConfig.
@@ -69,7 +74,7 @@ class TimerConfigLoader(TomlConfigLoader[TimerConfig]):
                 Par défaut "timer".
 
         Returns:
-            Instance de TimerConfig avec les valeurs du TOML.
+            Instance de TimerConfig avec les valeurs du fichier.
 
         Raises:
             KeyError: Si la section n'existe pas.

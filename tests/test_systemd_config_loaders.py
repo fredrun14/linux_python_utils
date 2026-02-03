@@ -1,6 +1,7 @@
 """Tests pour les chargeurs de configuration systemd."""
 
 import unittest
+import warnings
 from unittest.mock import Mock
 
 from linux_python_utils import (
@@ -13,9 +14,11 @@ from linux_python_utils import (
 from linux_python_utils.config import ConfigLoader
 from linux_python_utils.systemd.config_loaders import (
     BashScriptConfigLoader,
+    ConfigFileLoader,
     MountConfigLoader,
     ServiceConfigLoader,
     TimerConfigLoader,
+    TomlConfigLoader,
 )
 
 
@@ -137,6 +140,21 @@ class TestServiceConfigLoader(unittest.TestCase):
         self.assertEqual(result.restart, "on-failure")
         self.assertEqual(result.restart_sec, 5)
         self.assertEqual(result.wanted_by, "graphical.target")
+
+    def test_load_from_json_path(self):
+        """Vérifie que le loader accepte un chemin JSON."""
+        config = {
+            "service": {
+                "description": "JSON Service",
+                "exec_start": "/usr/bin/json-app",
+            }
+        }
+        mock_loader = MockConfigLoader(config)
+        loader = ServiceConfigLoader("/fake/path.json", mock_loader)
+
+        result = loader.load()
+
+        self.assertEqual(result.description, "JSON Service")
 
 
 class TestTimerConfigLoader(unittest.TestCase):
@@ -470,8 +488,8 @@ class TestBashScriptConfigLoader(unittest.TestCase):
         self.assertIn("exec_command", str(context.exception))
 
 
-class TestTomlConfigLoaderBase(unittest.TestCase):
-    """Tests pour les méthodes de base de TomlConfigLoader."""
+class TestConfigFileLoaderBase(unittest.TestCase):
+    """Tests pour les méthodes de base de ConfigFileLoader."""
 
     def test_config_property(self):
         """Vérifie la propriété config."""
@@ -515,6 +533,51 @@ class TestTomlConfigLoaderBase(unittest.TestCase):
         )
 
         self.assertEqual(result, "/default/path")
+
+    def test_inherits_from_config_file_loader(self):
+        """Vérifie que les loaders héritent de ConfigFileLoader."""
+        config = {
+            "service": {
+                "description": "Test",
+                "exec_start": "/usr/bin/test",
+            }
+        }
+        mock_loader = MockConfigLoader(config)
+        loader = ServiceConfigLoader("/fake/path.toml", mock_loader)
+
+        self.assertIsInstance(loader, ConfigFileLoader)
+
+
+class TestTomlConfigLoaderDeprecated(unittest.TestCase):
+    """Tests pour l'alias deprecated TomlConfigLoader."""
+
+    def test_toml_config_loader_emits_deprecation_warning(self):
+        """Vérifie que TomlConfigLoader émet un DeprecationWarning."""
+        config = {
+            "service": {
+                "description": "Test",
+                "exec_start": "/usr/bin/test",
+            }
+        }
+        mock_loader = MockConfigLoader(config)
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+
+            # Créer une sous-classe concrète pour le test
+            class ConcreteTomlLoader(TomlConfigLoader[ServiceConfig]):
+                def load(self, section=None):
+                    return ServiceConfig(
+                        description="Test",
+                        exec_start="/usr/bin/test",
+                    )
+
+            loader = ConcreteTomlLoader("/fake/path.toml", mock_loader)
+
+            self.assertEqual(len(w), 1)
+            self.assertTrue(issubclass(w[0].category, DeprecationWarning))
+            self.assertIn("deprecated", str(w[0].message).lower())
+            self.assertIn("ConfigFileLoader", str(w[0].message))
 
 
 if __name__ == "__main__":

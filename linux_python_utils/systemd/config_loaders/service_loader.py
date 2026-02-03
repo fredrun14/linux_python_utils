@@ -1,7 +1,7 @@
 """Chargeur de configuration pour les unités .service systemd.
 
-Ce module fournit une classe pour charger un fichier TOML et créer
-un ServiceConfig pour les unités systemd .service.
+Ce module fournit une classe pour charger un fichier de configuration
+(TOML ou JSON) et créer un ServiceConfig pour les unités systemd .service.
 
 Example:
     Chargement d'un ServiceConfig depuis un fichier TOML:
@@ -9,7 +9,12 @@ Example:
         loader = ServiceConfigLoader("config/app.toml")
         service_config = loader.load()
 
-    Fichier TOML attendu:
+    Chargement depuis un fichier JSON:
+
+        loader = ServiceConfigLoader("config/app.json")
+        service_config = loader.load()
+
+    Fichier de configuration attendu:
 
         [service]
         description = "Mon service"
@@ -22,14 +27,14 @@ from typing import Any
 
 from linux_python_utils.config import ConfigLoader
 from linux_python_utils.systemd import ServiceConfig
-from linux_python_utils.systemd.config_loaders.base import TomlConfigLoader
+from linux_python_utils.systemd.config_loaders.base import ConfigFileLoader
 
 
-class ServiceConfigLoader(TomlConfigLoader[ServiceConfig]):
-    """Chargeur de configuration TOML pour ServiceConfig.
+class ServiceConfigLoader(ConfigFileLoader[ServiceConfig]):
+    """Chargeur de configuration pour ServiceConfig.
 
-    Cette classe lit un fichier TOML et crée un ServiceConfig
-    à partir de la section [service].
+    Cette classe lit un fichier de configuration (TOML ou JSON) et crée
+    un ServiceConfig à partir de la section [service].
 
     Attributes:
         DEFAULT_SECTION: Nom de la section par défaut ("service").
@@ -45,20 +50,20 @@ class ServiceConfigLoader(TomlConfigLoader[ServiceConfig]):
 
     def __init__(
         self,
-        toml_path: str | Path,
+        config_path: str | Path,
         config_loader: ConfigLoader | None = None
     ) -> None:
         """Initialise le loader pour ServiceConfig.
 
         Args:
-            toml_path: Chemin vers le fichier de configuration TOML.
+            config_path: Chemin vers le fichier de configuration (.toml ou .json).
             config_loader: Chargeur de configuration injectable (DIP).
 
         Raises:
-            FileNotFoundError: Si le fichier TOML n'existe pas.
-            tomllib.TOMLDecodeError: Si le TOML est invalide.
+            FileNotFoundError: Si le fichier n'existe pas.
+            ValueError: Si l'extension n'est pas supportée.
         """
-        super().__init__(toml_path, config_loader)
+        super().__init__(config_path, config_loader)
 
     def load(self, section: str | None = None) -> ServiceConfig:
         """Charge et retourne un ServiceConfig.
@@ -68,7 +73,7 @@ class ServiceConfigLoader(TomlConfigLoader[ServiceConfig]):
                 Par défaut "service".
 
         Returns:
-            Instance de ServiceConfig avec les valeurs du TOML.
+            Instance de ServiceConfig avec les valeurs du fichier.
 
         Raises:
             KeyError: Si la section n'existe pas.
@@ -104,10 +109,10 @@ class ServiceConfigLoader(TomlConfigLoader[ServiceConfig]):
         """Charge un ServiceConfig avec un exec_start personnalisé.
 
         Utile quand exec_start doit pointer vers un script généré
-        dynamiquement plutôt que la valeur du TOML.
+        dynamiquement plutôt que la valeur du fichier de configuration.
 
         Args:
-            exec_start: Commande à utiliser à la place de celle du TOML.
+            exec_start: Commande à utiliser à la place de celle du fichier.
             section: Nom de la section à charger.
 
         Returns:

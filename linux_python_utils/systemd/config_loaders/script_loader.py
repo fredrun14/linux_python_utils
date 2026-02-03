@@ -1,7 +1,8 @@
 """Chargeur de configuration pour les scripts bash.
 
-Ce module fournit une classe pour charger un fichier TOML et créer
-un BashScriptConfig avec support optionnel des notifications.
+Ce module fournit une classe pour charger un fichier de configuration
+(TOML ou JSON) et créer un BashScriptConfig avec support optionnel
+des notifications.
 
 Example:
     Chargement d'un BashScriptConfig depuis un fichier TOML:
@@ -9,7 +10,12 @@ Example:
         loader = BashScriptConfigLoader("config/app.toml")
         script_config = loader.load()
 
-    Fichier TOML attendu:
+    Chargement depuis un fichier JSON:
+
+        loader = BashScriptConfigLoader("config/app.json")
+        script_config = loader.load()
+
+    Fichier de configuration attendu:
 
         [service]
         exec_command = "/usr/bin/flatpak update -y"
@@ -27,14 +33,15 @@ from typing import Any
 from linux_python_utils.config import ConfigLoader
 from linux_python_utils.notification import NotificationConfig
 from linux_python_utils.scripts import BashScriptConfig
-from linux_python_utils.systemd.config_loaders.base import TomlConfigLoader
+from linux_python_utils.systemd.config_loaders.base import ConfigFileLoader
 
 
-class BashScriptConfigLoader(TomlConfigLoader[BashScriptConfig]):
-    """Chargeur de configuration TOML pour BashScriptConfig.
+class BashScriptConfigLoader(ConfigFileLoader[BashScriptConfig]):
+    """Chargeur de configuration pour BashScriptConfig.
 
-    Cette classe lit un fichier TOML et crée un BashScriptConfig
-    à partir des sections [service] et optionnellement [notification].
+    Cette classe lit un fichier de configuration (TOML ou JSON) et crée
+    un BashScriptConfig à partir des sections [service] et optionnellement
+    [notification].
 
     Attributes:
         DEFAULT_SECTION: Section par défaut pour exec_command ("service").
@@ -59,20 +66,20 @@ class BashScriptConfigLoader(TomlConfigLoader[BashScriptConfig]):
 
     def __init__(
         self,
-        toml_path: str | Path,
+        config_path: str | Path,
         config_loader: ConfigLoader | None = None
     ) -> None:
         """Initialise le loader pour BashScriptConfig.
 
         Args:
-            toml_path: Chemin vers le fichier de configuration TOML.
+            config_path: Chemin vers le fichier de configuration (.toml ou .json).
             config_loader: Chargeur de configuration injectable (DIP).
 
         Raises:
-            FileNotFoundError: Si le fichier TOML n'existe pas.
-            tomllib.TOMLDecodeError: Si le TOML est invalide.
+            FileNotFoundError: Si le fichier n'existe pas.
+            ValueError: Si l'extension n'est pas supportée.
         """
-        super().__init__(toml_path, config_loader)
+        super().__init__(config_path, config_loader)
 
     def load(self, section: str | None = None) -> BashScriptConfig:
         """Charge et retourne un BashScriptConfig.
@@ -119,7 +126,7 @@ class BashScriptConfigLoader(TomlConfigLoader[BashScriptConfig]):
         """Charge un BashScriptConfig sans notification.
 
         Utile quand on veut forcer la création d'un script simple
-        même si le TOML contient une section [notification].
+        même si le fichier contient une section [notification].
 
         Args:
             section: Nom de la section contenant exec_command.

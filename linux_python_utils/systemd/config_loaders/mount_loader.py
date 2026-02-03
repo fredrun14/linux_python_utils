@@ -1,7 +1,7 @@
 """Chargeur de configuration pour les unités .mount systemd.
 
-Ce module fournit une classe pour charger un fichier TOML et créer
-un MountConfig pour les unités systemd .mount.
+Ce module fournit une classe pour charger un fichier de configuration
+(TOML ou JSON) et créer un MountConfig pour les unités systemd .mount.
 
 Example:
     Chargement d'un MountConfig depuis un fichier TOML:
@@ -9,7 +9,12 @@ Example:
         loader = MountConfigLoader("config/mounts.toml")
         mount_config = loader.load()
 
-    Fichier TOML attendu:
+    Chargement depuis un fichier JSON:
+
+        loader = MountConfigLoader("config/mounts.json")
+        mount_config = loader.load()
+
+    Fichier de configuration attendu:
 
         [mount]
         description = "Partage NAS"
@@ -24,14 +29,14 @@ from typing import Any
 
 from linux_python_utils.config import ConfigLoader
 from linux_python_utils.systemd import MountConfig
-from linux_python_utils.systemd.config_loaders.base import TomlConfigLoader
+from linux_python_utils.systemd.config_loaders.base import ConfigFileLoader
 
 
-class MountConfigLoader(TomlConfigLoader[MountConfig]):
-    """Chargeur de configuration TOML pour MountConfig.
+class MountConfigLoader(ConfigFileLoader[MountConfig]):
+    """Chargeur de configuration pour MountConfig.
 
-    Cette classe lit un fichier TOML et crée un MountConfig
-    à partir de la section [mount].
+    Cette classe lit un fichier de configuration (TOML ou JSON) et crée
+    un MountConfig à partir de la section [mount].
 
     Attributes:
         DEFAULT_SECTION: Nom de la section par défaut ("mount").
@@ -47,20 +52,20 @@ class MountConfigLoader(TomlConfigLoader[MountConfig]):
 
     def __init__(
         self,
-        toml_path: str | Path,
+        config_path: str | Path,
         config_loader: ConfigLoader | None = None
     ) -> None:
         """Initialise le loader pour MountConfig.
 
         Args:
-            toml_path: Chemin vers le fichier de configuration TOML.
+            config_path: Chemin vers le fichier de configuration (.toml ou .json).
             config_loader: Chargeur de configuration injectable (DIP).
 
         Raises:
-            FileNotFoundError: Si le fichier TOML n'existe pas.
-            tomllib.TOMLDecodeError: Si le TOML est invalide.
+            FileNotFoundError: Si le fichier n'existe pas.
+            ValueError: Si l'extension n'est pas supportée.
         """
-        super().__init__(toml_path, config_loader)
+        super().__init__(config_path, config_loader)
 
     def load(self, section: str | None = None) -> MountConfig:
         """Charge et retourne un MountConfig.
@@ -70,7 +75,7 @@ class MountConfigLoader(TomlConfigLoader[MountConfig]):
                 Par défaut "mount".
 
         Returns:
-            Instance de MountConfig avec les valeurs du TOML.
+            Instance de MountConfig avec les valeurs du fichier.
 
         Raises:
             KeyError: Si la section n'existe pas.
@@ -97,8 +102,8 @@ class MountConfigLoader(TomlConfigLoader[MountConfig]):
     def load_multiple(self, section: str | None = None) -> list[MountConfig]:
         """Charge plusieurs MountConfig depuis une section de liste.
 
-        Permet de définir plusieurs montages dans un seul fichier TOML
-        sous forme de liste.
+        Permet de définir plusieurs montages dans un seul fichier
+        de configuration sous forme de liste.
 
         Args:
             section: Nom de la section contenant la liste.

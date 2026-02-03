@@ -1,12 +1,12 @@
 """Classe de base abstraite pour les chargeurs de configuration systemd.
 
 Ce module définit l'interface commune pour tous les chargeurs de
-configuration TOML vers dataclasses systemd.
+configuration (TOML, JSON) vers dataclasses systemd.
 
 Example:
     Création d'un loader personnalisé:
 
-        class MyConfigLoader(TomlConfigLoader[MyConfig]):
+        class MyConfigLoader(ConfigFileLoader[MyConfig]):
             def load(self, section: str = "my_section") -> MyConfig:
                 data = self._get_section(section)
                 return MyConfig(**data)
@@ -15,6 +15,7 @@ Example:
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Generic, TypeVar
+import warnings
 
 from linux_python_utils.config import ConfigLoader, FileConfigLoader
 
@@ -22,17 +23,22 @@ from linux_python_utils.config import ConfigLoader, FileConfigLoader
 T = TypeVar("T")
 
 
-class TomlConfigLoader(ABC, Generic[T]):
-    """Classe de base abstraite pour les chargeurs de configuration TOML.
+class ConfigFileLoader(ABC, Generic[T]):
+    """Classe de base abstraite pour les chargeurs de configuration.
 
     Cette classe fournit l'infrastructure commune pour charger un fichier
-    TOML et extraire une section spécifique pour créer une dataclass.
+    de configuration (TOML ou JSON) et extraire une section spécifique
+    pour créer une dataclass.
+
+    Le format est automatiquement détecté par l'extension du fichier:
+    - .toml : Format TOML
+    - .json : Format JSON
 
     Attributes:
-        _config: Dictionnaire de configuration chargé depuis le fichier TOML.
+        _config: Dictionnaire de configuration chargé depuis le fichier.
 
     Example:
-        >>> class ServiceLoader(TomlConfigLoader[ServiceConfig]):
+        >>> class ServiceLoader(ConfigFileLoader[ServiceConfig]):
         ...     def load(self, section: str = "service") -> ServiceConfig:
         ...         data = self._get_section(section)
         ...         return ServiceConfig(**data)
@@ -40,29 +46,31 @@ class TomlConfigLoader(ABC, Generic[T]):
 
     def __init__(
         self,
-        toml_path: str | Path,
+        config_path: str | Path,
         config_loader: ConfigLoader | None = None
     ) -> None:
-        """Initialise le loader en chargeant le fichier TOML.
+        """Initialise le loader en chargeant le fichier de configuration.
 
         Args:
-            toml_path: Chemin vers le fichier de configuration TOML.
+            config_path: Chemin vers le fichier de configuration (.toml ou .json).
             config_loader: Chargeur de configuration injectable (DIP).
                 Si None, utilise FileConfigLoader par défaut.
 
         Raises:
-            FileNotFoundError: Si le fichier TOML n'existe pas.
+            FileNotFoundError: Si le fichier de configuration n'existe pas.
+            ValueError: Si l'extension du fichier n'est pas supportée.
             tomllib.TOMLDecodeError: Si le TOML est invalide.
+            json.JSONDecodeError: Si le JSON est invalide.
         """
         loader = config_loader or FileConfigLoader()
-        self._config: dict[str, Any] = loader.load(toml_path)
+        self._config: dict[str, Any] = loader.load(config_path)
 
     @property
     def config(self) -> dict[str, Any]:
         """Retourne le dictionnaire de configuration brut.
 
         Returns:
-            Dictionnaire complet de la configuration TOML.
+            Dictionnaire complet de la configuration.
         """
         return self._config
 
@@ -76,12 +84,12 @@ class TomlConfigLoader(ABC, Generic[T]):
             Dictionnaire contenant les données de la section.
 
         Raises:
-            KeyError: Si la section n'existe pas dans le fichier TOML.
+            KeyError: Si la section n'existe pas dans le fichier.
         """
         if section not in self._config:
             available = list(self._config.keys())
             raise KeyError(
-                f"Section '{section}' non trouvée dans le fichier TOML. "
+                f"Section '{section}' non trouvée dans le fichier. "
                 f"Sections disponibles: {available}"
             )
         return self._config[section]
@@ -125,4 +133,36 @@ class TomlConfigLoader(ABC, Generic[T]):
             KeyError: Si la section requise n'existe pas.
             TypeError: Si les données ne correspondent pas à la dataclass.
         """
+        pass
+
+
+# Alias pour rétrocompatibilité (deprecated)
+class TomlConfigLoader(ConfigFileLoader[T]):
+    """Alias deprecated pour ConfigFileLoader.
+
+    .. deprecated::
+        Utilisez ConfigFileLoader à la place.
+    """
+
+    def __init__(
+        self,
+        toml_path: str | Path,
+        config_loader: ConfigLoader | None = None
+    ) -> None:
+        """Initialise le loader (deprecated).
+
+        Args:
+            toml_path: Chemin vers le fichier de configuration.
+            config_loader: Chargeur de configuration injectable.
+        """
+        warnings.warn(
+            "TomlConfigLoader est deprecated, utilisez ConfigFileLoader",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        super().__init__(toml_path, config_loader)
+
+    @abstractmethod
+    def load(self, section: str | None = None) -> T:
+        """Charge et retourne la dataclass de configuration."""
         pass
