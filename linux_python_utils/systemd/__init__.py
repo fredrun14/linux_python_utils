@@ -100,7 +100,6 @@ from linux_python_utils.systemd.scheduled_task import (
 
 # Chargeurs de configuration TOML
 from linux_python_utils.systemd.config_loaders import (
-    TomlConfigLoader,
     ServiceConfigLoader,
     TimerConfigLoader,
     MountConfigLoader,
@@ -139,8 +138,7 @@ __all__ = [
     # Installateur de tâches planifiées
     "ScheduledTaskInstaller",
     "SystemdScheduledTaskInstaller",
-    # Chargeurs de configuration TOML
-    "TomlConfigLoader",
+    # Chargeurs de configuration
     "ServiceConfigLoader",
     "TimerConfigLoader",
     "MountConfigLoader",

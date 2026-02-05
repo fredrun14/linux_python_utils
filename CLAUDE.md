@@ -22,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 make help             # Afficher toutes les commandes disponibles
 make install-dev      # Installer avec dépendances de développement
-make test             # Lancer les tests (177 tests)
+make test             # Lancer les tests (213 tests)
 make test-verbose     # Lancer les tests en mode verbose
 make lint             # Vérifier PEP8
 make clean            # Nettoyer les fichiers générés
@@ -50,6 +50,7 @@ The library uses Abstract Base Classes (ABCs) to define interfaces, with concret
 | `systemd.config_loaders` | TOML → dataclass loaders for systemd configs |
 | `scripts` | Bash script generation with notification support |
 | `notification` | Desktop notification configuration (KDE Plasma) |
+| `commands` | Command execution and building (`CommandBuilder`, `LinuxCommandExecutor`) |
 | `integrity` | File/directory checksum verification (`SHA256IntegrityChecker`) |
 | `dotconf` | INI-style configuration file management |
 
@@ -65,7 +66,7 @@ systemd/
 ├── user_service.py      # LinuxUserServiceUnitManager (no root)
 ├── scheduled_task.py    # SystemdScheduledTaskInstaller
 └── config_loaders/      # TOML → dataclass loaders
-    ├── base.py          # TomlConfigLoader[T] (ABC)
+    ├── base.py          # (rétrocompatibilité imports)
     ├── service_loader.py
     ├── timer_loader.py
     ├── mount_loader.py
@@ -96,11 +97,47 @@ loader = BashScriptConfigLoader("config.toml")
 script_config = loader.load()
 ```
 
+### Commands Module
+
+```
+commands/
+├── base.py        # CommandResult (dataclass) + CommandExecutor (ABC)
+├── builder.py     # CommandBuilder (fluent API)
+└── runner.py      # LinuxCommandExecutor (subprocess)
+```
+
+Build and execute system commands:
+
+```python
+from linux_python_utils.commands import (
+    CommandBuilder,
+    LinuxCommandExecutor,
+)
+
+# Build a command with fluent API
+cmd = (
+    CommandBuilder("rsync")
+    .with_options(["-av", "--delete"])
+    .with_option("--compress-level", "3")
+    .with_flag("--stats")
+    .with_args(["/src/", "/dest/"])
+    .build()
+)
+
+# Execute with logging
+executor = LinuxCommandExecutor(logger=logger)
+result = executor.run(cmd)
+
+# Stream output in real-time
+result = executor.run_streaming(cmd)
+```
+
 ### Key Patterns
 
 - **Dependency Injection**: All classes accept Logger and other dependencies
-- **Generic Config Loaders**: `TomlConfigLoader[T]` base class for type-safe loading
+- **Generic Config Loaders**: `ConfigFileLoader[T]` base class for type-safe loading
 - **Configuration-Driven**: `ConfigurationManager` supports deep merge, search paths, tilde expansion
+- **Fluent Command Builder**: `CommandBuilder` for type-safe command construction
 - **UTF-8 Throughout**: Explicit UTF-8 encoding (important for French documentation)
 
 ## Public API
@@ -127,6 +164,8 @@ from linux_python_utils import (
     BashScriptConfig, BashScriptInstaller,
     # Notifications
     NotificationConfig,
+    # Commands
+    CommandBuilder, LinuxCommandExecutor, CommandResult,
     # Integrity
     SHA256IntegrityChecker, calculate_checksum,
 )

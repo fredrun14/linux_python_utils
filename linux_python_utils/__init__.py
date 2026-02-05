@@ -10,6 +10,8 @@ Modules disponibles:
 - dotconf: Gestion de fichiers de configuration INI (.conf)
 - notification: Configuration des notifications desktop (NotificationConfig)
 - scripts: Génération de scripts bash (BashScriptConfig)
+- commands: Exécution de commandes système (CommandBuilder,
+  LinuxCommandExecutor)
 """
 
 __version__ = "0.1.0"
@@ -55,8 +57,7 @@ from linux_python_utils.systemd import (
     # Installateur de tâches planifiées
     ScheduledTaskInstaller,
     SystemdScheduledTaskInstaller,
-    # Chargeurs de configuration TOML
-    TomlConfigLoader,
+    # Chargeurs de configuration
     ServiceConfigLoader,
     TimerConfigLoader,
     MountConfigLoader,
@@ -85,6 +86,12 @@ from linux_python_utils.scripts import (
     BashScriptConfig,
     ScriptInstaller,
     BashScriptInstaller,
+)
+from linux_python_utils.commands import (
+    CommandResult,
+    CommandExecutor,
+    CommandBuilder,
+    LinuxCommandExecutor,
 )
 
 __all__ = [
@@ -128,8 +135,7 @@ __all__ = [
     # Systemd - Installateur de tâches planifiées
     "ScheduledTaskInstaller",
     "SystemdScheduledTaskInstaller",
-    # Systemd - Chargeurs de configuration TOML
-    "TomlConfigLoader",
+    # Systemd - Chargeurs de configuration
     "ServiceConfigLoader",
     "TimerConfigLoader",
     "MountConfigLoader",
@@ -158,4 +164,12 @@ __all__ = [
     "BashScriptConfig",
     "ScriptInstaller",
     "BashScriptInstaller",
+    # Commands - Structures de données
+    "CommandResult",
+    # Commands - Interface abstraite
+    "CommandExecutor",
+    # Commands - Constructeur
+    "CommandBuilder",
+    # Commands - Implémentation
+    "LinuxCommandExecutor",
 ]

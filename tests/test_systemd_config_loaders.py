@@ -1,7 +1,6 @@
 """Tests pour les chargeurs de configuration systemd."""
 
 import unittest
-import warnings
 from unittest.mock import Mock
 
 from linux_python_utils import (
@@ -11,14 +10,12 @@ from linux_python_utils import (
     ServiceConfig,
     TimerConfig,
 )
-from linux_python_utils.config import ConfigLoader
+from linux_python_utils.config import ConfigLoader, ConfigFileLoader
 from linux_python_utils.systemd.config_loaders import (
     BashScriptConfigLoader,
-    ConfigFileLoader,
     MountConfigLoader,
     ServiceConfigLoader,
     TimerConfigLoader,
-    TomlConfigLoader,
 )
 
 
@@ -546,38 +543,6 @@ class TestConfigFileLoaderBase(unittest.TestCase):
         loader = ServiceConfigLoader("/fake/path.toml", mock_loader)
 
         self.assertIsInstance(loader, ConfigFileLoader)
-
-
-class TestTomlConfigLoaderDeprecated(unittest.TestCase):
-    """Tests pour l'alias deprecated TomlConfigLoader."""
-
-    def test_toml_config_loader_emits_deprecation_warning(self):
-        """Vérifie que TomlConfigLoader émet un DeprecationWarning."""
-        config = {
-            "service": {
-                "description": "Test",
-                "exec_start": "/usr/bin/test",
-            }
-        }
-        mock_loader = MockConfigLoader(config)
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-
-            # Créer une sous-classe concrète pour le test
-            class ConcreteTomlLoader(TomlConfigLoader[ServiceConfig]):
-                def load(self, section=None):
-                    return ServiceConfig(
-                        description="Test",
-                        exec_start="/usr/bin/test",
-                    )
-
-            loader = ConcreteTomlLoader("/fake/path.toml", mock_loader)
-
-            self.assertEqual(len(w), 1)
-            self.assertTrue(issubclass(w[0].category, DeprecationWarning))
-            self.assertIn("deprecated", str(w[0].message).lower())
-            self.assertIn("ConfigFileLoader", str(w[0].message))
 
 
 if __name__ == "__main__":
