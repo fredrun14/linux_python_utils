@@ -27,7 +27,7 @@ from typing import Any
 
 from linux_python_utils.config import ConfigLoader
 from linux_python_utils.systemd import ServiceConfig
-from linux_python_utils.systemd.config_loaders.base import ConfigFileLoader
+from linux_python_utils.config import ConfigFileLoader
 
 
 class ServiceConfigLoader(ConfigFileLoader[ServiceConfig]):

@@ -42,10 +42,10 @@ Architecture:
 
 """
 
-from linux_python_utils.systemd.config_loaders.base import (
-    ConfigFileLoader,
-    TomlConfigLoader,
-)
+# # from linux_python_utils.systemd.config_loaders.base import (
+# #     ConfigFileLoader,
+# #     TomlConfigLoader,
+# )
 from linux_python_utils.systemd.config_loaders.service_loader import (
     ServiceConfigLoader,
 )
@@ -61,12 +61,11 @@ from linux_python_utils.systemd.config_loaders.script_loader import (
 
 __all__ = [
     # Classe de base
-    "ConfigFileLoader",
     # Loaders spécialisés
     "ServiceConfigLoader",
     "TimerConfigLoader",
     "MountConfigLoader",
     "BashScriptConfigLoader",
     # Alias deprecated pour rétrocompatibilité
-    "TomlConfigLoader",
+    # "TomlConfigLoader",
 ]

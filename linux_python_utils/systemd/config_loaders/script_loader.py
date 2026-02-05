@@ -33,7 +33,7 @@ from typing import Any
 from linux_python_utils.config import ConfigLoader
 from linux_python_utils.notification import NotificationConfig
 from linux_python_utils.scripts import BashScriptConfig
-from linux_python_utils.systemd.config_loaders.base import ConfigFileLoader
+from linux_python_utils.config import ConfigFileLoader
 
 
 class BashScriptConfigLoader(ConfigFileLoader[BashScriptConfig]):
