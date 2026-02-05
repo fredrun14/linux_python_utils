@@ -19,7 +19,6 @@ from linux_python_utils.config import (
     ConfigManager,
     ConfigLoader,
     FileConfigLoader,
-    load_config,
     ConfigurationManager
 )
 from linux_python_utils.filesystem import (
@@ -96,7 +95,6 @@ __all__ = [
     "ConfigManager",
     "ConfigLoader",
     "FileConfigLoader",
-    "load_config",
     "ConfigurationManager",
     # Filesystem
     "FileManager",

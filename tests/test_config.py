@@ -6,11 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from linux_python_utils.config import load_config, ConfigurationManager
+from linux_python_utils.config import FileConfigLoader, ConfigurationManager
 
 
 class TestLoadConfig:
     """Tests pour la fonction load_config."""
+
+    def setup_method(self):
+        """Initialise le loader avant chaque test."""
+        self.loader = FileConfigLoader()
 
     def test_load_json(self, tmp_path):
         """Test du chargement d'un fichier JSON."""
@@ -18,7 +22,7 @@ class TestLoadConfig:
         config_data = {"key": "value", "nested": {"a": 1}}
         config_file.write_text(json.dumps(config_data))
 
-        result = load_config(config_file)
+        result = self.loader.load(config_file)
 
         assert result == config_data
 
@@ -27,14 +31,14 @@ class TestLoadConfig:
         config_file = tmp_path / "config.toml"
         config_file.write_text('[section]\nkey = "value"\n')
 
-        result = load_config(config_file)
+        result = self.loader.load(config_file)
 
         assert result["section"]["key"] == "value"
 
     def test_file_not_found(self):
         """Test avec fichier inexistant."""
         with pytest.raises(FileNotFoundError):
-            load_config("/nonexistent/config.toml")
+            self.loader.load("/nonexistent/config.toml")
 
     def test_unsupported_extension(self, tmp_path):
         """Test avec extension non supportée."""
@@ -42,7 +46,7 @@ class TestLoadConfig:
         config_file.write_text("<config></config>")
 
         with pytest.raises(ValueError, match="Extension non supportée"):
-            load_config(config_file)
+            self.loader.load(config_file)
 
 
 class TestConfigurationManager:
@@ -148,7 +152,8 @@ class TestConfigurationManager:
         manager.create_default_config(output_file)
 
         assert output_file.exists()
-        result = load_config(output_file)
+        loader = FileConfigLoader()
+        result = loader.load(output_file)
         assert result == default
 
     def test_create_default_config_toml(self, tmp_path):
@@ -167,7 +172,8 @@ class TestConfigurationManager:
         manager.create_default_config(output_file)
 
         assert output_file.exists()
-        result = load_config(output_file)
+        loader = FileConfigLoader()
+        result = loader.load(output_file)
         assert result["simple"] == "value"
         assert result["number"] == 42
         assert result["enabled"] is True

@@ -44,7 +44,7 @@ The library uses Abstract Base Classes (ABCs) to define interfaces, with concret
 | Module | Purpose |
 |--------|---------|
 | `logging` | File logging with optional console output (`Logger` → `FileLogger`) |
-| `config` | TOML/JSON config with dot-notation access (`ConfigurationManager`, `load_config()`) |
+| `config` | TOML/JSON config with dot-notation access (`ConfigurationManager`, `FileConfigLoader`) |
 | `filesystem` | File CRUD and metadata-preserving backups (`LinuxFileManager`, `LinuxFileBackup`) |
 | `systemd` | Complete systemd management (services, timers, mounts) |
 | `systemd.config_loaders` | TOML → dataclass loaders for systemd configs |
@@ -112,7 +112,7 @@ from linux_python_utils import (
     # Logging
     FileLogger,
     # Config
-    ConfigurationManager, load_config,
+    ConfigurationManager, FileConfigLoader,
     # Filesystem
     LinuxFileManager, LinuxFileBackup,
     # Systemd

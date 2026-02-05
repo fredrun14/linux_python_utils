@@ -110,14 +110,14 @@ logger = FileLogger("/var/log/myapp.log", config=config)
 ### Module `config`
 
 Chargement et gestion de configuration TOML et JSON.
+#### Classe `FileConfigLoader`
 
-#### Fonction `load_config`
-
-```python
-from linux_python_utils import load_config
+ ```python
+from linux_python_utils import FileConfigLoader
 
 # Chargement TOML ou JSON (détection automatique)
-config = load_config("/etc/myapp/config.toml")
+loader = FileConfigLoader()
+config = loader.load("/etc/myapp/config.toml")
 print(config["section"]["key"])
 ```
 

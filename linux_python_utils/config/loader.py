@@ -82,27 +82,27 @@ class FileConfigLoader(ConfigLoader):
 
 
 # Instance par défaut pour rétrocompatibilité
-_default_loader = FileConfigLoader()
+# _default_loader = FileConfigLoader()
 
 
-def load_config(config_path: Union[str, Path]) -> dict:
-    """
-    Charge un fichier de configuration (fonction utilitaire).
-
-    Utilise l'implémentation FileConfigLoader par défaut.
-    Pour les tests ou une personnalisation, utiliser directement
-    une instance de ConfigLoader.
-
-    Args:
-        config_path: Chemin vers le fichier de configuration
-
-    Returns:
-        Dictionnaire de configuration
-
-    Raises:
-        FileNotFoundError: Si le fichier n'existe pas
-        ValueError: Si l'extension n'est pas supportée
-        tomllib.TOMLDecodeError: Si le TOML est invalide
-        json.JSONDecodeError: Si le JSON est invalide
-    """
-    return _default_loader.load(config_path)
+# def load_config(config_path: Union[str, Path]) -> dict:
+#     """
+#     Charge un fichier de configuration (fonction utilitaire).
+#
+#     Utilise l'implémentation FileConfigLoader par défaut.
+#     Pour les tests ou une personnalisation, utiliser directement
+#     une instance de ConfigLoader.
+#
+#     Args:
+#         config_path: Chemin vers le fichier de configuration
+#
+#     Returns:
+#         Dictionnaire de configuration
+#
+#     Raises:
+#         FileNotFoundError: Si le fichier n'existe pas
+#         ValueError: Si l'extension n'est pas supportée
+#         tomllib.TOMLDecodeError: Si le TOML est invalide
+#         json.JSONDecodeError: Si le JSON est invalide
+#     """
+#     return _default_loader.load(config_path)
