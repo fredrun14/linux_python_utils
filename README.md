@@ -2,13 +2,13 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-180%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-229%20passed-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/Code%20Style-PEP8-black.svg)]()
 [![SOLID](https://img.shields.io/badge/Architecture-SOLID-purple.svg)]()
 
 > Bibliothèque utilitaire Python pour systèmes Linux, conçue avec les principes SOLID.
 
-Fournit des classes réutilisables et extensibles pour le logging, la configuration, la gestion de fichiers, les services systemd et la vérification d'intégrité. Architecture basée sur des Abstract Base Classes (ABC) permettant l'injection de dépendances et facilitant les tests unitaires.
+Fournit des classes réutilisables et extensibles pour le logging, la configuration, la gestion de fichiers, les services systemd, l'exécution de commandes, la gestion de fichiers INI, la validation de données et la vérification d'intégrité. Architecture basée sur des Abstract Base Classes (ABC) permettant l'injection de dépendances et facilitant les tests unitaires.
 
 ## 📋 Table des Matières
 
@@ -21,6 +21,11 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
   - [Module filesystem](#module-filesystem)
   - [Module systemd](#module-systemd)
   - [Module integrity](#module-integrity)
+  - [Module dotconf](#module-dotconf)
+  - [Module commands](#module-commands)
+  - [Module scripts](#module-scripts)
+  - [Module notification](#module-notification)
+  - [Module validation](#module-validation)
 - [Documentation API](#-documentation-api)
 - [Architecture des Classes](#-architecture-des-classes)
 - [Structure du Projet](#-structure-du-projet)
@@ -37,8 +42,13 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 - **🔧 Systemd complet** — Gestion services, timers et unités de montage (système et utilisateur)
 - **📄 Chargeurs de config** — Loaders typés pour créer des dataclasses depuis TOML ou JSON
 - **🔐 Vérification d'intégrité** — Checksums SHA256/SHA512/MD5 pour fichiers et répertoires
+- **🖥️ Exécution de commandes** — Construction fluent et exécution avec streaming temps réel
+- **📋 Fichiers INI (.conf)** — Lecture, écriture et validation de fichiers de configuration INI
+- **📜 Scripts bash** — Génération de scripts bash avec support des notifications
+- **🔔 Notifications** — Configuration des notifications desktop (KDE Plasma)
+- **✅ Validation** — Validation de chemins et données avec support optionnel Pydantic
 - **🏗️ Architecture SOLID** — ABCs, injection de dépendances, testabilité maximale
-- **🧪 Bien testé** — 180 tests unitaires couvrant tous les modules
+- **🧪 Bien testé** — 229 tests unitaires couvrant tous les modules
 
 ## 📦 Prérequis
 
@@ -68,6 +78,9 @@ pip install -e .
 
 # 4. (Optionnel) Installer les dépendances de dev
 pip install -e ".[dev]"
+
+# 5. (Optionnel) Installer avec support validation Pydantic
+pip install -e ".[validation]"
 ```
 
 ### Installation via pip
@@ -81,7 +94,7 @@ pip install git+https://github.com/user/linux-python-utils.git
 
 ```python
 import linux_python_utils
-print(linux_python_utils.__version__)  # 0.1.0
+print(linux_python_utils.__version__)  # 1.0.0
 ```
 
 ## 💻 Utilisation
@@ -471,6 +484,183 @@ else:
 checksum = checker.get_checksum("/path/to/file")
 ```
 
+### Module `dotconf`
+
+Gestion de fichiers de configuration INI (.conf) avec validation externe.
+
+```python
+from dataclasses import dataclass
+from pathlib import Path
+from linux_python_utils import (
+    FileLogger,
+    ValidatedSection,
+    LinuxIniConfigManager,
+)
+
+# Définir une section avec validation
+@dataclass(frozen=True)
+class CommandsSection(ValidatedSection):
+    upgrade_type: str = "default"
+    download_updates: str = "yes"
+
+    @staticmethod
+    def section_name() -> str:
+        return "commands"
+
+# Injecter les validateurs depuis le TOML
+CommandsSection.set_validators({
+    "upgrade_type": ["default", "security"],
+    "download_updates": ["yes", "no"],
+})
+
+# Créer et écrire une section
+section = CommandsSection(
+    upgrade_type="security", download_updates="yes"
+)
+
+logger = FileLogger("/var/log/config.log")
+manager = LinuxIniConfigManager(logger)
+
+# Écrire une section dans un fichier
+manager.write_section(Path("/etc/myapp.conf"), section)
+
+# Lire un fichier INI complet
+config = manager.read(Path("/etc/myapp.conf"))
+print(config["commands"]["upgrade_type"])  # "security"
+
+# Mise à jour conditionnelle (n'écrit que si changé)
+updated = manager.update_section(
+    Path("/etc/myapp.conf"), section
+)
+print(f"Modifié: {updated}")
+```
+
+### Module `commands`
+
+Construction fluent et exécution de commandes système.
+
+```python
+from linux_python_utils import (
+    FileLogger,
+    CommandBuilder,
+    LinuxCommandExecutor,
+)
+
+# Construire une commande avec l'API fluent
+cmd = (
+    CommandBuilder("rsync")
+    .with_options(["-av", "--delete"])
+    .with_option("--compress-level", "3")
+    .with_flag("--stats")
+    .with_args(["/src/", "/dest/"])
+    .build()
+)
+# Résultat : ["rsync", "-av", "--delete",
+#             "--compress-level=3", "--stats",
+#             "/src/", "/dest/"]
+
+# Exécuter avec capture de sortie
+logger = FileLogger("/var/log/commands.log")
+executor = LinuxCommandExecutor(logger=logger)
+result = executor.run(cmd)
+
+print(result.success)      # True/False
+print(result.return_code)  # 0
+print(result.stdout)       # Sortie standard
+print(result.duration)     # Durée en secondes
+
+# Streaming temps réel vers le logger
+result = executor.run_streaming(cmd)
+
+# Mode dry-run (simulation sans exécution)
+dry_executor = LinuxCommandExecutor(
+    logger=logger, dry_run=True
+)
+result = dry_executor.run(cmd)  # Log seulement
+
+# Options conditionnelles
+cmd = (
+    CommandBuilder("rsync")
+    .with_options(["-av"])
+    .with_option_if("--bwlimit", "1000", condition=True)
+    .with_option_if("--exclude", None)  # Ignoré (None)
+    .with_args(["/src/", "/dest/"])
+    .build()
+)
+```
+
+### Module `scripts`
+
+Génération de scripts bash avec support des notifications.
+
+```python
+from linux_python_utils import BashScriptConfig, BashScriptInstaller
+
+# Configuration d'un script bash
+config = BashScriptConfig(
+    name="backup",
+    description="Script de sauvegarde quotidien",
+    commands=["rsync -av /src /dest", "echo 'Done'"],
+    notification=None  # Ou NotificationConfig
+)
+
+# Générer le contenu du script
+print(config.to_bash_script())
+
+# Installer le script sur le système
+installer = BashScriptInstaller(logger)
+installer.install(config, "/usr/local/bin/backup.sh")
+```
+
+### Module `notification`
+
+Configuration des notifications desktop (KDE Plasma).
+
+```python
+from linux_python_utils import NotificationConfig
+
+# Configuration de notification
+notif = NotificationConfig(
+    enabled=True,
+    title="Sauvegarde",
+    message_success="Sauvegarde terminée avec succès",
+    message_failure="Échec de la sauvegarde"
+)
+
+# Générer les appels bash pour notify-send
+bash_calls = notif.to_bash_calls()
+bash_function = notif.to_bash_function()
+```
+
+### Module `validation`
+
+Validation de chemins et données avec support optionnel Pydantic.
+
+```python
+from linux_python_utils import PathChecker, FileConfigLoader
+
+# Validation de chemins (répertoires parents existent et sont
+# accessibles en écriture)
+checker = PathChecker([
+    "/var/log/myapp.log",
+    "/etc/myapp/config.toml",
+])
+checker.validate()  # Lève ValueError ou PermissionError
+
+# Validation de configuration avec Pydantic (optionnel)
+# pip install linux-python-utils[validation]
+from pydantic import BaseModel
+
+class AppConfig(BaseModel):
+    name: str
+    debug: bool = False
+    port: int = 8080
+
+loader = FileConfigLoader()
+config = loader.load("config.toml", schema=AppConfig)
+print(config.name)  # Instance AppConfig validée
+```
+
 ### Exemple Complet
 
 Script de sauvegarde utilisant tous les modules :
@@ -586,6 +776,33 @@ logger.log_info("Backup automatique configuré")
 | `IntegrityChecker` | `SHA256IntegrityChecker` | Vérification checksums |
 | `ChecksumCalculator` | `HashLibChecksumCalculator` | Calcul checksums |
 
+#### Module `dotconf`
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `IniSection` | `ValidatedSection` | Section INI avec validation |
+| `IniConfig` | — | Fichier INI complet |
+| `IniConfigManager` | `LinuxIniConfigManager` | Gestion lecture/écriture INI |
+
+#### Module `commands`
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `CommandExecutor` | `LinuxCommandExecutor` | Exécution subprocess |
+| — | `CommandBuilder` | Construction fluent de commandes |
+
+#### Module `scripts`
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `ScriptInstaller` | `BashScriptInstaller` | Installation de scripts bash |
+
+#### Module `validation`
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `Validator` | `PathChecker` | Validation de chemins fichiers |
+
 ### Dataclasses
 
 | Classe | Description |
@@ -596,32 +813,40 @@ logger.log_info("Backup automatique configuré")
 | `ServiceConfig` | Configuration d'une unité .service |
 | `BashScriptConfig` | Configuration d'un script bash |
 | `NotificationConfig` | Configuration des notifications desktop |
+| `CommandResult` | Résultat d'exécution de commande |
+| `ValidatedSection` | Section INI avec validation externe |
 
 ## 🏗️ Architecture des Classes
 
 ### Vue d'Ensemble
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    linux-python-utils                            │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐    │
-│  │  logging  │  │  config   │  │filesystem │  │  systemd  │    │
-│  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘    │
-│        │              │              │              │           │
-│        ▼              ▼              ▼              ▼           │
-│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐    │
-│  │  Logger   │  │ConfigMgr  │  │FileManager│  │ Executor  │    │
-│  │   (ABC)   │  │  (ABC)    │  │   (ABC)   │  │           │    │
-│  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘    │
-│        │              │              │              │           │
-│        ▼              ▼              ▼              ▼           │
-│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐    │
-│  │FileLogger │  │ConfigMgr  │  │LinuxFile  │  │UnitManagers│   │
-│  │           │  │           │  │Manager    │  │Mount/Timer│    │
-│  └───────────┘  └───────────┘  └───────────┘  │/Service   │    │
-│                                               └───────────┘    │
-└─────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│                          linux-python-utils                                │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐        │
+│  │ logging  │ │  config  │ │filesystem│ │ systemd  │ │integrity │        │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘        │
+│       │            │            │            │            │               │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐        │
+│  │ commands │ │ dotconf  │ │ scripts  │ │notificat.│ │validation│        │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘        │
+│       │            │            │            │            │               │
+│       ▼            ▼            ▼            ▼            ▼               │
+│  ┌─────────────────────────────────────────────────────────────────┐      │
+│  │              Abstract Base Classes (ABCs)                        │      │
+│  │  Logger, ConfigLoader, FileManager, Validator, CommandExecutor   │      │
+│  │  IniConfigManager, ScriptInstaller, IntegrityChecker ...        │      │
+│  └──────────────────────────┬──────────────────────────────────────┘      │
+│                             │                                             │
+│                             ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────┐      │
+│  │              Implémentations Linux concrètes                    │      │
+│  │  FileLogger, LinuxFileManager, LinuxCommandExecutor,            │      │
+│  │  LinuxIniConfigManager, PathChecker, SHA256IntegrityChecker ... │      │
+│  └─────────────────────────────────────────────────────────────────┘      │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Architecture Systemd
@@ -728,18 +953,49 @@ linux-python-utils/
 │   │       ├── timer_loader.py  # TimerConfigLoader
 │   │       ├── mount_loader.py  # MountConfigLoader
 │   │       └── script_loader.py # BashScriptConfigLoader
-│   └── integrity/
+│   ├── integrity/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABCs + calculate_checksum
+│   │   └── sha256.py            # SHA256IntegrityChecker
+│   ├── dotconf/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABCs IniSection, IniConfig, IniConfigManager
+│   │   ├── section.py           # ValidatedSection + utilitaires
+│   │   └── manager.py           # LinuxIniConfigManager
+│   ├── commands/
+│   │   ├── __init__.py
+│   │   ├── base.py              # CommandResult + ABC CommandExecutor
+│   │   ├── builder.py           # CommandBuilder (API fluent)
+│   │   └── runner.py            # LinuxCommandExecutor (subprocess)
+│   ├── scripts/
+│   │   ├── __init__.py
+│   │   ├── config.py            # BashScriptConfig (dataclass)
+│   │   └── installer.py         # ABC ScriptInstaller + BashScriptInstaller
+│   ├── notification/
+│   │   ├── __init__.py
+│   │   └── config.py            # NotificationConfig (dataclass)
+│   └── validation/
 │       ├── __init__.py
-│       ├── base.py              # ABCs + calculate_checksum
-│       └── sha256.py            # SHA256IntegrityChecker
+│       ├── base.py              # ABC Validator
+│       └── path_checker.py      # PathChecker
 ├── tests/
 │   ├── __init__.py
-│   ├── test_logging.py          # 8 tests
-│   ├── test_config.py           # 13 tests
-│   ├── test_integrity.py        # 11 tests
-│   ├── test_systemd_mount.py    # 28 tests
-│   ├── test_systemd_timer.py    # 11 tests
-│   └── test_systemd_service.py  # 13 tests
+│   ├── test_logging.py              # 8 tests
+│   ├── test_config.py               # 13 tests
+│   ├── test_config_validation.py    # 11 tests
+│   ├── test_integrity.py            # 11 tests
+│   ├── test_systemd_mount.py        # 28 tests
+│   ├── test_systemd_timer.py        # 11 tests
+│   ├── test_systemd_service.py      # 13 tests
+│   ├── test_systemd_scheduled_task.py # 12 tests
+│   ├── test_systemd_config_loaders.py # 30 tests
+│   ├── test_dotconf.py              # 21 tests
+│   ├── test_commands.py             # 34 tests
+│   ├── test_scripts.py             # 19 tests
+│   ├── test_notification.py         # 13 tests
+│   └── test_validation.py           # 5 tests
+├── examples/
+│   └── nfs-mounts.toml              # Exemple de configuration
 ├── pyproject.toml
 ├── Makefile
 ├── CLAUDE.md
@@ -774,15 +1030,21 @@ make all
 
 | Module | Tests | Description |
 |--------|-------|-------------|
-| `test_config.py` | 13 | Chargement TOML/JSON, profils, fusion |
 | `test_logging.py` | 8 | FileLogger, UTF-8, configuration |
+| `test_config.py` | 13 | Chargement TOML/JSON, profils, fusion |
+| `test_config_validation.py` | 11 | Validation Pydantic optionnelle |
 | `test_integrity.py` | 11 | Checksums, vérification fichiers/répertoires |
 | `test_systemd_mount.py` | 28 | Génération .mount/.automount, enable/disable |
 | `test_systemd_timer.py` | 11 | TimerConfig, to_unit_file(), validation |
 | `test_systemd_service.py` | 13 | ServiceConfig, to_unit_file(), validation |
-| `test_systemd_scheduled_task.py` | 10 | SystemdScheduledTaskInstaller |
-| `test_systemd_config_loaders.py` | 31 | Tous les loaders (TOML/JSON) |
-| **Total** | **180** | |
+| `test_systemd_scheduled_task.py` | 12 | SystemdScheduledTaskInstaller |
+| `test_systemd_config_loaders.py` | 30 | Tous les loaders (TOML/JSON) |
+| `test_dotconf.py` | 21 | Sections INI, validation, lecture/écriture |
+| `test_commands.py` | 34 | CommandBuilder, exécution, streaming, dry-run |
+| `test_scripts.py` | 19 | BashScriptConfig, installation scripts |
+| `test_notification.py` | 13 | NotificationConfig, génération bash |
+| `test_validation.py` | 5 | PathChecker, permissions |
+| **Total** | **229** | |
 
 ### Tests Paramétrés
 

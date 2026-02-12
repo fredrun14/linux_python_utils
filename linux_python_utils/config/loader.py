@@ -19,19 +19,28 @@ class ConfigLoader(ABC):
     """
 
     @abstractmethod
-    def load(self, config_path: Union[str, Path]) -> Dict[str, Any]:
+    def load(
+        self,
+        config_path: Union[str, Path],
+        schema: type | None = None
+    ) -> Union[Dict[str, Any], Any]:
         """
         Charge un fichier de configuration.
 
         Args:
             config_path: Chemin vers le fichier de configuration
+            schema: Classe Pydantic BaseModel optionnelle pour
+                validation. Si fourni, retourne une instance
+                du modèle. Si None, retourne un dict brut.
 
         Returns:
-            Dictionnaire de configuration
+            Dictionnaire de configuration ou instance du schema
 
         Raises:
             FileNotFoundError: Si le fichier n'existe pas
             ValueError: Si le format n'est pas supporté
+            ImportError: Si schema fourni mais pydantic absent
+            TypeError: Si schema n'est pas un BaseModel
         """
         pass
 
@@ -41,26 +50,34 @@ class FileConfigLoader(ConfigLoader):
     Implémentation du chargeur de configuration depuis fichiers.
 
     Supporte les formats TOML et JSON, détectés automatiquement
-    par l'extension du fichier.
+    par l'extension du fichier. Supporte optionnellement la
+    validation via un modèle Pydantic BaseModel.
     """
 
-    def load(self, config_path: Union[str, Path]) -> Dict[str, Any]:
+    def load(
+        self,
+        config_path: Union[str, Path],
+        schema: type | None = None
+    ) -> Union[Dict[str, Any], Any]:
         """
         Charge un fichier de configuration TOML ou JSON.
 
-        Le format est détecté automatiquement par l'extension du fichier.
+        Le format est détecté automatiquement par l'extension
+        du fichier. Si un schema Pydantic est fourni, le dict
+        brut est validé et une instance du modèle est retournée.
 
         Args:
             config_path: Chemin vers le fichier de configuration
+            schema: Classe Pydantic BaseModel optionnelle
 
         Returns:
-            Dictionnaire de configuration
+            Dictionnaire de configuration ou instance du schema
 
         Raises:
             FileNotFoundError: Si le fichier n'existe pas
             ValueError: Si l'extension n'est pas supportée
-            tomllib.TOMLDecodeError: Si le TOML est invalide
-            json.JSONDecodeError: Si le JSON est invalide
+            ImportError: Si schema fourni mais pydantic absent
+            TypeError: Si schema n'est pas un BaseModel
         """
         path = Path(config_path)
 
@@ -73,15 +90,57 @@ class FileConfigLoader(ConfigLoader):
 
         if suffix == ".toml":
             with open(path, "rb") as f:
-                return tomllib.load(f)
+                raw_config = tomllib.load(f)
         elif suffix == ".json":
             with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                raw_config = json.load(f)
         else:
             raise ValueError(
                 f"Extension non supportée: {suffix}. "
                 "Utilisez .toml ou .json"
             )
+
+        if schema is None:
+            return raw_config
+
+        return self._validate_with_schema(raw_config, schema)
+
+    @staticmethod
+    def _validate_with_schema(
+        data: Dict[str, Any], schema: type
+    ) -> Any:
+        """Valide un dict via un modèle Pydantic.
+
+        Args:
+            data: Dictionnaire brut à valider.
+            schema: Classe Pydantic BaseModel.
+
+        Returns:
+            Instance du modèle validé.
+
+        Raises:
+            ImportError: Si pydantic n'est pas installé.
+            TypeError: Si schema n'est pas un BaseModel.
+        """
+        try:
+            from pydantic import BaseModel
+        except ImportError:
+            raise ImportError(
+                "pydantic est requis pour la validation "
+                "de schema. Installez-le avec: "
+                "pip install linux-python-utils[validation]"
+            )
+
+        if not (
+            isinstance(schema, type)
+            and issubclass(schema, BaseModel)
+        ):
+            raise TypeError(
+                f"Le schema doit être une sous-classe de "
+                f"pydantic.BaseModel, reçu: {schema}"
+            )
+
+        return schema.model_validate(data)
 
 
 

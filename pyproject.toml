@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "linux-python-utils"
-version = "0.1.0"
+version = "1.0.0"
 description = "Bibliothèque utilitaire Python pour systèmes Linux"
 readme = "README.md"
 license = {text = "MIT"}
@@ -13,20 +13,29 @@ authors = [
     {name = "Fred"}
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
-keywords = ["linux", "utils", "systemd", "logging", "configuration"]
+keywords = [
+    "linux", "utils", "systemd", "logging", "configuration",
+    "commands", "dotconf", "validation", "integrity",
+]
 
 [project.optional-dependencies]
+validation = [
+    "pydantic>=2.0",
+]
 dev = [
     "pytest>=7.0",
     "pycodestyle>=2.10",
+    "pydantic>=2.0",
 ]
 
 [tool.setuptools.packages.find]

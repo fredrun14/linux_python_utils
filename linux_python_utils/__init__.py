@@ -12,9 +12,10 @@ Modules disponibles:
 - scripts: Génération de scripts bash (BashScriptConfig)
 - commands: Exécution de commandes système (CommandBuilder,
   LinuxCommandExecutor)
+- validation: Validation de chemins et données (Validator, PathChecker)
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 from linux_python_utils.logging import Logger, FileLogger
 from linux_python_utils.config import (
@@ -92,6 +93,10 @@ from linux_python_utils.commands import (
     CommandExecutor,
     CommandBuilder,
     LinuxCommandExecutor,
+)
+from linux_python_utils.validation import (
+    Validator,
+    PathChecker,
 )
 
 __all__ = [
@@ -172,4 +177,7 @@ __all__ = [
     "CommandBuilder",
     # Commands - Implémentation
     "LinuxCommandExecutor",
+    # Validation
+    "Validator",
+    "PathChecker",
 ]

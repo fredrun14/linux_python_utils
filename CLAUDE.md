@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**linux-python-utils** is a French-language Python utility library for Linux systems. It provides reusable classes and functions for logging, configuration management, file operations, systemd service management, bash script generation, and file integrity verification.
+**linux-python-utils** is a French-language Python utility library for Linux systems. It provides reusable classes and functions for logging, configuration management, file operations, systemd service management, bash script generation, command execution, INI configuration management, data validation, and file integrity verification.
 
 - Python 3.11+ required (uses `tomllib` for TOML parsing)
 - No external runtime dependencies (stdlib only)
+- Optional dependency: `pydantic>=2.0` for schema validation (`pip install linux-python-utils[validation]`)
 - Platform: Linux only
 
 ## Code Conventions
@@ -22,7 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 make help             # Afficher toutes les commandes disponibles
 make install-dev      # Installer avec dépendances de développement
-make test             # Lancer les tests (213 tests)
+make test             # Lancer les tests (229 tests)
 make test-verbose     # Lancer les tests en mode verbose
 make lint             # Vérifier PEP8
 make clean            # Nettoyer les fichiers générés
@@ -53,6 +54,7 @@ The library uses Abstract Base Classes (ABCs) to define interfaces, with concret
 | `commands` | Command execution and building (`CommandBuilder`, `LinuxCommandExecutor`) |
 | `integrity` | File/directory checksum verification (`SHA256IntegrityChecker`) |
 | `dotconf` | INI-style configuration file management |
+| `validation` | Path validation and optional Pydantic schema validation (`Validator`, `PathChecker`) |
 
 ### Systemd Module
 
@@ -132,6 +134,27 @@ result = executor.run(cmd)
 result = executor.run_streaming(cmd)
 ```
 
+### Validation Module
+
+```
+validation/
+├── base.py           # Validator (ABC)
+└── path_checker.py   # PathChecker (validates parent dirs exist & writable)
+```
+
+`FileConfigLoader` supports optional Pydantic schema validation:
+
+```python
+from linux_python_utils import FileConfigLoader
+
+# Without schema → returns dict
+loader = FileConfigLoader()
+config = loader.load("config.toml")
+
+# With Pydantic schema → returns validated model instance
+config = loader.load("config.toml", schema=MyPydanticModel)
+```
+
 ### Key Patterns
 
 - **Dependency Injection**: All classes accept Logger and other dependencies
@@ -168,6 +191,10 @@ from linux_python_utils import (
     CommandBuilder, LinuxCommandExecutor, CommandResult,
     # Integrity
     SHA256IntegrityChecker, calculate_checksum,
+    # DotConf
+    ValidatedSection, LinuxIniConfigManager, parse_validator, build_validators,
+    # Validation
+    Validator, PathChecker,
 )
 ```
 
@@ -175,7 +202,7 @@ from linux_python_utils import (
 
 GitHub Actions workflow (`.github/workflows/python-package.yml`) :
 - **lint**: Vérification PEP8
-- **test**: Tests sur Python 3.11, 3.12, 3.13
+- **test**: Tests sur Python 3.11, 3.12, 3.13, 3.14
 - **build**: Construction du package
 
 ## Language

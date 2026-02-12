@@ -25,7 +25,7 @@ class MockConfigLoader(ConfigLoader):
     def __init__(self, config: dict):
         self._config = config
 
-    def load(self, config_path):
+    def load(self, config_path, schema=None):
         return self._config
 
 
