@@ -143,7 +143,6 @@ class FileConfigLoader(ConfigLoader):
         return schema.model_validate(data)
 
 
-
 class ConfigFileLoader(ABC, Generic[T]):
     """Classe de base abstraite pour les chargeurs de configuration typés.
 
@@ -173,9 +172,10 @@ class ConfigFileLoader(ABC, Generic[T]):
         """Initialise le loader en chargeant le fichier de configuration.
 
         Args:
-            config_path: Chemin vers le fichier de configuration (.toml ou .json).
-            config_loader: Chargeur de configuration injectable (DIP).
-                Si None, utilise FileConfigLoader par défaut.
+            config_path: Chemin vers le fichier de configuration
+                (.toml ou .json).
+            config_loader: Chargeur de configuration injectable
+                (DIP). Si None, utilise FileConfigLoader par défaut.
 
         Raises:
             FileNotFoundError: Si le fichier de configuration n'existe pas.
@@ -255,9 +255,6 @@ class ConfigFileLoader(ABC, Generic[T]):
             TypeError: Si les données ne correspondent pas à la dataclass.
         """
         pass
-
-
-
 
 
 # Instance par défaut pour rétrocompatibilité

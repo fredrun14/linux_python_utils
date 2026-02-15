@@ -56,7 +56,8 @@ class ServiceConfigLoader(ConfigFileLoader[ServiceConfig]):
         """Initialise le loader pour ServiceConfig.
 
         Args:
-            config_path: Chemin vers le fichier de configuration (.toml ou .json).
+            config_path: Chemin vers le fichier de configuration
+                (.toml ou .json).
             config_loader: Chargeur de configuration injectable (DIP).
 
         Raises:

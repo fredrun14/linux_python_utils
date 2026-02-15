@@ -57,7 +57,8 @@ class TimerConfigLoader(ConfigFileLoader[TimerConfig]):
         """Initialise le loader pour TimerConfig.
 
         Args:
-            config_path: Chemin vers le fichier de configuration (.toml ou .json).
+            config_path: Chemin vers le fichier de configuration
+                (.toml ou .json).
             config_loader: Chargeur de configuration injectable (DIP).
 
         Raises:

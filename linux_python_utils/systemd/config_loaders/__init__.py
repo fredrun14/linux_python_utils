@@ -1,7 +1,7 @@
 """Chargeurs de configuration pour les unités systemd.
 
 Ce module fournit des classes pour charger des fichiers de configuration
-(TOML ou JSON) et créer les dataclasses de configuration systemd correspondantes.
+(TOML ou JSON) et créer les dataclasses systemd correspondantes.
 
 Classes disponibles:
     ConfigFileLoader: Classe de base abstraite pour tous les loaders.

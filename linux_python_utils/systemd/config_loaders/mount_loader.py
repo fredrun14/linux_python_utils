@@ -31,6 +31,7 @@ from linux_python_utils.config import ConfigLoader
 from linux_python_utils.systemd import MountConfig
 from linux_python_utils.config import ConfigFileLoader
 
+
 class MountConfigLoader(ConfigFileLoader[MountConfig]):
     """Chargeur de configuration pour MountConfig.
 
@@ -57,7 +58,8 @@ class MountConfigLoader(ConfigFileLoader[MountConfig]):
         """Initialise le loader pour MountConfig.
 
         Args:
-            config_path: Chemin vers le fichier de configuration (.toml ou .json).
+            config_path: Chemin vers le fichier de configuration
+                (.toml ou .json).
             config_loader: Chargeur de configuration injectable (DIP).
 
         Raises:
