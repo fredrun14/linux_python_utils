@@ -45,6 +45,11 @@ class LinuxServiceUnitManager(ServiceUnitManager):
             True si succès, False sinon
         """
         unit_path = os.path.join(self.SYSTEMD_UNIT_PATH, unit_name)
+        if os.path.islink(unit_path):
+            self.logger.log_error(
+                f"Refus d'écrire {unit_path} : lien symbolique détecté"
+            )
+            return False
         try:
             with open(unit_path, "w", encoding="utf-8") as f:
                 f.write(content)

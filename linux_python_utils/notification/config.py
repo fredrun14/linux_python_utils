@@ -15,6 +15,7 @@ Example:
         bash_function = config.to_bash_function()
 """
 
+import shlex
 from dataclasses import dataclass
 
 
@@ -111,10 +112,10 @@ class NotificationConfig:
         Returns:
             Ligne bash appelant send_notification avec paramètres succès.
         """
-        return (
-            f'send_notification "{self.title}" '
-            f'"{self.message_success}" "{self.icon_success}"'
-        )
+        title = shlex.quote(self.title)
+        message = shlex.quote(self.message_success)
+        icon = shlex.quote(self.icon_success)
+        return f"send_notification {title} {message} {icon}"
 
     def to_bash_call_failure(self) -> str:
         """Génère l'appel bash pour une notification d'échec.
@@ -122,7 +123,7 @@ class NotificationConfig:
         Returns:
             Ligne bash appelant send_notification avec paramètres échec.
         """
-        return (
-            f'send_notification "{self.title}" '
-            f'"{self.message_failure}" "{self.icon_failure}"'
-        )
+        title = shlex.quote(self.title)
+        message = shlex.quote(self.message_failure)
+        icon = shlex.quote(self.icon_failure)
+        return f"send_notification {title} {message} {icon}"

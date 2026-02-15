@@ -108,6 +108,11 @@ class LinuxUserTimerUnitManager(UserTimerUnitManager):
             return False
 
         unit_path = os.path.join(self.unit_path, unit_name)
+        if os.path.islink(unit_path):
+            self.logger.log_error(
+                f"Refus d'écrire {unit_path} : lien symbolique détecté"
+            )
+            return False
         try:
             with open(unit_path, "w", encoding="utf-8") as f:
                 f.write(content)

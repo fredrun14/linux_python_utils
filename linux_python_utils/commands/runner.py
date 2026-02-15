@@ -263,32 +263,32 @@ class LinuxCommandExecutor(CommandExecutor):
         start = time.monotonic()
         stdout_lines: List[str] = []
         try:
-            proc = subprocess.Popen(
+            with subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 env=effective_env,
                 cwd=cwd,
-            )
-            for line in proc.stdout:
-                stripped = line.rstrip("\n")
-                stdout_lines.append(stripped)
-                if self._logger:
-                    self._logger.log_info(stripped)
+            ) as proc:
+                for line in proc.stdout:
+                    stripped = line.rstrip("\n")
+                    stdout_lines.append(stripped)
+                    if self._logger:
+                        self._logger.log_info(stripped)
 
-            proc.wait(timeout=effective_timeout)
-            stderr = proc.stderr.read()
+                proc.wait(timeout=effective_timeout)
+                stderr = proc.stderr.read()
 
-            duration = time.monotonic() - start
-            return CommandResult(
-                command=command,
-                return_code=proc.returncode,
-                stdout="\n".join(stdout_lines),
-                stderr=stderr,
-                success=proc.returncode == 0,
-                duration=duration,
-            )
+                duration = time.monotonic() - start
+                return CommandResult(
+                    command=command,
+                    return_code=proc.returncode,
+                    stdout="\n".join(stdout_lines),
+                    stderr=stderr,
+                    success=proc.returncode == 0,
+                    duration=duration,
+                )
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()

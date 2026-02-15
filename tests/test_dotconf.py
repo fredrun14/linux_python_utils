@@ -86,19 +86,10 @@ class TestParseValidator:
         result = parse_validator(["yes", "no"])
         assert result == ["yes", "no"]
 
-    def test_parse_lambda_validator(self):
-        """Teste le parsing d'un validateur lambda."""
-        result = parse_validator("lambda x: x.isdigit()")
-        assert callable(result)
-        assert result("123") is True
-        assert result("abc") is False
-
-    def test_parse_complex_lambda(self):
-        """Teste le parsing d'un lambda complexe."""
-        result = parse_validator("lambda x: x.isdigit() and 0 <= int(x) <= 100")
-        assert result("50") is True
-        assert result("150") is False
-        assert result("-1") is False
+    def test_parse_non_list_raises(self):
+        """Teste qu'un string lève une exception."""
+        with pytest.raises(ValueError, match="Format de validateur invalide"):
+            parse_validator("lambda x: x.isdigit()")
 
     def test_parse_invalid_validator_raises(self):
         """Teste qu'un validateur invalide lève une exception."""
@@ -109,17 +100,16 @@ class TestParseValidator:
 class TestBuildValidators:
     """Tests pour la fonction build_validators."""
 
-    def test_build_mixed_validators(self):
-        """Teste la construction d'un dictionnaire mixte."""
+    def test_build_list_validators(self):
+        """Teste la construction d'un dictionnaire de listes."""
         validators_dict = {
             "field1": ["opt1", "opt2"],
-            "field2": "lambda x: x.isdigit()",
+            "field2": ["a", "b", "c"],
         }
         result = build_validators(validators_dict)
 
         assert result["field1"] == ["opt1", "opt2"]
-        assert callable(result["field2"])
-        assert result["field2"]("123") is True
+        assert result["field2"] == ["a", "b", "c"]
 
 
 # Tests ValidatedSection
@@ -134,7 +124,7 @@ class TestValidatedSection:
             "upgrade_type": ["default", "security"],
             "download_updates": ["yes", "no"],
             "apply_updates": ["yes", "no"],
-            "random_sleep": "lambda x: x.isdigit() and 0 <= int(x) <= 86400",
+            "random_sleep": lambda x: x.isdigit() and 0 <= int(x) <= 86400,
         })
 
     def teardown_method(self):
@@ -229,11 +219,11 @@ class TestLinuxIniConfigManager:
             "upgrade_type": ["default", "security"],
             "download_updates": ["yes", "no"],
             "apply_updates": ["yes", "no"],
-            "random_sleep": "lambda x: x.isdigit() and 0 <= int(x) <= 86400",
+            "random_sleep": lambda x: x.isdigit() and 0 <= int(x) <= 86400,
         })
         MainSectionFixture.set_validators({
             "fastestmirror": ["true", "false"],
-            "max_parallel_downloads": "lambda x: x.isdigit() and 1 <= int(x) <= 20",
+            "max_parallel_downloads": lambda x: x.isdigit() and 1 <= int(x) <= 20,
         })
 
     def teardown_method(self):

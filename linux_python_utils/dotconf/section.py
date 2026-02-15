@@ -13,27 +13,21 @@ from linux_python_utils.dotconf.base import IniSection
 
 
 def parse_validator(
-    value: list[str] | str,
-) -> list[str] | Callable[[str], bool]:
-    """Convertit une valeur de validateur en fonction ou liste.
-
-    Supporte deux formats :
-    - Liste de valeurs autorisées : ["yes", "no"]
-    - String lambda : "lambda x: x.isdigit() and int(x) > 0"
+    value: list[str],
+) -> list[str]:
+    """Convertit une valeur de validateur en liste de valeurs autorisées.
 
     Args:
-        value: Liste de valeurs autorisées OU string lambda.
+        value: Liste de valeurs autorisées (ex: ["yes", "no"]).
 
     Returns:
-        Liste ou fonction de validation.
+        Liste de valeurs autorisées.
 
     Raises:
         ValueError: Si le format du validateur est invalide.
     """
     if isinstance(value, list):
         return value
-    if isinstance(value, str) and value.startswith("lambda"):
-        return eval(value)  # noqa: S307
     raise ValueError(f"Format de validateur invalide : {value!r}")
 
 
@@ -93,23 +87,36 @@ class ValidatedSection(IniSection):
     _validators: ClassVar[dict[str, list[str] | Callable[[str], bool]]] = {}
 
     @classmethod
-    def set_validators(cls, validators: dict[str, Any]) -> None:
+    def set_validators(
+        cls,
+        validators: dict[str, list[str] | Callable[[str], bool]],
+    ) -> None:
         """Injecte les validateurs depuis une source externe.
 
         Cette méthode doit être appelée avant de créer des instances
         pour activer la validation.
 
+        Les listes de valeurs autorisées peuvent être passées via
+        ``build_validators()`` (depuis TOML). Les fonctions callable
+        doivent être passées directement en Python.
+
         Args:
             validators: Dictionnaire des règles de validation.
-                Peut contenir des listes ou des strings lambda.
+                Valeur : liste de valeurs autorisées OU callable.
 
         Example:
             >>> MySection.set_validators({
             ...     "field1": ["opt1", "opt2"],
-            ...     "field2": "lambda x: x.isdigit()",
+            ...     "field2": lambda x: x.isdigit(),
             ... })
         """
-        cls._validators = build_validators(validators)
+        processed: dict[str, list[str] | Callable[[str], bool]] = {}
+        for key, value in validators.items():
+            if callable(value):
+                processed[key] = value
+            else:
+                processed[key] = parse_validator(value)
+        cls._validators = processed
 
     @classmethod
     def clear_validators(cls) -> None:

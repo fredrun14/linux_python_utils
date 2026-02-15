@@ -332,6 +332,8 @@ class TestLinuxCommandExecutorRunStreaming:
         mock_proc.stderr.read.return_value = stderr
         mock_proc.returncode = returncode
         mock_proc.wait.return_value = None
+        mock_proc.__enter__ = MagicMock(return_value=mock_proc)
+        mock_proc.__exit__ = MagicMock(return_value=False)
         return mock_proc
 
     @patch(

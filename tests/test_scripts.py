@@ -123,11 +123,11 @@ class TestBashScriptConfigToBashScript:
             notification=notif
         )
         result = config.to_bash_script()
-        assert '"Flatpak Update"' in result
-        assert '"Mise à jour réussie"' in result
-        assert '"Échec de la mise à jour"' in result
-        assert '"emblem-ok"' in result
-        assert '"emblem-error"' in result
+        assert "Flatpak Update" in result
+        assert "Mise à jour réussie" in result
+        assert "Échec de la mise à jour" in result
+        assert "emblem-ok" in result
+        assert "emblem-error" in result
 
 
 class TestBashScriptInstaller:

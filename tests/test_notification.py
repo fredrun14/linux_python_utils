@@ -137,9 +137,10 @@ class TestNotificationConfigToBashCalls:
             icon_success="emblem-ok"
         )
         result = config.to_bash_call_success()
-        assert 'send_notification "Flatpak"' in result
-        assert '"Mise à jour OK"' in result
-        assert '"emblem-ok"' in result
+        assert "send_notification" in result
+        assert "Flatpak" in result
+        assert "Mise à jour OK" in result
+        assert "emblem-ok" in result
 
     def test_to_bash_call_failure(self):
         """Vérifie la génération de l'appel pour l'échec."""
@@ -150,6 +151,7 @@ class TestNotificationConfigToBashCalls:
             icon_failure="dialog-error"
         )
         result = config.to_bash_call_failure()
-        assert 'send_notification "Flatpak"' in result
-        assert '"Mise à jour échouée"' in result
-        assert '"dialog-error"' in result
+        assert "send_notification" in result
+        assert "Flatpak" in result
+        assert "Mise à jour échouée" in result
+        assert "dialog-error" in result
