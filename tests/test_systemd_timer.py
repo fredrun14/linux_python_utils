@@ -1,8 +1,14 @@
 """Tests pour le module systemd.timer."""
 
+import json
+import subprocess
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from linux_python_utils.systemd.base import TimerConfig
+from linux_python_utils.systemd.timer import LinuxTimerUnitManager
+from linux_python_utils.systemd.user_timer import LinuxUserTimerUnitManager
 
 
 class TestTimerConfig:
@@ -148,3 +154,173 @@ class TestTimerConfigToUnitFile:
         assert "OnUnitActiveSec=30min" in result
         assert "Persistent=true" in result
         assert "RandomizedDelaySec=5min" in result
+
+
+class TestLinuxTimerListTimers:
+    """Tests pour LinuxTimerUnitManager.list_timers."""
+
+    def _make_manager(self) -> LinuxTimerUnitManager:
+        """Crée un manager avec des mocks."""
+        logger = MagicMock()
+        executor = MagicMock()
+        return LinuxTimerUnitManager(logger, executor)
+
+    @patch("linux_python_utils.systemd.timer.subprocess.run")
+    def test_list_timers_json_valide(self, mock_run):
+        """Vérifie le parsing d'une réponse JSON valide."""
+        data = [
+            {"unit": "backup.timer", "activates": "backup.service",
+             "next": "Mon 2026-01-01", "left": "1h",
+             "last": "Sun 2025-12-31", "passed": "23h"}
+        ]
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout=json.dumps(data), stderr=""
+        )
+        manager = self._make_manager()
+        result = manager.list_timers()
+        assert len(result) == 1
+        assert result[0]["unit"] == "backup.timer"
+        assert result[0]["activates"] == "backup.service"
+
+    @patch("linux_python_utils.systemd.timer.subprocess.run")
+    def test_list_timers_json_vide(self, mock_run):
+        """Vérifie le parsing d'une liste JSON vide."""
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="[]", stderr=""
+        )
+        manager = self._make_manager()
+        result = manager.list_timers()
+        assert result == []
+
+    @patch("linux_python_utils.systemd.timer.subprocess.run")
+    def test_list_timers_fallback_texte(self, mock_run):
+        """Vérifie le fallback texte si JSON non supporté."""
+        # Premier appel : JSON échoue
+        fail_result = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="unknown option '--output=json'"
+        )
+        # Deuxième appel : texte réussit
+        text_output = (
+            "NEXT LEFT LAST PASSED UNIT ACTIVATES\n"
+            "Mon 2026-01-01 1h ago Sun backup.timer backup.service\n"
+        )
+        text_result = MagicMock(
+            returncode=0, stdout=text_output, stderr=""
+        )
+        mock_run.side_effect = [fail_result, text_result]
+        manager = self._make_manager()
+        result = manager.list_timers()
+        assert len(result) == 1
+        assert result[0]["unit"] == "backup.timer"
+
+    @patch("linux_python_utils.systemd.timer.subprocess.run")
+    def test_list_timers_erreur_subprocess(self, mock_run):
+        """Vérifie que RuntimeError est levée sur erreur."""
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="",
+            stderr="Failed to connect to bus"
+        )
+        manager = self._make_manager()
+        with pytest.raises(RuntimeError, match="Erreur systemctl"):
+            manager.list_timers()
+
+    @patch("linux_python_utils.systemd.timer.subprocess.run")
+    def test_list_timers_systemctl_introuvable(self, mock_run):
+        """Vérifie RuntimeError si systemctl n'existe pas."""
+        mock_run.side_effect = FileNotFoundError("systemctl")
+        manager = self._make_manager()
+        with pytest.raises(RuntimeError, match="Impossible"):
+            manager.list_timers()
+
+    @patch("linux_python_utils.systemd.timer.subprocess.run")
+    def test_list_timers_os_error(self, mock_run):
+        """Vérifie RuntimeError sur OSError."""
+        mock_run.side_effect = OSError("permission denied")
+        manager = self._make_manager()
+        with pytest.raises(RuntimeError, match="Impossible"):
+            manager.list_timers()
+
+
+class TestLinuxUserTimerListTimers:
+    """Tests pour LinuxUserTimerUnitManager.list_timers."""
+
+    def _make_manager(self) -> LinuxUserTimerUnitManager:
+        """Crée un manager utilisateur avec des mocks."""
+        logger = MagicMock()
+        executor = MagicMock()
+        return LinuxUserTimerUnitManager(logger, executor)
+
+    @patch("linux_python_utils.systemd.user_timer.subprocess.run")
+    def test_list_timers_json_valide(self, mock_run):
+        """Vérifie le parsing d'une réponse JSON valide."""
+        data = [
+            {"unit": "backup.timer", "activates": "backup.service",
+             "next": "", "left": "", "last": "", "passed": ""}
+        ]
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout=json.dumps(data), stderr=""
+        )
+        manager = self._make_manager()
+        result = manager.list_timers()
+        assert len(result) == 1
+        assert result[0]["unit"] == "backup.timer"
+
+    @patch("linux_python_utils.systemd.user_timer.subprocess.run")
+    def test_list_timers_json_vide(self, mock_run):
+        """Vérifie le parsing d'une liste JSON vide."""
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="[]", stderr=""
+        )
+        manager = self._make_manager()
+        result = manager.list_timers()
+        assert result == []
+
+    @patch("linux_python_utils.systemd.user_timer.subprocess.run")
+    def test_list_timers_fallback_texte(self, mock_run):
+        """Vérifie le fallback texte si JSON non supporté."""
+        fail_result = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="unknown option '--output=json'"
+        )
+        text_output = (
+            "NEXT LEFT LAST PASSED UNIT ACTIVATES\n"
+            "Mon 2026-01-01 1h ago Sun user.timer user.service\n"
+        )
+        text_result = MagicMock(
+            returncode=0, stdout=text_output, stderr=""
+        )
+        mock_run.side_effect = [fail_result, text_result]
+        manager = self._make_manager()
+        result = manager.list_timers()
+        assert len(result) == 1
+        assert result[0]["unit"] == "user.timer"
+
+    @patch("linux_python_utils.systemd.user_timer.subprocess.run")
+    def test_list_timers_erreur_subprocess(self, mock_run):
+        """Vérifie que RuntimeError est levée sur erreur."""
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="",
+            stderr="Failed to connect to bus"
+        )
+        manager = self._make_manager()
+        with pytest.raises(RuntimeError, match="Erreur systemctl"):
+            manager.list_timers()
+
+    @patch("linux_python_utils.systemd.user_timer.subprocess.run")
+    def test_list_timers_systemctl_introuvable(self, mock_run):
+        """Vérifie RuntimeError si systemctl n'existe pas."""
+        mock_run.side_effect = FileNotFoundError("systemctl")
+        manager = self._make_manager()
+        with pytest.raises(RuntimeError, match="Impossible"):
+            manager.list_timers()
+
+    @patch("linux_python_utils.systemd.user_timer.subprocess.run")
+    def test_list_timers_os_error(self, mock_run):
+        """Vérifie RuntimeError sur OSError."""
+        mock_run.side_effect = OSError("permission denied")
+        manager = self._make_manager()
+        with pytest.raises(RuntimeError, match="Impossible"):
+            manager.list_timers()

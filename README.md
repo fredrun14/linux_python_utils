@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-229%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-310%20passed-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/Code%20Style-PEP8-black.svg)]()
 [![SOLID](https://img.shields.io/badge/Architecture-SOLID-purple.svg)]()
 
@@ -48,7 +48,8 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 - **🔔 Notifications** — Configuration des notifications desktop (KDE Plasma)
 - **✅ Validation** — Validation de chemins et données avec support optionnel Pydantic
 - **🏗️ Architecture SOLID** — ABCs, injection de dépendances, testabilité maximale
-- **🧪 Bien testé** — 229 tests unitaires couvrant tous les modules
+- **🔒 Sécurisé** — Validation des entrées, protection TOCTOU, permissions explicites
+- **🧪 Bien testé** — 310 tests unitaires couvrant tous les modules
 
 ## 📦 Prérequis
 
@@ -940,6 +941,7 @@ linux-python-utils/
 │   │   ├── __init__.py          # Exports module systemd
 │   │   ├── base.py              # ABCs + dataclasses (configs)
 │   │   ├── executor.py          # SystemdExecutor, UserSystemdExecutor
+│   │   ├── validators.py        # validate_unit_name(), validate_service_name()
 │   │   ├── mount.py             # LinuxMountUnitManager
 │   │   ├── timer.py             # LinuxTimerUnitManager
 │   │   ├── service.py           # LinuxServiceUnitManager
@@ -984,12 +986,14 @@ linux-python-utils/
 │   ├── test_config.py               # 13 tests
 │   ├── test_config_validation.py    # 11 tests
 │   ├── test_integrity.py            # 11 tests
-│   ├── test_systemd_mount.py        # 28 tests
-│   ├── test_systemd_timer.py        # 11 tests
-│   ├── test_systemd_service.py      # 13 tests
+│   ├── test_systemd_mount.py        # 36 tests
+│   ├── test_systemd_timer.py        # 23 tests
+│   ├── test_systemd_service.py      # 41 tests
+│   ├── test_systemd_executor.py     # 9 tests
+│   ├── test_systemd_validators.py   # 25 tests
 │   ├── test_systemd_scheduled_task.py # 12 tests
 │   ├── test_systemd_config_loaders.py # 30 tests
-│   ├── test_dotconf.py              # 21 tests
+│   ├── test_dotconf.py              # 20 tests
 │   ├── test_commands.py             # 34 tests
 │   ├── test_scripts.py             # 19 tests
 │   ├── test_notification.py         # 13 tests
@@ -1034,17 +1038,19 @@ make all
 | `test_config.py` | 13 | Chargement TOML/JSON, profils, fusion |
 | `test_config_validation.py` | 11 | Validation Pydantic optionnelle |
 | `test_integrity.py` | 11 | Checksums, vérification fichiers/répertoires |
-| `test_systemd_mount.py` | 28 | Génération .mount/.automount, enable/disable |
-| `test_systemd_timer.py` | 11 | TimerConfig, to_unit_file(), validation |
-| `test_systemd_service.py` | 13 | ServiceConfig, to_unit_file(), validation |
+| `test_systemd_mount.py` | 36 | Génération .mount/.automount, validation, enable/disable |
+| `test_systemd_timer.py` | 23 | TimerConfig, to_unit_file(), list_timers JSON/texte |
+| `test_systemd_service.py` | 41 | ServiceConfig, validation type/restart/env, TOCTOU, LSP |
+| `test_systemd_executor.py` | 9 | Validation noms d'unités dans SystemdExecutor |
+| `test_systemd_validators.py` | 25 | validate_unit_name(), validate_service_name() |
 | `test_systemd_scheduled_task.py` | 12 | SystemdScheduledTaskInstaller |
 | `test_systemd_config_loaders.py` | 30 | Tous les loaders (TOML/JSON) |
-| `test_dotconf.py` | 21 | Sections INI, validation, lecture/écriture |
+| `test_dotconf.py` | 20 | Sections INI, validation, lecture/écriture |
 | `test_commands.py` | 34 | CommandBuilder, exécution, streaming, dry-run |
 | `test_scripts.py` | 19 | BashScriptConfig, installation scripts |
 | `test_notification.py` | 13 | NotificationConfig, génération bash |
 | `test_validation.py` | 5 | PathChecker, permissions |
-| **Total** | **229** | |
+| **Total** | **310** | |
 
 ### Tests Paramétrés
 

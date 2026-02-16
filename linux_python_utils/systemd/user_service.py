@@ -1,7 +1,6 @@
 """Implémentation Linux de la gestion des unités service utilisateur."""
 
 import os
-from pathlib import Path
 
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.systemd.base import (
@@ -9,6 +8,7 @@ from linux_python_utils.systemd.base import (
     ServiceConfig
 )
 from linux_python_utils.systemd.executor import UserSystemdExecutor
+from linux_python_utils.systemd.validators import validate_service_name
 
 
 class LinuxUserServiceUnitManager(UserServiceUnitManager):
@@ -39,23 +39,6 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
             executor: Instance de UserSystemdExecutor pour les opérations
         """
         super().__init__(logger, executor)
-
-    def _ensure_unit_directory(self) -> bool:
-        """
-        Crée le répertoire des unités utilisateur s'il n'existe pas.
-
-        Returns:
-            True si le répertoire existe ou a été créé, False sinon
-        """
-        try:
-            Path(self.unit_path).mkdir(parents=True, exist_ok=True)
-            return True
-        except OSError as e:
-            self.logger.log_error(
-                f"Erreur lors de la création du répertoire {self.unit_path}: "
-                f"{e}"
-            )
-            return False
 
     def generate_service_unit(self, config: ServiceConfig) -> str:
         """
@@ -99,61 +82,6 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
 
         return "\n".join(lines) + "\n"
 
-    def _write_unit_file(self, unit_name: str, content: str) -> bool:
-        """
-        Écrit un fichier unit dans le répertoire utilisateur.
-
-        Args:
-            unit_name: Nom du fichier (avec extension)
-            content: Contenu du fichier
-
-        Returns:
-            True si succès, False sinon
-        """
-        if not self._ensure_unit_directory():
-            return False
-
-        unit_path = os.path.join(self.unit_path, unit_name)
-        if os.path.islink(unit_path):
-            self.logger.log_error(
-                f"Refus d'écrire {unit_path} : lien symbolique détecté"
-            )
-            return False
-        try:
-            with open(unit_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            self.logger.log_info(f"Fichier unit utilisateur créé: {unit_path}")
-            return True
-        except OSError as e:
-            self.logger.log_error(
-                f"Erreur lors de l'écriture de {unit_path}: {e}"
-            )
-            return False
-
-    def _remove_unit_file(self, unit_name: str) -> bool:
-        """
-        Supprime un fichier unit du répertoire utilisateur.
-
-        Args:
-            unit_name: Nom du fichier (avec extension)
-
-        Returns:
-            True si succès ou fichier inexistant, False si erreur
-        """
-        unit_path = os.path.join(self.unit_path, unit_name)
-        try:
-            if os.path.exists(unit_path):
-                os.remove(unit_path)
-                self.logger.log_info(
-                    f"Fichier unit utilisateur supprimé: {unit_path}"
-                )
-            return True
-        except OSError as e:
-            self.logger.log_error(
-                f"Erreur lors de la suppression de {unit_path}: {e}"
-            )
-            return False
-
     def install_service_unit(self, config: ServiceConfig) -> bool:
         """
         Installe une unité .service utilisateur.
@@ -168,6 +96,13 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
         service_name = os.path.basename(
             config.exec_start.split()[0]
         ).replace(".", "-")
+        try:
+            validate_service_name(service_name)
+        except ValueError as e:
+            self.logger.log_error(
+                f"Nom de service invalide : {e}"
+            )
+            return False
 
         # Générer et écrire le fichier .service
         service_content = self.generate_service_unit(config)
@@ -201,6 +136,13 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
         Returns:
             True si succès, False sinon
         """
+        try:
+            validate_service_name(service_name)
+        except ValueError as e:
+            self.logger.log_error(
+                f"Nom de service invalide : {e}"
+            )
+            return False
         # Générer et écrire le fichier .service
         service_content = self.generate_service_unit(config)
         if not self._write_unit_file(
@@ -228,6 +170,7 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_service_name(service_name)
         unit = f"{service_name}.service"
         return self.executor.start_unit(unit)
 
@@ -241,6 +184,7 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_service_name(service_name)
         unit = f"{service_name}.service"
         return self.executor.stop_unit(unit)
 
@@ -254,6 +198,7 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_service_name(service_name)
         unit = f"{service_name}.service"
         return self.executor.restart_unit(unit)
 
@@ -267,6 +212,7 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_service_name(service_name)
         unit = f"{service_name}.service"
         return self.enable(unit)
 
@@ -280,6 +226,7 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_service_name(service_name)
         unit = f"{service_name}.service"
         return self.disable(unit)
 
@@ -293,6 +240,7 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_service_name(service_name)
         # D'abord désactiver et arrêter le service
         self.disable_service(service_name)
 
@@ -317,6 +265,7 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
         Returns:
             Statut du service ou None si erreur
         """
+        validate_service_name(service_name)
         return self.get_status(f"{service_name}.service")
 
     def is_service_active(self, service_name: str) -> bool:
@@ -341,4 +290,5 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
         Returns:
             True si activé, False sinon
         """
+        validate_service_name(service_name)
         return self.executor.is_enabled(f"{service_name}.service")

@@ -1,6 +1,5 @@
 """Implémentation Linux de la gestion des unités mount/automount systemd."""
 
-import os
 from pathlib import Path
 
 from linux_python_utils.logging.base import Logger
@@ -61,68 +60,6 @@ class LinuxMountUnitManager(MountUnitManager):
         except OSError as e:
             self.logger.log_error(
                 f"Erreur lors de la création du point de montage {path}: {e}"
-            )
-            return False
-
-    def _write_unit_file(self, unit_name: str, content: str) -> bool:
-        """
-        Écrit un fichier unit dans le répertoire systemd.
-
-        Args:
-            unit_name: Nom du fichier (avec extension)
-            content: Contenu du fichier
-
-        Returns:
-            True si succès, False sinon
-        """
-        unit_path = os.path.join(self.SYSTEMD_UNIT_PATH, unit_name)
-        if os.path.islink(unit_path):
-            self.logger.log_error(
-                f"Refus d'écrire {unit_path} : lien symbolique détecté"
-            )
-            return False
-        try:
-            with open(unit_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            self.logger.log_info(f"Fichier unit créé: {unit_path}")
-            return True
-        except PermissionError:
-            self.logger.log_error(
-                f"Permission refusée pour écrire {unit_path}. "
-                "Exécution en tant que root requise."
-            )
-            return False
-        except OSError as e:
-            self.logger.log_error(
-                f"Erreur lors de l'écriture de {unit_path}: {e}"
-            )
-            return False
-
-    def _remove_unit_file(self, unit_name: str) -> bool:
-        """
-        Supprime un fichier unit du répertoire systemd.
-
-        Args:
-            unit_name: Nom du fichier (avec extension)
-
-        Returns:
-            True si succès ou fichier inexistant, False si erreur
-        """
-        unit_path = os.path.join(self.SYSTEMD_UNIT_PATH, unit_name)
-        try:
-            if os.path.exists(unit_path):
-                os.remove(unit_path)
-                self.logger.log_info(f"Fichier unit supprimé: {unit_path}")
-            return True
-        except PermissionError:
-            self.logger.log_error(
-                f"Permission refusée pour supprimer {unit_path}. "
-                "Exécution en tant que root requise."
-            )
-            return False
-        except OSError as e:
-            self.logger.log_error(
-                f"Erreur lors de la suppression de {unit_path}: {e}"
             )
             return False
 

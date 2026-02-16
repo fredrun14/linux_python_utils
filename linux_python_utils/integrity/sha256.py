@@ -95,7 +95,7 @@ class SHA256IntegrityChecker(IntegrityChecker):
                 )
                 return False
             return True
-        except Exception as e:
+        except OSError as e:
             self.logger.log_error(f"Erreur de vérification: {e}")
             return False
 
@@ -165,7 +165,7 @@ class SHA256IntegrityChecker(IntegrityChecker):
             )
             return True
 
-        except Exception as e:
+        except OSError as e:
             self.logger.log_error(
                 f"Erreur lors de la vérification d'intégrité: {e}"
             )

@@ -1,9 +1,12 @@
 """Interfaces abstraites pour la gestion des unités systemd."""
 
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING
+from typing import ClassVar, TYPE_CHECKING
 from datetime import datetime
+
+from linux_python_utils.systemd.validators import validate_unit_name
 
 if TYPE_CHECKING:
     from linux_python_utils.logging.base import Logger
@@ -47,9 +50,38 @@ class MountConfig(BaseSystemdConfig):
     options: str = ""
 
     def __post_init__(self) -> None:
-        """Valide que les champs requis sont présents."""
+        """Valide que les champs requis sont présents et cohérents."""
         if not self.what or not self.where:
             raise ValueError("'what' et 'where' sont requis")
+        if not self.where.startswith("/"):
+            raise ValueError(
+                f"'where' doit être un chemin absolu : {self.where!r}"
+            )
+        self._validate_what()
+
+    def _validate_what(self) -> None:
+        """Valide le champ 'what' selon le type de montage."""
+        fs_type = self.type.lower()
+        if fs_type in ("nfs", "nfs4"):
+            if ":" not in self.what or self.what.startswith(":"):
+                raise ValueError(
+                    f"Format NFS invalide pour 'what' : {self.what!r}"
+                    " (attendu : host:/path)"
+                )
+        elif fs_type == "cifs":
+            if not self.what.startswith("//"):
+                raise ValueError(
+                    f"Format CIFS invalide pour 'what' : {self.what!r}"
+                    " (attendu : //host/share)"
+                )
+        elif fs_type in (
+            "ext4", "ext3", "xfs", "btrfs", "vfat", "ntfs"
+        ):
+            if not self.what.startswith("/dev/"):
+                raise ValueError(
+                    f"'what' doit être un device pour {fs_type} : "
+                    f"{self.what!r} (attendu : /dev/...)"
+                )
 
     @property
     def unit_name(self) -> str:
@@ -60,7 +92,8 @@ class MountConfig(BaseSystemdConfig):
         Returns:
             Nom de l'unité systemd (sans extension).
         """
-        return self.where.strip("/").replace("/", "-")
+        name = self.where.strip("/").replace("/", "-")
+        return validate_unit_name(name)
 
     def to_unit_file(self) -> str:
         """Génère le contenu d'un fichier .mount systemd.
@@ -71,16 +104,22 @@ class MountConfig(BaseSystemdConfig):
         options_line = f"Options={self.options}\n" if self.options else ""
         return f"""[Unit]
 Description={self.description}
-After=network-online.target
-Wants=network-online.target
+DefaultDependencies=no
+After=network-online.target nss-lookup.target
+Requires=network-online.target
+Wants=nss-lookup.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Mount]
 What={self.what}
 Where={self.where}
 Type={self.type}
 {options_line}
+TimeoutSec=30
+
 [Install]
-WantedBy=multi-user.target
+WantedBy=remote-fs.target
 """
 
 
@@ -102,6 +141,10 @@ class AutomountConfig(BaseSystemdConfig):
         """Valide que les champs requis sont présents."""
         if not self.where:
             raise ValueError("'where' est requis")
+        if not self.where.startswith("/"):
+            raise ValueError(
+                f"'where' doit être un chemin absolu : {self.where!r}"
+            )
 
     @property
     def unit_name(self) -> str:
@@ -112,7 +155,8 @@ class AutomountConfig(BaseSystemdConfig):
         Returns:
             Nom de l'unité systemd (sans extension).
         """
-        return self.where.strip("/").replace("/", "-")
+        name = self.where.strip("/").replace("/", "-")
+        return validate_unit_name(name)
 
     def to_unit_file(self) -> str:
         """Génère le contenu d'un fichier .automount systemd.
@@ -125,14 +169,16 @@ class AutomountConfig(BaseSystemdConfig):
             timeout_line = f"TimeoutIdleSec={self.timeout_idle_sec}\n"
         return f"""[Unit]
 Description=Automontage {self.description}
-Requires=network-online.target
-After=network-online.target
+DefaultDependencies=no
+ConditionPathExists={self.where}
 
 [Automount]
 Where={self.where}
 {timeout_line}
+DirectoryMode=0750
+
 [Install]
-WantedBy=multi-user.target
+WantedBy=remote-fs.target
 """
 
 
@@ -222,6 +268,15 @@ class ServiceConfig(BaseSystemdConfig):
         wanted_by: Cible d'installation (défaut: multi-user.target).
     """
 
+    _VALID_TYPES: ClassVar[tuple[str, ...]] = (
+        "simple", "exec", "forking", "oneshot",
+        "dbus", "notify", "idle",
+    )
+    _VALID_RESTART: ClassVar[tuple[str, ...]] = (
+        "no", "always", "on-success", "on-failure",
+        "on-abnormal", "on-abort", "on-watchdog",
+    )
+
     exec_start: str
     type: str = "simple"
     user: str = ""
@@ -233,9 +288,34 @@ class ServiceConfig(BaseSystemdConfig):
     wanted_by: str = "multi-user.target"
 
     def __post_init__(self) -> None:
-        """Valide que les champs requis sont présents."""
+        """Valide que les champs requis sont présents et cohérents."""
         if not self.exec_start:
             raise ValueError("'exec_start' est requis")
+        if self.type not in self._VALID_TYPES:
+            raise ValueError(
+                f"Type de service invalide : {self.type!r} "
+                f"(valeurs acceptées : {', '.join(self._VALID_TYPES)})"
+            )
+        if self.restart not in self._VALID_RESTART:
+            raise ValueError(
+                f"Politique de redémarrage invalide : {self.restart!r} "
+                f"(valeurs acceptées : "
+                f"{', '.join(self._VALID_RESTART)})"
+            )
+        self._validate_environment()
+
+    def _validate_environment(self) -> None:
+        """Valide les variables d'environnement contre l'injection."""
+        for key, value in self.environment.items():
+            if "\n" in key or "=" in key:
+                raise ValueError(
+                    f"Clé d'environnement invalide : {key!r}"
+                )
+            if "\n" in value:
+                raise ValueError(
+                    f"Valeur d'environnement invalide pour "
+                    f"{key!r} : retour à la ligne interdit"
+                )
 
     def to_unit_file(self) -> str:
         """Génère le contenu d'un fichier .service systemd.
@@ -308,6 +388,90 @@ class UnitManager(ABC):
         """
         self.logger = logger
         self.executor = executor
+
+    def _write_unit_file(
+        self, unit_name: str, content: str
+    ) -> bool:
+        """Écrit un fichier unit dans le répertoire systemd.
+
+        Utilise ``O_NOFOLLOW`` pour refuser atomiquement les liens
+        symboliques (pas de fenêtre TOCTOU) et force les
+        permissions ``0o644``.
+
+        Args:
+            unit_name: Nom du fichier (avec extension).
+            content: Contenu du fichier.
+
+        Returns:
+            True si succès, False sinon.
+        """
+        unit_path = os.path.join(self.SYSTEMD_UNIT_PATH, unit_name)
+        try:
+            fd = os.open(
+                unit_path,
+                os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+                0o644,
+            )
+        except OSError as e:
+            if e.errno == 40:  # errno.ELOOP — lien symbolique
+                self.logger.log_error(
+                    f"Refus d'écrire {unit_path} : "
+                    "lien symbolique détecté"
+                )
+            elif isinstance(e, PermissionError):
+                self.logger.log_error(
+                    f"Permission refusée pour écrire {unit_path}. "
+                    "Exécution en tant que root requise."
+                )
+            else:
+                self.logger.log_error(
+                    f"Erreur lors de l'écriture de {unit_path}: {e}"
+                )
+            return False
+        try:
+            os.fchmod(fd, 0o644)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+        except OSError as e:
+            self.logger.log_error(
+                f"Erreur lors de l'écriture de {unit_path}: {e}"
+            )
+            return False
+        self.logger.log_info(f"Fichier unit créé: {unit_path}")
+        return True
+
+    def _remove_unit_file(self, unit_name: str) -> bool:
+        """Supprime un fichier unit du répertoire systemd.
+
+        Utilise try/except au lieu de check-then-remove
+        pour éviter une fenêtre TOCTOU.
+
+        Args:
+            unit_name: Nom du fichier (avec extension).
+
+        Returns:
+            True si succès ou fichier inexistant, False si erreur.
+        """
+        unit_path = os.path.join(self.SYSTEMD_UNIT_PATH, unit_name)
+        try:
+            os.remove(unit_path)
+            self.logger.log_info(
+                f"Fichier unit supprimé: {unit_path}"
+            )
+        except FileNotFoundError:
+            pass
+        except PermissionError:
+            self.logger.log_error(
+                f"Permission refusée pour supprimer {unit_path}. "
+                "Exécution en tant que root requise."
+            )
+            return False
+        except OSError as e:
+            self.logger.log_error(
+                f"Erreur lors de la suppression de {unit_path}: {e}"
+            )
+            return False
+        return True
 
     def reload_systemd(self) -> bool:
         """
@@ -385,7 +549,8 @@ class MountUnitManager(UnitManager):
         Returns:
             Nom de l'unité systemd (sans extension).
         """
-        return mount_path.strip("/").replace("/", "-")
+        name = mount_path.strip("/").replace("/", "-")
+        return validate_unit_name(name)
 
     @abstractmethod
     def install_mount_unit(
@@ -703,6 +868,100 @@ class UserUnitManager(ABC):
     def unit_path(self) -> str:
         """Retourne le chemin absolu du répertoire des unités."""
         return self._unit_path
+
+    def _ensure_unit_directory(self) -> bool:
+        """Crée le répertoire des unités utilisateur s'il n'existe pas.
+
+        Returns:
+            True si le répertoire existe ou a été créé, False sinon.
+        """
+        from pathlib import Path
+        try:
+            Path(self._unit_path).mkdir(parents=True, exist_ok=True)
+            return True
+        except OSError as e:
+            self.logger.log_error(
+                f"Erreur lors de la création du répertoire "
+                f"{self._unit_path}: {e}"
+            )
+            return False
+
+    def _write_unit_file(
+        self, unit_name: str, content: str
+    ) -> bool:
+        """Écrit un fichier unit dans le répertoire utilisateur.
+
+        Utilise ``O_NOFOLLOW`` pour refuser atomiquement les liens
+        symboliques (pas de fenêtre TOCTOU) et force les
+        permissions ``0o644``.
+
+        Args:
+            unit_name: Nom du fichier (avec extension).
+            content: Contenu du fichier.
+
+        Returns:
+            True si succès, False sinon.
+        """
+        if not self._ensure_unit_directory():
+            return False
+        unit_path = os.path.join(self._unit_path, unit_name)
+        try:
+            fd = os.open(
+                unit_path,
+                os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+                0o644,
+            )
+        except OSError as e:
+            if e.errno == 40:  # errno.ELOOP — lien symbolique
+                self.logger.log_error(
+                    f"Refus d'écrire {unit_path} : "
+                    "lien symbolique détecté"
+                )
+            else:
+                self.logger.log_error(
+                    f"Erreur lors de l'écriture de {unit_path}: {e}"
+                )
+            return False
+        try:
+            os.fchmod(fd, 0o644)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+        except OSError as e:
+            self.logger.log_error(
+                f"Erreur lors de l'écriture de {unit_path}: {e}"
+            )
+            return False
+        self.logger.log_info(
+            f"Fichier unit utilisateur créé: {unit_path}"
+        )
+        return True
+
+    def _remove_unit_file(self, unit_name: str) -> bool:
+        """Supprime un fichier unit du répertoire utilisateur.
+
+        Utilise try/except au lieu de check-then-remove
+        pour éviter une fenêtre TOCTOU.
+
+        Args:
+            unit_name: Nom du fichier (avec extension).
+
+        Returns:
+            True si succès ou fichier inexistant, False si erreur.
+        """
+        unit_path = os.path.join(self._unit_path, unit_name)
+        try:
+            os.remove(unit_path)
+            self.logger.log_info(
+                f"Fichier unit utilisateur supprimé: {unit_path}"
+            )
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            self.logger.log_error(
+                f"Erreur lors de la suppression de {unit_path}: {e}"
+            )
+            return False
+        return True
 
     def reload_systemd(self) -> bool:
         """

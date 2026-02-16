@@ -151,7 +151,7 @@ class TestGenerateMountUnit:
         assert "Where=/media/nas/backup" in result
         assert "Type=nfs" in result
         assert "[Install]" in result
-        assert "WantedBy=multi-user.target" in result
+        assert "WantedBy=remote-fs.target" in result
 
     def test_mount_with_options_includes_options_line(self):
         """Vérifie que les options de montage sont incluses."""
@@ -226,7 +226,7 @@ class TestGenerateAutomountUnit:
         assert "[Automount]" in result
         assert "Where=/media/nas/backup" in result
         assert "[Install]" in result
-        assert "WantedBy=multi-user.target" in result
+        assert "WantedBy=remote-fs.target" in result
 
     def test_automount_with_timeout_includes_timeout_line(self):
         """Vérifie que le timeout est inclus quand spécifié."""
@@ -548,6 +548,92 @@ class TestMountConfigDataclass:
 
         # Assert
         assert config.options == "ro,noexec"
+
+
+class TestMountConfigValidation:
+    """Tests pour la validation de MountConfig."""
+
+    def test_rejet_where_relatif(self):
+        """Vérifie le rejet d'un chemin relatif pour where."""
+        with pytest.raises(ValueError, match="chemin absolu"):
+            MountConfig(
+                description="Test",
+                what="server:/share",
+                where="mnt/test",
+                type="nfs"
+            )
+
+    def test_rejet_nfs_format_invalide(self):
+        """Vérifie le rejet d'un format NFS invalide."""
+        with pytest.raises(ValueError, match="NFS invalide"):
+            MountConfig(
+                description="Test",
+                what="/just/a/path",
+                where="/mnt/test",
+                type="nfs"
+            )
+
+    def test_rejet_nfs_commence_par_deux_points(self):
+        """Vérifie le rejet NFS commençant par ':'."""
+        with pytest.raises(ValueError, match="NFS invalide"):
+            MountConfig(
+                description="Test",
+                what=":/share",
+                where="/mnt/test",
+                type="nfs4"
+            )
+
+    def test_rejet_cifs_format_invalide(self):
+        """Vérifie le rejet d'un format CIFS invalide."""
+        with pytest.raises(ValueError, match="CIFS invalide"):
+            MountConfig(
+                description="Test",
+                what="server/share",
+                where="/mnt/test",
+                type="cifs"
+            )
+
+    def test_rejet_device_format_invalide(self):
+        """Vérifie le rejet d'un device invalide pour ext4."""
+        with pytest.raises(ValueError, match="device"):
+            MountConfig(
+                description="Test",
+                what="not-a-device",
+                where="/mnt/test",
+                type="ext4"
+            )
+
+    def test_acceptation_device_valide(self):
+        """Vérifie l'acceptation d'un device valide."""
+        config = MountConfig(
+            description="Test",
+            what="/dev/sda1",
+            where="/mnt/test",
+            type="ext4"
+        )
+        assert config.what == "/dev/sda1"
+
+    def test_acceptation_type_inconnu_sans_validation(self):
+        """Vérifie que les types inconnus ne sont pas validés."""
+        config = MountConfig(
+            description="Test",
+            what="custom-source",
+            where="/mnt/test",
+            type="fuse.sshfs"
+        )
+        assert config.what == "custom-source"
+
+
+class TestAutomountConfigValidation:
+    """Tests pour la validation de AutomountConfig."""
+
+    def test_rejet_where_relatif(self):
+        """Vérifie le rejet d'un chemin relatif pour where."""
+        with pytest.raises(ValueError, match="chemin absolu"):
+            AutomountConfig(
+                description="Test",
+                where="mnt/test"
+            )
 
 
 class TestAutomountConfigDataclass:

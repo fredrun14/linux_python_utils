@@ -3,6 +3,7 @@
 import subprocess
 
 from linux_python_utils.logging.base import Logger
+from linux_python_utils.systemd.validators import validate_unit_name
 
 
 class SystemdExecutor:
@@ -72,6 +73,7 @@ class SystemdExecutor:
         Returns:
             True si succès, False sinon
         """
+        validate_unit_name(unit_name.rsplit(".", 1)[0])
         try:
             args = ["enable"]
             if now:
@@ -106,6 +108,7 @@ class SystemdExecutor:
         Returns:
             True si succès, False sinon
         """
+        validate_unit_name(unit_name.rsplit(".", 1)[0])
         try:
             args = ["disable"]
             if now:
@@ -137,6 +140,7 @@ class SystemdExecutor:
         Returns:
             True si succès, False sinon
         """
+        validate_unit_name(unit_name.rsplit(".", 1)[0])
         try:
             self._run_systemctl(["start", unit_name])
             self.logger.log_info(f"Unité {unit_name} démarrée.")
@@ -157,6 +161,7 @@ class SystemdExecutor:
         Returns:
             True si succès, False sinon
         """
+        validate_unit_name(unit_name.rsplit(".", 1)[0])
         try:
             self._run_systemctl(["stop", unit_name])
             self.logger.log_info(f"Unité {unit_name} arrêtée.")
@@ -177,6 +182,7 @@ class SystemdExecutor:
         Returns:
             True si succès, False sinon
         """
+        validate_unit_name(unit_name.rsplit(".", 1)[0])
         try:
             self._run_systemctl(["restart", unit_name])
             self.logger.log_info(f"Unité {unit_name} redémarrée.")
@@ -197,15 +203,17 @@ class SystemdExecutor:
         Returns:
             Statut de l'unité (active, inactive, failed, etc.) ou None
         """
+        validate_unit_name(unit_name.rsplit(".", 1)[0])
         try:
             result = self._run_systemctl(
                 ["is-active", unit_name],
                 check=False
             )
             return result.stdout.strip()
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             self.logger.log_error(
-                f"Erreur lors de la récupération du statut de {unit_name}: {e}"
+                f"Erreur lors de la récupération du statut "
+                f"de {unit_name}: {e}"
             )
             return None
 
@@ -231,13 +239,14 @@ class SystemdExecutor:
         Returns:
             True si activée, False sinon
         """
+        validate_unit_name(unit_name.rsplit(".", 1)[0])
         try:
             result = self._run_systemctl(
                 ["is-enabled", unit_name],
                 check=False
             )
             return result.stdout.strip() == "enabled"
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             self.logger.log_error(
                 f"Erreur lors de la vérification de {unit_name}: {e}"
             )

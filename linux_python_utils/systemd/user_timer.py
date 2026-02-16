@@ -1,12 +1,12 @@
 """Implémentation Linux de la gestion des unités timer utilisateur."""
 
-import os
+import json
 import subprocess
-from pathlib import Path
 
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.systemd.base import UserTimerUnitManager, TimerConfig
 from linux_python_utils.systemd.executor import UserSystemdExecutor
+from linux_python_utils.systemd.validators import validate_unit_name
 
 
 class LinuxUserTimerUnitManager(UserTimerUnitManager):
@@ -37,23 +37,6 @@ class LinuxUserTimerUnitManager(UserTimerUnitManager):
             executor: Instance de UserSystemdExecutor pour les opérations
         """
         super().__init__(logger, executor)
-
-    def _ensure_unit_directory(self) -> bool:
-        """
-        Crée le répertoire des unités utilisateur s'il n'existe pas.
-
-        Returns:
-            True si le répertoire existe ou a été créé, False sinon
-        """
-        try:
-            Path(self.unit_path).mkdir(parents=True, exist_ok=True)
-            return True
-        except OSError as e:
-            self.logger.log_error(
-                f"Erreur lors de la création du répertoire {self.unit_path}: "
-                f"{e}"
-            )
-            return False
 
     def generate_timer_unit(self, config: TimerConfig) -> str:
         """
@@ -93,61 +76,6 @@ class LinuxUserTimerUnitManager(UserTimerUnitManager):
 
         return "\n".join(lines) + "\n"
 
-    def _write_unit_file(self, unit_name: str, content: str) -> bool:
-        """
-        Écrit un fichier unit dans le répertoire utilisateur.
-
-        Args:
-            unit_name: Nom du fichier (avec extension)
-            content: Contenu du fichier
-
-        Returns:
-            True si succès, False sinon
-        """
-        if not self._ensure_unit_directory():
-            return False
-
-        unit_path = os.path.join(self.unit_path, unit_name)
-        if os.path.islink(unit_path):
-            self.logger.log_error(
-                f"Refus d'écrire {unit_path} : lien symbolique détecté"
-            )
-            return False
-        try:
-            with open(unit_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            self.logger.log_info(f"Fichier unit utilisateur créé: {unit_path}")
-            return True
-        except OSError as e:
-            self.logger.log_error(
-                f"Erreur lors de l'écriture de {unit_path}: {e}"
-            )
-            return False
-
-    def _remove_unit_file(self, unit_name: str) -> bool:
-        """
-        Supprime un fichier unit du répertoire utilisateur.
-
-        Args:
-            unit_name: Nom du fichier (avec extension)
-
-        Returns:
-            True si succès ou fichier inexistant, False si erreur
-        """
-        unit_path = os.path.join(self.unit_path, unit_name)
-        try:
-            if os.path.exists(unit_path):
-                os.remove(unit_path)
-                self.logger.log_info(
-                    f"Fichier unit utilisateur supprimé: {unit_path}"
-                )
-            return True
-        except OSError as e:
-            self.logger.log_error(
-                f"Erreur lors de la suppression de {unit_path}: {e}"
-            )
-            return False
-
     def install_timer_unit(self, config: TimerConfig) -> bool:
         """
         Installe une unité .timer utilisateur.
@@ -186,6 +114,7 @@ class LinuxUserTimerUnitManager(UserTimerUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_unit_name(timer_name)
         unit = f"{timer_name}.timer"
         return self.enable(unit)
 
@@ -199,6 +128,7 @@ class LinuxUserTimerUnitManager(UserTimerUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_unit_name(timer_name)
         unit = f"{timer_name}.timer"
         return self.disable(unit)
 
@@ -212,6 +142,7 @@ class LinuxUserTimerUnitManager(UserTimerUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_unit_name(timer_name)
         # D'abord désactiver le timer
         self.disable_timer(timer_name)
 
@@ -236,15 +167,69 @@ class LinuxUserTimerUnitManager(UserTimerUnitManager):
         Returns:
             Statut du timer ou None si erreur
         """
+        validate_unit_name(timer_name)
         return self.get_status(f"{timer_name}.timer")
 
     def list_timers(self) -> list[dict[str, str]]:
-        """
-        Liste tous les timers utilisateur actifs.
+        """Liste tous les timers utilisateur actifs.
+
+        Utilise ``--output=json`` pour un parsing fiable, avec
+        fallback sur le parsing texte si le format JSON n'est pas
+        supporté par la version de systemd installée.
 
         Returns:
-            Liste de dictionnaires avec les infos des timers
-            (next, left, last, passed, unit, activates)
+            Liste de dictionnaires avec les infos des timers.
+
+        Raises:
+            RuntimeError: Si l'exécution de systemctl échoue.
+        """
+        try:
+            result = subprocess.run(
+                ["systemctl", "--user", "list-timers",
+                 "--no-pager", "--output=json"],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+        except (FileNotFoundError, OSError) as e:
+            raise RuntimeError(
+                f"Impossible d'exécuter systemctl : {e}"
+            ) from e
+
+        if result.returncode != 0:
+            if "unknown option" in result.stderr.lower() \
+                    or "invalid option" in result.stderr.lower():
+                return self._list_timers_text_fallback()
+            raise RuntimeError(
+                "Erreur systemctl list-timers --user : "
+                f"{result.stderr}"
+            )
+
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return self._list_timers_text_fallback()
+
+        timers = []
+        for entry in data:
+            timers.append({
+                "unit": entry.get("unit", ""),
+                "activates": entry.get("activates", ""),
+                "next": entry.get("next", ""),
+                "left": entry.get("left", ""),
+                "last": entry.get("last", ""),
+                "passed": entry.get("passed", ""),
+            })
+        return timers
+
+    def _list_timers_text_fallback(self) -> list[dict[str, str]]:
+        """Fallback texte pour list_timers sur vieux systemd.
+
+        Returns:
+            Liste de dictionnaires avec les infos des timers.
+
+        Raises:
+            RuntimeError: Si l'exécution de systemctl échoue.
         """
         try:
             result = subprocess.run(
@@ -254,36 +239,29 @@ class LinuxUserTimerUnitManager(UserTimerUnitManager):
                 text=True,
                 check=False
             )
+        except (FileNotFoundError, OSError) as e:
+            raise RuntimeError(
+                f"Impossible d'exécuter systemctl : {e}"
+            ) from e
 
-            timers = []
-            lines = result.stdout.strip().split("\n")
-
-            # Ignorer l'en-tête et la ligne vide finale
-            for line in lines[1:]:
-                if not line.strip() or line.startswith(" "):
-                    continue
-
-                parts = line.split()
-                if len(parts) >= 6:
-                    # Format: NEXT LEFT LAST PASSED UNIT ACTIVATES
-                    timers.append({
-                        "next": " ".join(parts[0:3]) if len(parts) > 6
-                        else parts[0],
-                        "left": parts[3] if len(parts) > 6 else parts[1],
-                        "last": " ".join(parts[4:7]) if len(parts) > 9
-                        else parts[2],
-                        "passed": parts[7] if len(parts) > 9 else parts[3],
-                        "unit": parts[-2],
-                        "activates": parts[-1]
-                    })
-
-            return timers
-
-        except Exception as e:
-            self.logger.log_error(
-                f"Erreur lors de la récupération des timers utilisateur: {e}"
+        if result.returncode != 0:
+            raise RuntimeError(
+                "Erreur systemctl list-timers --user : "
+                f"{result.stderr}"
             )
-            return []
+
+        timers = []
+        lines = result.stdout.strip().split("\n")
+        for line in lines[1:]:
+            if not line.strip() or line.startswith(" "):
+                continue
+            parts = line.split()
+            if len(parts) >= 2:
+                timers.append({
+                    "unit": parts[-2],
+                    "activates": parts[-1],
+                })
+        return timers
 
     def is_timer_active(self, timer_name: str) -> bool:
         """

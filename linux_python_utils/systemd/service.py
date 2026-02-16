@@ -5,6 +5,7 @@ import os
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.systemd.base import ServiceUnitManager, ServiceConfig
 from linux_python_utils.systemd.executor import SystemdExecutor
+from linux_python_utils.systemd.validators import validate_service_name
 
 
 class LinuxServiceUnitManager(ServiceUnitManager):
@@ -33,68 +34,6 @@ class LinuxServiceUnitManager(ServiceUnitManager):
         """
         super().__init__(logger, executor)
 
-    def _write_unit_file(self, unit_name: str, content: str) -> bool:
-        """
-        Écrit un fichier unit dans le répertoire systemd.
-
-        Args:
-            unit_name: Nom du fichier (avec extension)
-            content: Contenu du fichier
-
-        Returns:
-            True si succès, False sinon
-        """
-        unit_path = os.path.join(self.SYSTEMD_UNIT_PATH, unit_name)
-        if os.path.islink(unit_path):
-            self.logger.log_error(
-                f"Refus d'écrire {unit_path} : lien symbolique détecté"
-            )
-            return False
-        try:
-            with open(unit_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            self.logger.log_info(f"Fichier unit créé: {unit_path}")
-            return True
-        except PermissionError:
-            self.logger.log_error(
-                f"Permission refusée pour écrire {unit_path}. "
-                "Exécution en tant que root requise."
-            )
-            return False
-        except OSError as e:
-            self.logger.log_error(
-                f"Erreur lors de l'écriture de {unit_path}: {e}"
-            )
-            return False
-
-    def _remove_unit_file(self, unit_name: str) -> bool:
-        """
-        Supprime un fichier unit du répertoire systemd.
-
-        Args:
-            unit_name: Nom du fichier (avec extension)
-
-        Returns:
-            True si succès ou fichier inexistant, False si erreur
-        """
-        unit_path = os.path.join(self.SYSTEMD_UNIT_PATH, unit_name)
-        try:
-            if os.path.exists(unit_path):
-                os.remove(unit_path)
-                self.logger.log_info(f"Fichier unit supprimé: {unit_path}")
-            return True
-        except PermissionError:
-            self.logger.log_error(
-                f"Permission refusée pour supprimer {unit_path}. "
-                "Exécution en tant que root requise."
-            )
-            return False
-        except OSError as e:
-            self.logger.log_error(
-                f"Erreur lors de la suppression de {unit_path}: {e}"
-            )
-            return False
-
     def install_service_unit(self, config: ServiceConfig) -> bool:
         """Installe une unité .service.
 
@@ -108,6 +47,13 @@ class LinuxServiceUnitManager(ServiceUnitManager):
         service_name = os.path.basename(
             config.exec_start.split()[0]
         ).replace(".", "-")
+        try:
+            validate_service_name(service_name)
+        except ValueError as e:
+            self.logger.log_error(
+                f"Nom de service invalide : {e}"
+            )
+            return False
 
         service_file = f"{service_name}.service"
         service_content = config.to_unit_file()
@@ -135,6 +81,13 @@ class LinuxServiceUnitManager(ServiceUnitManager):
         Returns:
             True si succès, False sinon.
         """
+        try:
+            validate_service_name(service_name)
+        except ValueError as e:
+            self.logger.log_error(
+                f"Nom de service invalide : {e}"
+            )
+            return False
         service_file = f"{service_name}.service"
         service_content = config.to_unit_file()
 
@@ -157,6 +110,7 @@ class LinuxServiceUnitManager(ServiceUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_service_name(service_name)
         unit = f"{service_name}.service"
         return self.executor.start_unit(unit)
 
@@ -170,6 +124,7 @@ class LinuxServiceUnitManager(ServiceUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_service_name(service_name)
         unit = f"{service_name}.service"
         return self.executor.stop_unit(unit)
 
@@ -183,6 +138,7 @@ class LinuxServiceUnitManager(ServiceUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_service_name(service_name)
         unit = f"{service_name}.service"
         return self.executor.restart_unit(unit)
 
@@ -196,6 +152,7 @@ class LinuxServiceUnitManager(ServiceUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_service_name(service_name)
         unit = f"{service_name}.service"
         return self.enable(unit)
 
@@ -209,6 +166,7 @@ class LinuxServiceUnitManager(ServiceUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_service_name(service_name)
         unit = f"{service_name}.service"
         return self.disable(unit)
 
@@ -222,6 +180,7 @@ class LinuxServiceUnitManager(ServiceUnitManager):
         Returns:
             True si succès, False sinon
         """
+        validate_service_name(service_name)
         # D'abord désactiver et arrêter le service
         self.disable_service(service_name)
 
@@ -244,6 +203,7 @@ class LinuxServiceUnitManager(ServiceUnitManager):
         Returns:
             Statut du service ou None si erreur
         """
+        validate_service_name(service_name)
         return self.get_status(f"{service_name}.service")
 
     def is_service_active(self, service_name: str) -> bool:
@@ -268,4 +228,5 @@ class LinuxServiceUnitManager(ServiceUnitManager):
         Returns:
             True si activé, False sinon
         """
+        validate_service_name(service_name)
         return self.executor.is_enabled(f"{service_name}.service")

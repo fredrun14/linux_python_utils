@@ -1,8 +1,15 @@
 """Tests pour le module systemd.service."""
 
+import os
+import shutil
+import tempfile
+from unittest.mock import MagicMock
+
 import pytest
 
 from linux_python_utils.systemd.base import ServiceConfig
+from linux_python_utils.systemd.service import LinuxServiceUnitManager
+from linux_python_utils.systemd.user_service import LinuxUserServiceUnitManager
 
 
 class TestServiceConfig:
@@ -196,3 +203,214 @@ class TestServiceConfigToUnitFile:
         assert "Environment=CONFIG=/etc/app.conf" in result
         assert "Restart=on-failure" in result
         assert "RestartSec=5" in result
+
+
+class TestServiceNameValidation:
+    """Tests pour la validation des noms de service."""
+
+    def test_rejet_caracteres_speciaux_dans_exec_start(self):
+        """Vérifie le rejet de caractères spéciaux dans le nom extrait."""
+        logger = MagicMock()
+        executor = MagicMock()
+        manager = LinuxServiceUnitManager(logger, executor)
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/cmd;evil"
+        )
+        result = manager.install_service_unit(config)
+        assert result is False
+        logger.log_error.assert_called_once()
+
+    def test_rejet_nom_invalide_install_with_name(self):
+        """Vérifie le rejet d'un nom invalide."""
+        logger = MagicMock()
+        executor = MagicMock()
+        manager = LinuxServiceUnitManager(logger, executor)
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/test"
+        )
+        result = manager.install_service_unit_with_name(
+            "../etc/passwd", config
+        )
+        assert result is False
+        logger.log_error.assert_called_once()
+
+    def test_rejet_nom_invalide_user_service(self):
+        """Vérifie le rejet dans LinuxUserServiceUnitManager."""
+        logger = MagicMock()
+        executor = MagicMock()
+        executor.reload_systemd.return_value = True
+        manager = LinuxUserServiceUnitManager(logger, executor)
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/bad;name"
+        )
+        result = manager.install_service_unit(config)
+        assert result is False
+        logger.log_error.assert_called_once()
+
+    def test_validation_start_service(self):
+        """Vérifie la validation dans start_service."""
+        logger = MagicMock()
+        executor = MagicMock()
+        manager = LinuxServiceUnitManager(logger, executor)
+        with pytest.raises(ValueError, match="invalide"):
+            manager.start_service("../evil")
+
+    def test_validation_stop_service(self):
+        """Vérifie la validation dans stop_service."""
+        logger = MagicMock()
+        executor = MagicMock()
+        manager = LinuxServiceUnitManager(logger, executor)
+        with pytest.raises(ValueError, match="invalide"):
+            manager.stop_service("bad;name")
+
+    def test_validation_enable_service(self):
+        """Vérifie la validation dans enable_service."""
+        logger = MagicMock()
+        executor = MagicMock()
+        manager = LinuxServiceUnitManager(logger, executor)
+        with pytest.raises(ValueError, match="invalide"):
+            manager.enable_service("$injection")
+
+
+class TestServiceConfigValidation:
+    """Tests pour la validation de ServiceConfig."""
+
+    def test_rejet_type_invalide(self):
+        """Vérifie le rejet d'un type de service inconnu."""
+        with pytest.raises(ValueError, match="Type de service invalide"):
+            ServiceConfig(
+                description="Test",
+                exec_start="/usr/bin/test",
+                type="badtype"
+            )
+
+    @pytest.mark.parametrize("svc_type", [
+        "simple", "exec", "forking", "oneshot",
+        "dbus", "notify", "idle",
+    ])
+    def test_types_valides_acceptes(self, svc_type: str):
+        """Vérifie l'acceptation de tous les types systemd valides."""
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/test",
+            type=svc_type
+        )
+        assert config.type == svc_type
+
+    def test_rejet_restart_invalide(self):
+        """Vérifie le rejet d'une politique de redémarrage inconnue."""
+        with pytest.raises(ValueError, match="redémarrage invalide"):
+            ServiceConfig(
+                description="Test",
+                exec_start="/usr/bin/test",
+                restart="bad-policy"
+            )
+
+    @pytest.mark.parametrize("restart", [
+        "no", "always", "on-success", "on-failure",
+        "on-abnormal", "on-abort", "on-watchdog",
+    ])
+    def test_restart_valides_acceptes(self, restart: str):
+        """Vérifie l'acceptation de toutes les politiques de redémarrage."""
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/test",
+            restart=restart
+        )
+        assert config.restart == restart
+
+    def test_rejet_env_cle_avec_newline(self):
+        """Vérifie le rejet d'une clé d'environnement avec newline."""
+        with pytest.raises(ValueError, match="Clé d'environnement"):
+            ServiceConfig(
+                description="Test",
+                exec_start="/usr/bin/test",
+                environment={"BAD\nKEY": "value"}
+            )
+
+    def test_rejet_env_cle_avec_egal(self):
+        """Vérifie le rejet d'une clé d'environnement avec '='."""
+        with pytest.raises(ValueError, match="Clé d'environnement"):
+            ServiceConfig(
+                description="Test",
+                exec_start="/usr/bin/test",
+                environment={"BAD=KEY": "value"}
+            )
+
+    def test_rejet_env_valeur_avec_newline(self):
+        """Vérifie le rejet d'une valeur d'environnement avec newline."""
+        with pytest.raises(ValueError, match="retour à la ligne"):
+            ServiceConfig(
+                description="Test",
+                exec_start="/usr/bin/test",
+                environment={"KEY": "val\nue"}
+            )
+
+
+class TestWriteUnitFileAntiSymlink:
+    """Tests pour la protection anti-symlink TOCTOU de _write_unit_file."""
+
+    def test_write_refuse_lien_symbolique(self):
+        """Vérifie que _write_unit_file refuse d'écrire sur un symlink."""
+        temp_dir = tempfile.mkdtemp()
+        try:
+            logger = MagicMock()
+            executor = MagicMock()
+            manager = LinuxServiceUnitManager(logger, executor)
+            manager.SYSTEMD_UNIT_PATH = temp_dir
+
+            # Créer un symlink
+            target = os.path.join(temp_dir, "target.txt")
+            with open(target, "w") as f:
+                f.write("original")
+            link = os.path.join(temp_dir, "test.service")
+            os.symlink(target, link)
+
+            result = manager._write_unit_file(
+                "test.service", "[Unit]\n"
+            )
+
+            assert result is False
+            logger.log_error.assert_called_once()
+            assert "symbolique" in logger.log_error.call_args[0][0]
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_write_cree_fichier_avec_permissions_644(self):
+        """Vérifie que _write_unit_file crée le fichier en 0o644."""
+        temp_dir = tempfile.mkdtemp()
+        try:
+            logger = MagicMock()
+            executor = MagicMock()
+            manager = LinuxServiceUnitManager(logger, executor)
+            manager.SYSTEMD_UNIT_PATH = temp_dir
+
+            result = manager._write_unit_file(
+                "test.service", "[Unit]\nDescription=Test\n"
+            )
+
+            assert result is True
+            path = os.path.join(temp_dir, "test.service")
+            mode = os.stat(path).st_mode & 0o777
+            assert mode == 0o644
+            with open(path) as f:
+                assert f.read() == "[Unit]\nDescription=Test\n"
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_remove_fichier_inexistant_succeeds(self):
+        """Vérifie que _remove_unit_file réussit sur fichier inexistant."""
+        temp_dir = tempfile.mkdtemp()
+        try:
+            logger = MagicMock()
+            executor = MagicMock()
+            manager = LinuxServiceUnitManager(logger, executor)
+            manager.SYSTEMD_UNIT_PATH = temp_dir
+
+            result = manager._remove_unit_file("nonexistent.service")
+            assert result is True
+        finally:
+            shutil.rmtree(temp_dir)

@@ -23,7 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 make help             # Afficher toutes les commandes disponibles
 make install-dev      # Installer avec dépendances de développement
-make test             # Lancer les tests (229 tests)
+make test             # Lancer les tests (310 tests)
 make test-verbose     # Lancer les tests en mode verbose
 make lint             # Vérifier PEP8
 make clean            # Nettoyer les fichiers générés
@@ -60,7 +60,9 @@ The library uses Abstract Base Classes (ABCs) to define interfaces, with concret
 
 ```
 systemd/
+├── base.py              # ABCs (UnitManager, UserUnitManager) + dataclasses
 ├── executor.py          # SystemdExecutor, UserSystemdExecutor
+├── validators.py        # validate_unit_name(), validate_service_name()
 ├── mount.py             # LinuxMountUnitManager
 ├── timer.py             # LinuxTimerUnitManager
 ├── service.py           # LinuxServiceUnitManager
@@ -161,6 +163,8 @@ config = loader.load("config.toml", schema=MyPydanticModel)
 - **Generic Config Loaders**: `ConfigFileLoader[T]` base class for type-safe loading
 - **Configuration-Driven**: `ConfigurationManager` supports deep merge, search paths, tilde expansion
 - **Fluent Command Builder**: `CommandBuilder` for type-safe command construction
+- **Input Validation**: All unit/service names validated via `validators.py` (regex + anti-traversal)
+- **TOCTOU-safe file I/O**: `os.open(O_NOFOLLOW)` + `os.fchmod(0o644)` in base classes
 - **UTF-8 Throughout**: Explicit UTF-8 encoding (important for French documentation)
 
 ## Public API
