@@ -107,6 +107,7 @@ script_config = loader.load()
 commands/
 ├── base.py        # CommandResult (dataclass) + CommandExecutor (ABC)
 ├── builder.py     # CommandBuilder (fluent API)
+├── formatter.py   # CommandFormatter (ABC) + PlainCommandFormatter + AnsiCommandFormatter
 └── runner.py      # LinuxCommandExecutor (subprocess)
 ```
 
@@ -116,6 +117,7 @@ Build and execute system commands:
 from linux_python_utils.commands import (
     CommandBuilder,
     LinuxCommandExecutor,
+    AnsiCommandFormatter,
 )
 
 # Build a command with fluent API
@@ -128,9 +130,16 @@ cmd = (
     .build()
 )
 
-# Execute with logging
+# Execute with file logging ([ROOT] or [user] prefix)
 executor = LinuxCommandExecutor(logger=logger)
 result = executor.run(cmd)
+print(result.executed_as_root)  # True si uid=0
+
+# Add colored console output (ANSI, auto-disabled outside TTY)
+executor = LinuxCommandExecutor(
+    logger=logger,
+    console_formatter=AnsiCommandFormatter(),
+)
 
 # Stream output in real-time
 result = executor.run_streaming(cmd)

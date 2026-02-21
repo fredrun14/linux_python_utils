@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.3.0] - 2026-02-21
+
+### Nouvelles fonctionnalités
+
+#### Module `commands` — Distinction root/user dans les logs et la console
+
+- **`CommandFormatter` (ABC)** — Interface abstraite de formatage des messages de commandes (nouveau fichier `commands/formatter.py`). Méthodes : `format_start()`, `format_start_streaming()`, `format_dry_run()`, `format_line()`.
+- **`PlainCommandFormatter`** — Formateur texte brut pour les logs fichier : préfixe `[ROOT]` pour les exécutions root (uid=0), préfixe `[user]` pour les utilisateurs standard. Aucun code ANSI : compatible avec `grep`, éditeurs de texte et fichiers de log.
+- **`AnsiCommandFormatter`** — Formateur ANSI coloré pour la console : jaune-or gras (`\033[1;33m`) pour root, vert (`\033[0;32m`) pour user, gris (`\033[0;90m`) pour dry-run. Désactivé automatiquement hors TTY (pipes, redirections).
+- **`CommandResult.executed_as_root`** — Nouveau champ `bool` (défaut `False`) indiquant si la commande a été exécutée avec les privilèges root. Utile pour les appelants souhaitant adapter leur comportement.
+- **`LinuxCommandExecutor`** — Nouveau paramètre `console_formatter: Optional[CommandFormatter]`. Détecte automatiquement `os.getuid() == 0` à l'initialisation. Utilise `PlainCommandFormatter` pour tous les messages logger (logs fichier propres), et le `console_formatter` fourni pour l'affichage console coloré indépendant.
+
+### Utilisation
+
+```python
+# Logs fichier avec préfixe [ROOT]/[user] (comportement par défaut)
+executor = LinuxCommandExecutor(logger=logger)
+
+# Console colorée + logs fichier
+executor = LinuxCommandExecutor(
+    logger=FileLogger("/var/log/app.log"),  # sans console_output=True
+    console_formatter=AnsiCommandFormatter(),
+)
+
+# Accéder au contexte d'exécution
+result = executor.run(["systemctl", "restart", "nginx"])
+print(result.executed_as_root)  # True si lancé en root
+```
+
+### Tests
+
+- +40 nouveaux tests dans `test_commands.py` (34 → 74) :
+  - `TestCommandResultExecutedAsRoot` : valeur par défaut, immutabilité, assignation explicite
+  - `TestPlainCommandFormatter` : préfixes [ROOT]/[user], absence de codes ANSI, format_line
+  - `TestAnsiCommandFormatter` : styles ANSI avec/sans TTY, dry-run en gris, héritage ABC
+  - `TestLinuxCommandExecutorPrefixeLogs` : préfixes dans les messages de log (root et user)
+  - `TestLinuxCommandExecutorConsoleFormatter` : appels formatter sur run/streaming/dry-run
+  - `TestLinuxCommandExecutorExecutedAsRoot` : valeur dans tous les résultats (succès, échec, dry-run)
+- Total : 474 tests (était 310 avant l'ajout du module network et de cette version)
+
+---
+
 ## [1.2.0] - 2026-02-16
 
 ### Sécurité

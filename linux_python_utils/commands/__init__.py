@@ -8,6 +8,9 @@ Classes disponibles :
     CommandExecutor : Interface abstraite pour les exécuteurs.
     CommandBuilder : Constructeur fluent de commandes.
     LinuxCommandExecutor : Exécuteur concret via subprocess.
+    CommandFormatter : Interface abstraite de formatage.
+    PlainCommandFormatter : Formatage texte brut (logs fichier).
+    AnsiCommandFormatter : Formatage ANSI coloré (console).
 """
 
 from linux_python_utils.commands.base import (
@@ -15,6 +18,11 @@ from linux_python_utils.commands.base import (
     CommandExecutor,
 )
 from linux_python_utils.commands.builder import CommandBuilder
+from linux_python_utils.commands.formatter import (
+    CommandFormatter,
+    PlainCommandFormatter,
+    AnsiCommandFormatter,
+)
 from linux_python_utils.commands.runner import (
     LinuxCommandExecutor,
 )
@@ -26,6 +34,10 @@ __all__ = [
     "CommandExecutor",
     # Constructeur
     "CommandBuilder",
+    # Formateurs
+    "CommandFormatter",
+    "PlainCommandFormatter",
+    "AnsiCommandFormatter",
     # Implémentation Linux
     "LinuxCommandExecutor",
 ]

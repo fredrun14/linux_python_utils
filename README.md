@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-310%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-474%20passed-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/Code%20Style-PEP8-black.svg)]()
 [![SOLID](https://img.shields.io/badge/Architecture-SOLID-purple.svg)]()
 
@@ -49,7 +49,7 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 - **✅ Validation** — Validation de chemins et données avec support optionnel Pydantic
 - **🏗️ Architecture SOLID** — ABCs, injection de dépendances, testabilité maximale
 - **🔒 Sécurisé** — Validation des entrées, protection TOCTOU, permissions explicites
-- **🧪 Bien testé** — 310 tests unitaires couvrant tous les modules
+- **🧪 Bien testé** — 474 tests unitaires couvrant tous les modules
 
 ## 📦 Prérequis
 
@@ -538,13 +538,15 @@ print(f"Modifié: {updated}")
 
 ### Module `commands`
 
-Construction fluent et exécution de commandes système.
+Construction fluent et exécution de commandes système. Les commandes root
+et utilisateur sont distinguées visuellement dans les logs et la console.
 
 ```python
 from linux_python_utils import (
     FileLogger,
     CommandBuilder,
     LinuxCommandExecutor,
+    AnsiCommandFormatter,
 )
 
 # Construire une commande avec l'API fluent
@@ -560,15 +562,24 @@ cmd = (
 #             "--compress-level=3", "--stats",
 #             "/src/", "/dest/"]
 
-# Exécuter avec capture de sortie
+# Exécuter — logs fichier avec préfixe [ROOT] ou [user]
 logger = FileLogger("/var/log/commands.log")
 executor = LinuxCommandExecutor(logger=logger)
 result = executor.run(cmd)
 
-print(result.success)      # True/False
-print(result.return_code)  # 0
-print(result.stdout)       # Sortie standard
-print(result.duration)     # Durée en secondes
+print(result.success)           # True/False
+print(result.return_code)       # 0
+print(result.stdout)            # Sortie standard
+print(result.duration)          # Durée en secondes
+print(result.executed_as_root)  # True si lancé en root
+
+# Console colorée (jaune gras=root, vert=user) + logs fichier
+executor = LinuxCommandExecutor(
+    logger=logger,
+    console_formatter=AnsiCommandFormatter(),
+)
+# → fichier log : "[ROOT] Exécution : rsync -av ..."
+# → console     : idem en jaune-or gras si root, vert si user
 
 # Streaming temps réel vers le logger
 result = executor.run_streaming(cmd)
@@ -577,7 +588,7 @@ result = executor.run_streaming(cmd)
 dry_executor = LinuxCommandExecutor(
     logger=logger, dry_run=True
 )
-result = dry_executor.run(cmd)  # Log seulement
+result = dry_executor.run(cmd)  # Log "[user] [dry-run] ..." seulement
 
 # Options conditionnelles
 cmd = (
@@ -791,6 +802,8 @@ logger.log_info("Backup automatique configuré")
 |-----------------|----------------|-------------|
 | `CommandExecutor` | `LinuxCommandExecutor` | Exécution subprocess |
 | — | `CommandBuilder` | Construction fluent de commandes |
+| `CommandFormatter` | `PlainCommandFormatter` | Formatage texte brut (logs fichier) |
+| `CommandFormatter` | `AnsiCommandFormatter` | Formatage ANSI coloré (console) |
 
 #### Module `scripts`
 
@@ -814,7 +827,7 @@ logger.log_info("Backup automatique configuré")
 | `ServiceConfig` | Configuration d'une unité .service |
 | `BashScriptConfig` | Configuration d'un script bash |
 | `NotificationConfig` | Configuration des notifications desktop |
-| `CommandResult` | Résultat d'exécution de commande |
+| `CommandResult` | Résultat d'exécution de commande (inclut `executed_as_root`) |
 | `ValidatedSection` | Section INI avec validation externe |
 
 ## 🏗️ Architecture des Classes
@@ -968,6 +981,7 @@ linux-python-utils/
 │   │   ├── __init__.py
 │   │   ├── base.py              # CommandResult + ABC CommandExecutor
 │   │   ├── builder.py           # CommandBuilder (API fluent)
+│   │   ├── formatter.py         # CommandFormatter ABC + Plain + Ansi
 │   │   └── runner.py            # LinuxCommandExecutor (subprocess)
 │   ├── scripts/
 │   │   ├── __init__.py
@@ -1046,11 +1060,11 @@ make all
 | `test_systemd_scheduled_task.py` | 12 | SystemdScheduledTaskInstaller |
 | `test_systemd_config_loaders.py` | 30 | Tous les loaders (TOML/JSON) |
 | `test_dotconf.py` | 20 | Sections INI, validation, lecture/écriture |
-| `test_commands.py` | 34 | CommandBuilder, exécution, streaming, dry-run |
+| `test_commands.py` | 74 | CommandBuilder, formatters, exécution, streaming, dry-run, root/user |
 | `test_scripts.py` | 19 | BashScriptConfig, installation scripts |
 | `test_notification.py` | 13 | NotificationConfig, génération bash |
 | `test_validation.py` | 5 | PathChecker, permissions |
-| **Total** | **310** | |
+| **Total** | **474** | |
 
 ### Tests Paramétrés
 

@@ -1,0 +1,288 @@
+"""Rapports et exports de peripheriques reseau.
+
+Ce module fournit les implementations de DeviceReporter
+pour generer des rapports en console, CSV, JSON et diff.
+"""
+
+import csv
+import io
+import json
+from typing import List, Optional
+
+from linux_python_utils.logging.base import Logger
+from linux_python_utils.network.base import DeviceReporter
+from linux_python_utils.network.models import NetworkDevice
+
+
+def _sort_by_ip(
+    devices: List[NetworkDevice],
+) -> List[NetworkDevice]:
+    """Trie les peripheriques par IP (octet par octet).
+
+    Args:
+        devices: Liste des peripheriques.
+
+    Returns:
+        Liste triee.
+    """
+    return sorted(
+        devices,
+        key=lambda d: [int(o) for o in d.ip.split(".")],
+    )
+
+
+class ConsoleTableReporter(DeviceReporter):
+    """Rapport en tableau formate pour la console.
+
+    Attributes:
+        _logger: Logger optionnel.
+    """
+
+    def __init__(
+        self, logger: Optional[Logger] = None
+    ) -> None:
+        """Initialise le reporter console.
+
+        Args:
+            logger: Logger optionnel.
+        """
+        self._logger = logger
+
+    def report(
+        self, devices: List[NetworkDevice]
+    ) -> str:
+        """Genere un tableau formate des peripheriques.
+
+        Args:
+            devices: Liste des peripheriques.
+
+        Returns:
+            Tableau formate pour la console.
+        """
+        cols = [
+            ("IP", 16),
+            ("MAC", 18),
+            ("Hostname", 12),
+            ("Vendor", 15),
+            ("Type", 8),
+            ("IP Fixe", 16),
+            ("DNS", 20),
+            ("Connu", 5),
+        ]
+        header = "".join(
+            name.ljust(width) for name, width in cols
+        )
+        sep = "".join("-" * width for _, width in cols)
+        lines = [header, sep]
+
+        if not devices:
+            lines.append("Aucun peripherique")
+        else:
+            for d in _sort_by_ip(devices):
+                line = (
+                    d.ip.ljust(16)
+                    + d.mac.ljust(18)
+                    + d.hostname.ljust(12)
+                    + d.vendor[:14].ljust(15)
+                    + d.device_type.ljust(8)
+                    + (d.fixed_ip or "").ljust(16)
+                    + (d.dns_name or "")[:19].ljust(20)
+                    + ("Oui" if d.is_known
+                       else "Non").ljust(5)
+                )
+                lines.append(line)
+
+        total = len(devices)
+        connus = sum(1 for d in devices if d.is_known)
+        nouveaux = total - connus
+        lines.append(sep)
+        lines.append(
+            f"Total : {total} | Connus : {connus} | "
+            f"Nouveaux : {nouveaux}"
+        )
+        return "\n".join(lines) + "\n"
+
+
+class CsvReporter(DeviceReporter):
+    """Rapport au format CSV.
+
+    Attributes:
+        _logger: Logger optionnel.
+    """
+
+    FIELDNAMES = [
+        "ip", "mac", "hostname", "vendor",
+        "device_type", "is_known", "fixed_ip",
+        "dns_name", "first_seen", "last_seen", "notes",
+    ]
+
+    def __init__(
+        self, logger: Optional[Logger] = None
+    ) -> None:
+        """Initialise le reporter CSV.
+
+        Args:
+            logger: Logger optionnel.
+        """
+        self._logger = logger
+
+    def report(
+        self, devices: List[NetworkDevice]
+    ) -> str:
+        """Genere un rapport CSV des peripheriques.
+
+        Args:
+            devices: Liste des peripheriques.
+
+        Returns:
+            Contenu CSV.
+        """
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(self.FIELDNAMES)
+        for d in devices:
+            writer.writerow([
+                d.ip,
+                d.mac,
+                d.hostname,
+                d.vendor,
+                d.device_type,
+                d.is_known,
+                d.fixed_ip or "",
+                d.dns_name or "",
+                d.first_seen.isoformat(),
+                d.last_seen.isoformat(),
+                d.notes,
+            ])
+        return output.getvalue()
+
+
+class JsonReporter(DeviceReporter):
+    """Rapport au format JSON.
+
+    Attributes:
+        _logger: Logger optionnel.
+    """
+
+    def __init__(
+        self, logger: Optional[Logger] = None
+    ) -> None:
+        """Initialise le reporter JSON.
+
+        Args:
+            logger: Logger optionnel.
+        """
+        self._logger = logger
+
+    def report(
+        self, devices: List[NetworkDevice]
+    ) -> str:
+        """Genere un rapport JSON des peripheriques.
+
+        Args:
+            devices: Liste des peripheriques.
+
+        Returns:
+            Contenu JSON.
+        """
+        return json.dumps(
+            [d.to_dict() for d in devices],
+            indent=2,
+            ensure_ascii=False,
+        )
+
+
+class DiffReporter(DeviceReporter):
+    """Rapport de differences entre scan et inventaire.
+
+    Attributes:
+        _new_devices: Nouveaux peripheriques decouverts.
+        _disappeared: Peripheriques disparus.
+        _logger: Logger optionnel.
+    """
+
+    def __init__(
+        self,
+        new_devices: List[NetworkDevice],
+        disappeared: List[NetworkDevice],
+        logger: Optional[Logger] = None,
+    ) -> None:
+        """Initialise le reporter de differences.
+
+        Args:
+            new_devices: Nouveaux peripheriques.
+            disappeared: Peripheriques disparus.
+            logger: Logger optionnel.
+        """
+        self._new_devices = new_devices
+        self._disappeared = disappeared
+        self._logger = logger
+
+    def report(
+        self, devices: List[NetworkDevice]
+    ) -> str:
+        """Genere un rapport des differences.
+
+        Args:
+            devices: Liste complete des peripheriques
+                (non utilisee directement, le diff utilise
+                new_devices et disappeared).
+
+        Returns:
+            Rapport de differences formate.
+        """
+        lines: List[str] = []
+
+        if not self._new_devices and not self._disappeared:
+            lines.append("Aucun changement detecte.")
+            return "\n".join(lines) + "\n"
+
+        if self._new_devices:
+            lines.append(
+                f"=== Nouveaux peripheriques "
+                f"({len(self._new_devices)}) ==="
+            )
+            for d in self._new_devices:
+                lines.append(
+                    f"  + {d.ip:<16} {d.mac:<18} "
+                    f"{d.vendor}"
+                )
+            lines.append("")
+
+        if self._disappeared:
+            lines.append(
+                f"=== Peripheriques disparus "
+                f"({len(self._disappeared)}) ==="
+            )
+            for d in self._disappeared:
+                lines.append(
+                    f"  - {d.ip:<16} {d.mac:<18} "
+                    f"{d.vendor}"
+                )
+            lines.append("")
+
+        ip_changed = [
+            d for d in devices
+            if d.fixed_ip and d.ip != d.fixed_ip
+        ]
+        if ip_changed:
+            lines.append(
+                "=== IP changee ==="
+            )
+            for d in ip_changed:
+                lines.append(
+                    f"  ~ {d.mac:<18} "
+                    f"{d.fixed_ip} -> {d.ip}"
+                )
+            lines.append("")
+
+        total_changes = (
+            len(self._new_devices)
+            + len(self._disappeared)
+        )
+        lines.append(
+            f"Resume : {len(self._new_devices)} "
+            f"nouveau(x), "
+            f"{len(self._disappeared)} disparu(s)"
+        )
+        return "\n".join(lines) + "\n"

@@ -13,6 +13,8 @@ Modules disponibles:
 - commands: Exécution de commandes système (CommandBuilder,
   LinuxCommandExecutor)
 - validation: Validation de chemins et données (Validator, PathChecker)
+- network: Gestion des peripheriques reseau (scanners, inventaire,
+  DHCP, DNS, rapports)
 """
 
 __version__ = "1.0.0"
@@ -92,11 +94,48 @@ from linux_python_utils.commands import (
     CommandResult,
     CommandExecutor,
     CommandBuilder,
+    CommandFormatter,
+    PlainCommandFormatter,
+    AnsiCommandFormatter,
     LinuxCommandExecutor,
 )
 from linux_python_utils.validation import (
     Validator,
     PathChecker,
+)
+from linux_python_utils.network import (
+    # Modeles
+    NetworkDevice,
+    # Configuration
+    NetworkConfig,
+    DhcpRange,
+    DnsConfig,
+    # ABCs
+    NetworkScanner,
+    DeviceRepository,
+    DhcpReservationManager,
+    DnsManager,
+    DeviceReporter,
+    # Scanners
+    LinuxArpScanner,
+    LinuxNmapScanner,
+    # Repository
+    JsonDeviceRepository,
+    # DHCP
+    LinuxDhcpReservationManager,
+    # DNS
+    LinuxHostsFileManager,
+    LinuxDnsmasqConfigGenerator,
+    # Rapports
+    ConsoleTableReporter,
+    CsvReporter,
+    JsonReporter,
+    DiffReporter,
+    # Validateurs
+    validate_ipv4,
+    validate_mac,
+    validate_cidr,
+    validate_hostname,
 )
 
 __all__ = [
@@ -175,9 +214,45 @@ __all__ = [
     "CommandExecutor",
     # Commands - Constructeur
     "CommandBuilder",
+    # Commands - Formateurs
+    "CommandFormatter",
+    "PlainCommandFormatter",
+    "AnsiCommandFormatter",
     # Commands - Implémentation
     "LinuxCommandExecutor",
     # Validation
     "Validator",
     "PathChecker",
+    # Network - Modeles
+    "NetworkDevice",
+    # Network - Configuration
+    "NetworkConfig",
+    "DhcpRange",
+    "DnsConfig",
+    # Network - ABCs
+    "NetworkScanner",
+    "DeviceRepository",
+    "DhcpReservationManager",
+    "DnsManager",
+    "DeviceReporter",
+    # Network - Scanners
+    "LinuxArpScanner",
+    "LinuxNmapScanner",
+    # Network - Repository
+    "JsonDeviceRepository",
+    # Network - DHCP
+    "LinuxDhcpReservationManager",
+    # Network - DNS
+    "LinuxHostsFileManager",
+    "LinuxDnsmasqConfigGenerator",
+    # Network - Rapports
+    "ConsoleTableReporter",
+    "CsvReporter",
+    "JsonReporter",
+    "DiffReporter",
+    # Network - Validateurs
+    "validate_ipv4",
+    "validate_mac",
+    "validate_cidr",
+    "validate_hostname",
 ]

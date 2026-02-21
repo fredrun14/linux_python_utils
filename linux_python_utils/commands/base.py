@@ -22,6 +22,7 @@ class CommandResult:
         stderr: Sortie d'erreur capturée.
         success: True si la commande a réussi (code 0).
         duration: Durée d'exécution en secondes.
+        executed_as_root: True si la commande a été exécutée en root.
     """
 
     command: List[str]
@@ -30,6 +31,7 @@ class CommandResult:
     stderr: str
     success: bool
     duration: float
+    executed_as_root: bool = False
 
 
 class CommandExecutor(ABC):

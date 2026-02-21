@@ -4,26 +4,35 @@ Ce module fournit LinuxCommandExecutor, une implémentation concrète
 de CommandExecutor qui utilise subprocess pour exécuter des commandes
 sur un système Linux.
 
-Example:
-    Exécution simple :
+Les commandes exécutées par root sont distinguées visuellement des
+commandes utilisateur :
+    - Dans les logs fichier : préfixe textuel [ROOT] ou [user]
+    - En console (optionnel) : codes ANSI couleur + gras via
+      AnsiCommandFormatter
 
-        from linux_python_utils.commands import (
-            LinuxCommandExecutor,
-        )
+Example :
+    Exécution simple avec logs fichier uniquement :
 
-        executor = LinuxCommandExecutor()
+        from linux_python_utils.commands import LinuxCommandExecutor
+
+        executor = LinuxCommandExecutor(logger=logger)
         result = executor.run(["ls", "-la"])
         print(result.stdout)
+        print(result.executed_as_root)  # True si lancé en root
 
-    Exécution avec streaming vers un logger :
+    Exécution avec affichage console coloré en plus des logs :
 
         from linux_python_utils import FileLogger
         from linux_python_utils.commands import (
             LinuxCommandExecutor,
+            AnsiCommandFormatter,
         )
 
         logger = FileLogger("/var/log/app.log")
-        executor = LinuxCommandExecutor(logger=logger)
+        executor = LinuxCommandExecutor(
+            logger=logger,
+            console_formatter=AnsiCommandFormatter(),
+        )
         result = executor.run_streaming(
             ["rsync", "-av", "/src", "/dst"]
         )
@@ -38,6 +47,10 @@ from linux_python_utils.commands.base import (
     CommandExecutor,
     CommandResult,
 )
+from linux_python_utils.commands.formatter import (
+    CommandFormatter,
+    PlainCommandFormatter,
+)
 from linux_python_utils.logging.base import Logger
 
 
@@ -48,11 +61,22 @@ class LinuxCommandExecutor(CommandExecutor):
     en temps réel vers un logger. Le mode dry_run permet de
     simuler l'exécution sans lancer de processus.
 
+    Les messages de log utilisent PlainCommandFormatter avec les
+    préfixes [ROOT] ou [user] selon les privilèges détectés à
+    l'initialisation via os.getuid().
+
+    Un console_formatter optionnel (ex: AnsiCommandFormatter)
+    permet d'afficher en parallèle des messages colorés sur stdout,
+    indépendamment du logger fichier.
+
     Attributes:
-        _logger: Logger optionnel.
+        _logger: Logger optionnel pour les logs fichier.
         _default_env: Variables d'environnement par défaut.
         _default_timeout: Timeout par défaut en secondes.
         _dry_run: Mode simulation.
+        _is_root: True si le processus courant est root (uid 0).
+        _plain: Formateur texte brut pour les logs fichier.
+        _console_formatter: Formateur optionnel pour la console.
     """
 
     def __init__(
@@ -61,20 +85,31 @@ class LinuxCommandExecutor(CommandExecutor):
         default_env: Optional[Dict[str, str]] = None,
         default_timeout: Optional[int] = None,
         dry_run: bool = False,
+        console_formatter: Optional[CommandFormatter] = None,
     ) -> None:
         """Initialise l'exécuteur de commandes.
 
+        Détecte automatiquement si le processus courant s'exécute
+        en root via os.getuid() == 0.
+
         Args:
-            logger: Logger optionnel pour les sorties.
+            logger: Logger optionnel pour les sorties fichier.
             default_env: Variables d'environnement par défaut
                 (fusionnées avec os.environ).
             default_timeout: Timeout par défaut en secondes.
             dry_run: Si True, simule sans exécuter.
+            console_formatter: Formateur optionnel pour la console
+                (ex: AnsiCommandFormatter()). Indépendant du logger :
+                utiliser FileLogger sans console_output=True pour
+                éviter la duplication de sortie console.
         """
         self._logger = logger
         self._default_env = default_env
         self._default_timeout = default_timeout
         self._dry_run = dry_run
+        self._is_root: bool = os.getuid() == 0
+        self._plain = PlainCommandFormatter()
+        self._console_formatter = console_formatter
 
     def _build_env(
         self,
@@ -120,6 +155,35 @@ class LinuxCommandExecutor(CommandExecutor):
             return timeout
         return self._default_timeout
 
+    def _log(self, message: str) -> None:
+        """Envoie un message au logger fichier si disponible.
+
+        Args:
+            message: Message à logger.
+        """
+        if self._logger:
+            self._logger.log_info(message)
+
+    def _log_error(self, message: str) -> None:
+        """Envoie un message d'erreur au logger si disponible.
+
+        Args:
+            message: Message d'erreur à logger.
+        """
+        if self._logger:
+            self._logger.log_error(message)
+
+    def _console(self, message: str) -> None:
+        """Affiche un message sur la console via le formatter.
+
+        N'affiche rien si aucun console_formatter n'est configuré.
+
+        Args:
+            message: Message à afficher sur la console.
+        """
+        if self._console_formatter:
+            print(message)
+
     def _make_dry_run_result(
         self,
         command: List[str],
@@ -132,11 +196,18 @@ class LinuxCommandExecutor(CommandExecutor):
         Returns:
             CommandResult avec code retour 0.
         """
-        cmd_str = " ".join(command)
-        if self._logger:
-            self._logger.log_info(
-                f"[dry-run] {cmd_str}"
+        plain_msg = self._plain.format_dry_run(
+            command, self._is_root
+        )
+        self._log(plain_msg)
+
+        if self._console_formatter:
+            self._console(
+                self._console_formatter.format_dry_run(
+                    command, self._is_root
+                )
             )
+
         return CommandResult(
             command=command,
             return_code=0,
@@ -144,6 +215,7 @@ class LinuxCommandExecutor(CommandExecutor):
             stderr="",
             success=True,
             duration=0.0,
+            executed_as_root=self._is_root,
         )
 
     def run(
@@ -156,6 +228,8 @@ class LinuxCommandExecutor(CommandExecutor):
         """Exécute une commande et retourne le résultat.
 
         Utilise subprocess.run pour capturer stdout et stderr.
+        Préfixe les messages de log avec [ROOT] ou [user] selon
+        les privilèges détectés à l'initialisation.
 
         Args:
             command: Commande sous forme de liste.
@@ -164,7 +238,8 @@ class LinuxCommandExecutor(CommandExecutor):
             timeout: Timeout en secondes (prioritaire).
 
         Returns:
-            CommandResult avec les sorties capturées.
+            CommandResult avec les sorties capturées et
+            executed_as_root indiquant le contexte d'exécution.
         """
         if self._dry_run:
             return self._make_dry_run_result(command)
@@ -172,9 +247,16 @@ class LinuxCommandExecutor(CommandExecutor):
         effective_env = self._build_env(env)
         effective_timeout = self._resolve_timeout(timeout)
 
-        if self._logger:
-            self._logger.log_info(
-                f"Exécution : {' '.join(command)}"
+        plain_msg = self._plain.format_start(
+            command, self._is_root
+        )
+        self._log(plain_msg)
+
+        if self._console_formatter:
+            self._console(
+                self._console_formatter.format_start(
+                    command, self._is_root
+                )
             )
 
         start = time.monotonic()
@@ -195,14 +277,14 @@ class LinuxCommandExecutor(CommandExecutor):
                 stderr=proc.stderr,
                 success=proc.returncode == 0,
                 duration=duration,
+                executed_as_root=self._is_root,
             )
         except subprocess.TimeoutExpired as e:
             duration = time.monotonic() - start
-            if self._logger:
-                self._logger.log_error(
-                    f"Timeout après {effective_timeout}s : "
-                    f"{' '.join(command)}"
-                )
+            self._log_error(
+                f"Timeout après {effective_timeout}s : "
+                f"{' '.join(command)}"
+            )
             return CommandResult(
                 command=command,
                 return_code=-1,
@@ -210,13 +292,11 @@ class LinuxCommandExecutor(CommandExecutor):
                 stderr=e.stderr or "",
                 success=False,
                 duration=duration,
+                executed_as_root=self._is_root,
             )
         except OSError as e:
             duration = time.monotonic() - start
-            if self._logger:
-                self._logger.log_error(
-                    f"Erreur système : {e}"
-                )
+            self._log_error(f"Erreur système : {e}")
             return CommandResult(
                 command=command,
                 return_code=-1,
@@ -224,6 +304,7 @@ class LinuxCommandExecutor(CommandExecutor):
                 stderr=str(e),
                 success=False,
                 duration=duration,
+                executed_as_root=self._is_root,
             )
 
     def run_streaming(
@@ -246,7 +327,8 @@ class LinuxCommandExecutor(CommandExecutor):
             timeout: Timeout en secondes (prioritaire).
 
         Returns:
-            CommandResult avec les sorties capturées.
+            CommandResult avec les sorties capturées et
+            executed_as_root indiquant le contexte d'exécution.
         """
         if self._dry_run:
             return self._make_dry_run_result(command)
@@ -254,10 +336,16 @@ class LinuxCommandExecutor(CommandExecutor):
         effective_env = self._build_env(env)
         effective_timeout = self._resolve_timeout(timeout)
 
-        if self._logger:
-            self._logger.log_info(
-                f"Exécution (streaming) : "
-                f"{' '.join(command)}"
+        plain_msg = self._plain.format_start_streaming(
+            command, self._is_root
+        )
+        self._log(plain_msg)
+
+        if self._console_formatter:
+            self._console(
+                self._console_formatter.format_start_streaming(
+                    command, self._is_root
+                )
             )
 
         start = time.monotonic()
@@ -274,8 +362,17 @@ class LinuxCommandExecutor(CommandExecutor):
                 for line in proc.stdout:
                     stripped = line.rstrip("\n")
                     stdout_lines.append(stripped)
-                    if self._logger:
-                        self._logger.log_info(stripped)
+                    self._log(
+                        self._plain.format_line(
+                            stripped, self._is_root
+                        )
+                    )
+                    if self._console_formatter:
+                        self._console(
+                            self._console_formatter.format_line(
+                                stripped, self._is_root
+                            )
+                        )
 
                 proc.wait(timeout=effective_timeout)
                 stderr = proc.stderr.read()
@@ -288,6 +385,7 @@ class LinuxCommandExecutor(CommandExecutor):
                     stderr=stderr,
                     success=proc.returncode == 0,
                     duration=duration,
+                    executed_as_root=self._is_root,
                 )
         except subprocess.TimeoutExpired:
             proc.kill()
@@ -296,11 +394,10 @@ class LinuxCommandExecutor(CommandExecutor):
             stderr = ""
             if proc.stderr:
                 stderr = proc.stderr.read()
-            if self._logger:
-                self._logger.log_error(
-                    f"Timeout après {effective_timeout}s : "
-                    f"{' '.join(command)}"
-                )
+            self._log_error(
+                f"Timeout après {effective_timeout}s : "
+                f"{' '.join(command)}"
+            )
             return CommandResult(
                 command=command,
                 return_code=-1,
@@ -308,13 +405,11 @@ class LinuxCommandExecutor(CommandExecutor):
                 stderr=stderr,
                 success=False,
                 duration=duration,
+                executed_as_root=self._is_root,
             )
         except OSError as e:
             duration = time.monotonic() - start
-            if self._logger:
-                self._logger.log_error(
-                    f"Erreur système : {e}"
-                )
+            self._log_error(f"Erreur système : {e}")
             return CommandResult(
                 command=command,
                 return_code=-1,
@@ -322,4 +417,5 @@ class LinuxCommandExecutor(CommandExecutor):
                 stderr=str(e),
                 success=False,
                 duration=duration,
+                executed_as_root=self._is_root,
             )
