@@ -15,6 +15,7 @@ Modules disponibles:
 - validation: Validation de chemins et données (Validator, PathChecker)
 - network: Gestion des peripheriques reseau (scanners, inventaire,
   DHCP, DNS, rapports)
+- credentials: Gestion des secrets (env, .env, keyring systeme)
 """
 
 __version__ = "1.0.0"
@@ -102,6 +103,25 @@ from linux_python_utils.commands import (
 from linux_python_utils.validation import (
     Validator,
     PathChecker,
+)
+from linux_python_utils.credentials import (
+    # ABCs
+    CredentialProvider,
+    CredentialStore,
+    # Modeles
+    Credential,
+    CredentialKey,
+    # Exceptions
+    CredentialNotFoundError,
+    CredentialProviderUnavailableError,
+    CredentialStoreError,
+    # Providers
+    EnvCredentialProvider,
+    DotEnvCredentialProvider,
+    KeyringCredentialProvider,
+    # Chaine et facade
+    CredentialChain,
+    CredentialManager,
 )
 from linux_python_utils.network import (
     # Modeles
@@ -223,6 +243,23 @@ __all__ = [
     # Validation
     "Validator",
     "PathChecker",
+    # Credentials - ABCs
+    "CredentialProvider",
+    "CredentialStore",
+    # Credentials - Modeles
+    "Credential",
+    "CredentialKey",
+    # Credentials - Exceptions
+    "CredentialNotFoundError",
+    "CredentialProviderUnavailableError",
+    "CredentialStoreError",
+    # Credentials - Providers
+    "EnvCredentialProvider",
+    "DotEnvCredentialProvider",
+    "KeyringCredentialProvider",
+    # Credentials - Chaine et facade
+    "CredentialChain",
+    "CredentialManager",
     # Network - Modeles
     "NetworkDevice",
     # Network - Configuration

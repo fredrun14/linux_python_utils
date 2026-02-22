@@ -46,7 +46,8 @@ class NetworkDevice:
 
     def __post_init__(self) -> None:
         """Valide les champs apres initialisation."""
-        validate_ipv4(self.ip)
+        if self.ip:
+            validate_ipv4(self.ip)
         normalized_mac = validate_mac(self.mac)
         if normalized_mac != self.mac:
             object.__setattr__(self, "mac", normalized_mac)

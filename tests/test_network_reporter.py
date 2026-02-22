@@ -80,6 +80,33 @@ class TestConsoleTableReporter:
         assert "Connus : 1" in output
         assert "Nouveaux : 1" in output
 
+    def test_appareil_sans_ip_affiche_hors_ligne(
+        self,
+    ) -> None:
+        """Un appareil avec ip='' affiche '(hors ligne)'."""
+        reporter = ConsoleTableReporter()
+        devices = [
+            _device("", "aa:bb:cc:dd:ee:ff", hostname="Thermo")
+        ]
+        output = reporter.report(devices)
+        assert "(hors ligne)" in output
+
+    def test_appareils_sans_ip_tries_en_fin(self) -> None:
+        """Les appareils sans IP apparaissent apres ceux avec IP."""
+        reporter = ConsoleTableReporter()
+        devices = [
+            _device("", "aa:bb:cc:dd:ee:01", hostname="Offline"),
+            _device("192.168.1.5", "aa:bb:cc:dd:ee:02"),
+            _device("192.168.1.1", "aa:bb:cc:dd:ee:03"),
+        ]
+        output = reporter.report(devices)
+        lines = [
+            l for l in output.split("\n")
+            if "192.168.1." in l or "(hors ligne)" in l
+        ]
+        # Les deux appareils avec IP doivent preceder l'offline
+        assert "(hors ligne)" in lines[-1]
+
 
 class TestCsvReporter:
     """Tests pour CsvReporter."""

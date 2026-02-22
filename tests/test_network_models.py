@@ -154,3 +154,32 @@ class TestNetworkDevice:
         assert device.fixed_ip is None
         assert device.dns_name is None
         assert device.notes == ""
+
+    def test_ip_vide_acceptee(self) -> None:
+        """IP vide acceptee pour les appareils hors ligne."""
+        device = NetworkDevice(
+            ip="", mac="aa:bb:cc:dd:ee:ff"
+        )
+        assert device.ip == ""
+
+    def test_ip_invalide_leve_erreur(self) -> None:
+        """IP non vide et invalide leve ValueError."""
+        with pytest.raises(ValueError):
+            NetworkDevice(
+                ip="999.1.1.1", mac="aa:bb:cc:dd:ee:ff"
+            )
+
+    def test_roundtrip_ip_vide(self) -> None:
+        """to_dict / from_dict conserve ip vide."""
+        from datetime import datetime
+        now = datetime(2026, 1, 15, 10, 30, 0)
+        device = NetworkDevice(
+            ip="",
+            mac="aa:bb:cc:dd:ee:ff",
+            hostname="Thermomix",
+            first_seen=now,
+            last_seen=now,
+        )
+        restored = NetworkDevice.from_dict(device.to_dict())
+        assert restored.ip == ""
+        assert restored.hostname == "Thermomix"

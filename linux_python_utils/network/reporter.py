@@ -19,16 +19,21 @@ def _sort_by_ip(
 ) -> List[NetworkDevice]:
     """Trie les peripheriques par IP (octet par octet).
 
+    Les appareils sans IP (hors ligne) sont places en fin
+    de liste, tries par adresse MAC.
+
     Args:
         devices: Liste des peripheriques.
 
     Returns:
         Liste triee.
     """
-    return sorted(
-        devices,
-        key=lambda d: [int(o) for o in d.ip.split(".")],
-    )
+    def _key(d: NetworkDevice):
+        if d.ip:
+            return (0, [int(o) for o in d.ip.split(".")], "")
+        return (1, [], d.mac)
+
+    return sorted(devices, key=_key)
 
 
 class ConsoleTableReporter(DeviceReporter):
@@ -79,8 +84,9 @@ class ConsoleTableReporter(DeviceReporter):
             lines.append("Aucun peripherique")
         else:
             for d in _sort_by_ip(devices):
+                ip_display = d.ip if d.ip else "(hors ligne)"
                 line = (
-                    d.ip.ljust(16)
+                    ip_display.ljust(16)
                     + d.mac.ljust(18)
                     + d.hostname.ljust(12)
                     + d.vendor[:14].ljust(15)
@@ -243,9 +249,11 @@ class DiffReporter(DeviceReporter):
                 f"({len(self._new_devices)}) ==="
             )
             for d in self._new_devices:
+                ip_str = d.ip if d.ip else "(hors ligne)"
+                label = d.hostname or d.vendor
                 lines.append(
-                    f"  + {d.ip:<16} {d.mac:<18} "
-                    f"{d.vendor}"
+                    f"  + {ip_str:<16} {d.mac:<18} "
+                    f"{label}"
                 )
             lines.append("")
 
@@ -255,9 +263,11 @@ class DiffReporter(DeviceReporter):
                 f"({len(self._disappeared)}) ==="
             )
             for d in self._disappeared:
+                ip_str = d.ip if d.ip else "(hors ligne)"
+                label = d.hostname or d.vendor
                 lines.append(
-                    f"  - {d.ip:<16} {d.mac:<18} "
-                    f"{d.vendor}"
+                    f"  - {ip_str:<16} {d.mac:<18} "
+                    f"{label}"
                 )
             lines.append("")
 

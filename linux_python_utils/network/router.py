@@ -4,15 +4,13 @@ Ce module fournit l'acces a l'API locale du routeur ASUS
 pour scanner les clients connectes, lire les baux DHCP et
 pousser les reservations statiques directement sur le routeur.
 
-Credentials requis via variables d'environnement :
-    ASUS_ROUTER_USER     (defaut : admin)
-    ASUS_ROUTER_PASSWORD (defaut : chaine vide)
+Les credentials (username/password) sont resolus par la
+couche CLI avant d'etre passes via RouterConfig.
 """
 
 import base64
 import dataclasses
 import json
-import os
 import re
 import urllib.parse
 import urllib.request
@@ -109,6 +107,46 @@ def _infer_type_from_vendor(vendor: str) -> str:
     return "unknown"
 
 
+def _parse_custom_clientlist(
+    raw: str,
+) -> Dict[str, str]:
+    """Parse la chaine NVRAM custom_clientlist.
+
+    Extrait tous les appareils memorises par le routeur,
+    y compris ceux hors ligne.
+
+    Le firmware ASUS encode les < et > en entites HTML
+    (&#60 et &#62). Ce decodage est applique avant le
+    parsing.
+
+    Format apres decodage : <nickName>MAC>type>...>
+    Exemple : <Shield>48:B0:2D:03:1E:EA>5>
+
+    Args:
+        raw: Valeur NVRAM custom_clientlist (encodee HTML).
+
+    Returns:
+        Dict {mac_lowercase: nickname}.
+    """
+    # Le firmware encode < en &#60 et > en &#62 sans
+    # point-virgule. html.unescape() est trop gourmand :
+    # &#627C serait decode en ɳC au lieu de >7C.
+    # On substitue directement les deux entites connues.
+    decoded = raw.replace("&#60", "<").replace("&#62", ">")
+    result: Dict[str, str] = {}
+    pattern = re.compile(
+        r"<([^>]*)>"
+        r"([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})"
+        r">"
+    )
+    for match in pattern.finditer(decoded):
+        nickname = match.group(1).strip()
+        mac = match.group(2).lower()
+        if nickname:
+            result[mac] = nickname
+    return result
+
+
 def _parse_nvram_reservations(
     static_list: str,
     hostnames_str: str,
@@ -190,10 +228,17 @@ class RouterConfig:
     Attributes:
         url: URL de base du routeur (http ou https).
         timeout: Timeout des requetes HTTP en secondes.
+        username: Nom d'utilisateur admin du routeur.
+        password: Mot de passe admin du routeur.
+            Les variables d'environnement ASUS_ROUTER_USER
+            et ASUS_ROUTER_PASSWORD ont priorite sur ces
+            valeurs si elles sont definies.
     """
 
     url: str = "http://192.168.50.1"
     timeout: int = 30
+    username: str = "admin"
+    password: str = ""
 
     def __post_init__(self) -> None:
         """Valide la configuration.
@@ -369,10 +414,15 @@ class AsusRouterClient:
             ) from exc
 
     def get_clients(self) -> List[dict]:
-        """Retourne les clients connectes (isOnline==1).
+        """Retourne tous les clients connus du routeur.
+
+        Inclut les appareils actuellement connectes
+        (isOnline==1) et les appareils connus mais hors
+        ligne (isOnline==0).
 
         Returns:
-            Liste de dicts avec mac, ip, name, vendor.
+            Liste de dicts avec mac, ip, name, vendor,
+            isOnline.
         """
         data = self._hook("get_clientlist(appobj)")
         clients_raw = data.get("get_clientlist", data)
@@ -383,7 +433,6 @@ class AsusRouterClient:
             for mac, info in clients_raw.items()
             if len(mac) == 17
             and isinstance(info, dict)
-            and info.get("isOnline") == "1"
         ]
 
     def get_dhcp_leases(self) -> Dict[str, str]:
@@ -498,8 +547,7 @@ class AsusRouterScanner(NetworkScanner):
     """Scanner reseau via l'API locale du routeur ASUS.
 
     Ne necessite pas de privileges root.
-    Credentials lus depuis ASUS_ROUTER_USER et
-    ASUS_ROUTER_PASSWORD.
+    Les credentials sont passes via RouterConfig.
 
     Attributes:
         _router_config: Configuration routeur.
@@ -542,22 +590,30 @@ class AsusRouterScanner(NetworkScanner):
             RouterAuthError: Si l'authentification echoue.
             RuntimeError: Si la requete echoue.
         """
-        username = os.environ.get(
-            "ASUS_ROUTER_USER", "admin"
+        self._client.login(
+            self._router_config.username,
+            self._router_config.password,
         )
-        password = os.environ.get(
-            "ASUS_ROUTER_PASSWORD", ""
-        )
-        self._client.login(username, password)
         try:
             raw_clients = self._client.get_clients()
             leases = self._client.get_dhcp_leases()
             nvram = self._client.get_nvram(
-                "dhcp_staticlist", "dhcp_hostnames"
+                "dhcp_staticlist",
+                "dhcp_hostnames",
+                "custom_clientlist",
             )
             reservations = _parse_nvram_reservations(
                 nvram.get("dhcp_staticlist", ""),
                 nvram.get("dhcp_hostnames", ""),
+            )
+            custom_clients = _parse_custom_clientlist(
+                nvram.get("custom_clientlist", "")
+            )
+            raw_clients = self._merge_offline_clients(
+                raw_clients,
+                custom_clients,
+                leases,
+                reservations,
             )
             devices = self._parse_clients(
                 raw_clients, leases, reservations
@@ -570,6 +626,64 @@ class AsusRouterScanner(NetworkScanner):
                 f"peripherique(s) decouvert(s)"
             )
         return devices
+
+    def _merge_offline_clients(
+        self,
+        raw_clients: List[dict],
+        custom_clients: Dict[str, str],
+        leases: Dict[str, str],
+        reservations: Dict[str, Tuple[str, str]],
+    ) -> List[dict]:
+        """Ajoute les clients offline depuis custom_clientlist.
+
+        Les clients deja presents dans raw_clients (online)
+        sont conserves tels quels. Les clients memorises
+        dans custom_clientlist mais absents de raw_clients
+        sont ajoutes comme entrees offline si leur IP est
+        connue (bail DHCP ou reservation statique).
+
+        Args:
+            raw_clients: Clients online retournes par
+                get_clientlist.
+            custom_clients: Dict {mac: nickname} depuis
+                custom_clientlist NVRAM.
+            leases: Dict {mac: ip} des baux DHCP actifs.
+            reservations: Dict {mac: (fixed_ip, dns_name)}
+                des reservations statiques.
+
+        Returns:
+            Liste etendue incluant les clients offline.
+        """
+        online_macs: set = {
+            c.get("mac", "").lower()
+            for c in raw_clients
+        }
+        result = list(raw_clients)
+        for mac, nickname in custom_clients.items():
+            if mac in online_macs:
+                continue
+            ip = leases.get(mac, "")
+            if not ip:
+                fixed, _ = reservations.get(
+                    mac, (None, None)
+                )
+                ip = fixed or ""
+            result.append(
+                {
+                    "mac": mac,
+                    "ip": ip,
+                    "isOnline": "0",
+                    "nickName": nickname,
+                    "vendor": "",
+                    "dpiDevice": "",
+                    "ipMethod": (
+                        "Manual"
+                        if mac in reservations
+                        else ""
+                    ),
+                }
+            )
+        return result
 
     def _parse_clients(
         self,
@@ -605,7 +719,13 @@ class AsusRouterScanner(NetworkScanner):
             if not ip or ip == "0.0.0.0":
                 ip = leases.get(mac, "")
             if not ip:
-                continue
+                # Dernier recours : IP fixe de la
+                # reservation statique (appareils offline
+                # sans bail DHCP actif)
+                fixed_ip_fallback, _ = reservations.get(
+                    mac, (None, None)
+                )
+                ip = fixed_ip_fallback or ""
             # nickName = nom personnalise dans l'UI routeur
             # name = hostname DHCP envoye par l'appareil
             hostname = (
@@ -763,13 +883,10 @@ class AsusRouterDhcpManager(RouterDhcpManager):
             RouterAuthError: Si l'authentification echoue.
             RuntimeError: Si l'envoi echoue.
         """
-        username = os.environ.get(
-            "ASUS_ROUTER_USER", "admin"
+        self._client.login(
+            self._router_config.username,
+            self._router_config.password,
         )
-        password = os.environ.get(
-            "ASUS_ROUTER_PASSWORD", ""
-        )
-        self._client.login(username, password)
         try:
             dhcp_cfg = self._client.get_nvram(
                 "dhcp_enable_x",
@@ -806,13 +923,10 @@ class AsusRouterDhcpManager(RouterDhcpManager):
         Raises:
             RouterAuthError: Si l'authentification echoue.
         """
-        username = os.environ.get(
-            "ASUS_ROUTER_USER", "admin"
+        self._client.login(
+            self._router_config.username,
+            self._router_config.password,
         )
-        password = os.environ.get(
-            "ASUS_ROUTER_PASSWORD", ""
-        )
-        self._client.login(username, password)
         try:
             nvram = self._client.get_nvram(
                 "dhcp_staticlist",

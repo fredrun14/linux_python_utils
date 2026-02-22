@@ -194,6 +194,23 @@ class TestJsonDeviceRepository:
         )
         assert merged[0].ip == "192.168.1.99"
 
+    def test_merge_ip_vide_preserve_ancienne_ip(
+        self,
+    ) -> None:
+        """Appareil rescanne sans IP conserve l'ancienne IP."""
+        repo = JsonDeviceRepository("dummy.json")
+        existing = [
+            _device("192.168.1.7", "aa:bb:cc:dd:ee:01")
+        ]
+        scanned = [
+            _device("", "aa:bb:cc:dd:ee:01",
+                    hostname="Thermomix")
+        ]
+        merged, _, _ = repo.merge_scan_results(
+            existing, scanned
+        )
+        assert merged[0].ip == "192.168.1.7"
+
     def test_json_encoding_utf8(self, tmp_path) -> None:
         """Caracteres accentues preserves."""
         path = tmp_path / "devices.json"
