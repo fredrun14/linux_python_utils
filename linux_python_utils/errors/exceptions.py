@@ -39,3 +39,8 @@ class AppPermissionError(ApplicationError):
 class RollbackError(ApplicationError):
     """ Exception de base pour toutes les Rollback"""
     pass
+
+
+class IntegrityError(ApplicationError):
+    """Exception levée lors d'un échec de vérification d'intégrité."""
+    pass

@@ -47,7 +47,7 @@ The library uses Abstract Base Classes (ABCs) to define interfaces, with concret
 
 | Module | Purpose |
 |--------|---------|
-| `logging` | File logging with optional console output (`Logger` → `FileLogger`) |
+| `logging` | File logging with optional console output (`Logger` → `FileLogger`) + structured security event logging (`SecurityLogger`, `SecurityEvent`, `SecurityEventType`) |
 | `config` | TOML/JSON config with dot-notation access (`ConfigurationManager`, `FileConfigLoader`) |
 | `filesystem` | File CRUD and metadata-preserving backups (`LinuxFileManager`, `LinuxFileBackup`) |
 | `systemd` | Complete systemd management (services, timers, mounts) |
@@ -55,10 +55,10 @@ The library uses Abstract Base Classes (ABCs) to define interfaces, with concret
 | `scripts` | Bash script generation with notification support |
 | `notification` | Desktop notification configuration (KDE Plasma) |
 | `commands` | Command execution and building (`CommandBuilder`, `LinuxCommandExecutor`) |
-| `integrity` | File/directory checksum verification (`SHA256IntegrityChecker`) |
+| `integrity` | File/directory checksum verification (`SHA256IntegrityChecker`) + INI section integrity ABC (`IniSectionIntegrityChecker`) |
 | `dotconf` | INI-style configuration file management |
-| `validation` | Path validation and optional Pydantic schema validation (`Validator`, `PathChecker`) |
-| `errors` | Centralized error handling with handlers, chain and rollback context (`ErrorHandlerChain`, `ConsoleErrorHandler`, `LoggerErrorHandler`, `ErrorContext`) |
+| `validation` | Path validation: existence (`PathChecker`), write permissions (`PathCheckerPermission`), world-writable check (`PathCheckerWorldWritable`) + optional Pydantic schema validation |
+| `errors` | Centralized error handling with handlers, chain and rollback context (`ErrorHandlerChain`, `ConsoleErrorHandler`, `LoggerErrorHandler`, `ErrorContext`) + `IntegrityError` |
 | `credentials` | Credential management via priority chain: env vars → .env → keyring (`CredentialManager`, `CredentialChain`) |
 | `network` | LAN device scanning, inventory, DHCP/DNS management, router control (`LinuxArpScanner`, `LinuxNmapScanner`, `AsusRouterClient`) |
 
@@ -155,8 +155,10 @@ result = executor.run_streaming(cmd)
 
 ```
 validation/
-├── base.py           # Validator (ABC)
-└── path_checker.py   # PathChecker (validates parent dirs exist & writable)
+├── base.py                        # Validator (ABC)
+├── path_checker_Exist.py          # PathChecker (validates parent dirs exist)
+├── path_checker_permission.py     # PathCheckerPermission (write permission check)
+└── path_checker_world_writable.py # PathCheckerWorldWritable (security: no world-writable)
 ```
 
 `FileConfigLoader` supports optional Pydantic schema validation:
@@ -190,6 +192,8 @@ All public classes and functions are exported from the package root:
 from linux_python_utils import (
     # Logging
     FileLogger,
+    # Security Logging
+    SecurityLogger, SecurityEvent, SecurityEventType,
     # Config
     ConfigurationManager, FileConfigLoader,
     # Filesystem
@@ -210,14 +214,15 @@ from linux_python_utils import (
     CommandBuilder, LinuxCommandExecutor, CommandResult,
     # Integrity
     SHA256IntegrityChecker, calculate_checksum,
+    IniSectionIntegrityChecker,
     # DotConf
     ValidatedSection, LinuxIniConfigManager, parse_validator, build_validators,
     # Validation
-    Validator, PathChecker,
+    Validator, PathChecker, PathCheckerPermission, PathCheckerWorldWritable,
     # Errors
     ApplicationError, ConfigurationError, FileConfigurationError,
     SystemRequirementError, MissingDependencyError, ValidationError,
-    InstallationError, AppPermissionError, RollbackError,
+    InstallationError, AppPermissionError, RollbackError, IntegrityError,
     ErrorHandler, ConsoleErrorHandler, LoggerErrorHandler,
     ErrorHandlerChain, ErrorContext,
     # Credentials

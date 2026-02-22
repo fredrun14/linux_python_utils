@@ -4,14 +4,16 @@ from linux_python_utils.integrity.base import (
     ChecksumCalculator,
     HashLibChecksumCalculator,
     IntegrityChecker,
-    calculate_checksum
+    calculate_checksum,
 )
 from linux_python_utils.integrity.sha256 import SHA256IntegrityChecker
+from linux_python_utils.integrity.ini_checker import IniSectionIntegrityChecker
 
 __all__ = [
     "ChecksumCalculator",
     "HashLibChecksumCalculator",
     "IntegrityChecker",
     "calculate_checksum",
-    "SHA256IntegrityChecker"
+    "SHA256IntegrityChecker",
+    "IniSectionIntegrityChecker",
 ]

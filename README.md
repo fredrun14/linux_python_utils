@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-598%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-passing-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/Code%20Style-PEP8-black.svg)]()
 [![SOLID](https://img.shields.io/badge/Architecture-SOLID-purple.svg)]()
 
@@ -39,7 +39,7 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 
 ## ✨ Fonctionnalités
 
-- **📝 Logging robuste** — Logger fichier/console avec encodage UTF-8 et flush immédiat
+- **📝 Logging robuste** — Logger fichier/console avec encodage UTF-8, flush immédiat et journalisation structurée JSON des événements de sécurité (`SecurityLogger`, `SecurityEvent`)
 - **⚙️ Configuration flexible** — Support TOML/JSON avec fusion profonde et profils
 - **📁 Gestion de fichiers** — CRUD fichiers et sauvegardes préservant les métadonnées
 - **🔧 Systemd complet** — Gestion services, timers et unités de montage (système et utilisateur)
@@ -49,10 +49,11 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 - **📋 Fichiers INI (.conf)** — Lecture, écriture et validation de fichiers de configuration INI
 - **📜 Scripts bash** — Génération de scripts bash avec support des notifications
 - **🔔 Notifications** — Configuration des notifications desktop (KDE Plasma)
-- **✅ Validation** — Validation de chemins et données avec support optionnel Pydantic
+- **✅ Validation** — Validation de chemins (existence, permissions, world-writable) et données avec support optionnel Pydantic
 - **🏗️ Architecture SOLID** — ABCs, injection de dépendances, testabilité maximale
 - **🔒 Sécurisé** — Validation des entrées, protection TOCTOU, permissions explicites
-- **🧪 Bien testé** — 474 tests unitaires couvrant tous les modules
+- **🛡️ Événements de sécurité** — `SecurityLogger` avec 10 types d'événements typés (`SecurityEventType`) en JSON structuré pour audit trail
+- **🧪 Bien testé** — Tests unitaires couvrant tous les modules
 
 ## 📦 Prérequis
 
@@ -105,7 +106,7 @@ print(linux_python_utils.__version__)  # 1.0.0
 
 ### Module `logging`
 
-Système de logging robuste avec support fichier et console.
+Système de logging robuste avec support fichier et console, et journalisation structurée des événements de sécurité.
 
 ```python
 from linux_python_utils import FileLogger
@@ -123,6 +124,58 @@ logger = FileLogger("/var/log/myapp.log", console_output=True)
 config = {"logging": {"level": "DEBUG"}}
 logger = FileLogger("/var/log/myapp.log", config=config)
 ```
+
+#### `SecurityLogger` — Audit trail structuré JSON
+
+Journalise les événements de sécurité en JSON structuré (SIEM-ready). Respecte le DIP : dépend de l'abstraction `Logger`, pas d'une implémentation concrète.
+
+```python
+from linux_python_utils.logging import (
+    SecurityLogger,
+    SecurityEvent,
+    SecurityEventType,
+)
+
+# Initialisation avec n'importe quel Logger
+sec_logger = SecurityLogger(logger)
+
+# Journaliser une modification de configuration
+sec_logger.log_event(SecurityEvent(
+    event_type=SecurityEventType.CONFIG_CHANGE,
+    resource="/etc/myapp/myapp.conf",
+    details={
+        "section": "main",
+        "keys": ["timeout", "retries"],
+        "backup": "/etc/myapp/myapp.conf.bak",
+        "status": "appliqué",
+    },
+    severity="warning",
+))
+
+# Journaliser un accès refusé
+sec_logger.log_event(SecurityEvent(
+    event_type=SecurityEventType.ACCESS_DENIED,
+    resource="/etc/shadow",
+    details={"reason": "permission_denied"},
+    severity="error",
+    user_id="www-data",
+))
+```
+
+Types d'événements disponibles (`SecurityEventType`) :
+
+| Type | Valeur | Sévérité recommandée |
+|------|--------|----------------------|
+| `AUTH_SUCCESS` | `auth.success` | info |
+| `AUTH_FAILURE` | `auth.failure` | warning |
+| `AUTH_LOCKOUT` | `auth.lockout` | error |
+| `ACCESS_DENIED` | `access.denied` | error |
+| `ACCESS_ELEVATED` | `access.elevated` | warning |
+| `DATA_EXPORT` | `data.export` | warning |
+| `DATA_MODIFICATION` | `data.modification` | warning |
+| `CONFIG_CHANGE` | `config.change` | warning |
+| `RATE_LIMIT_HIT` | `rate_limit.hit` | warning |
+| `SUSPICIOUS_ACTIVITY` | `suspicious.activity` | error |
 
 ### Module `config`
 
@@ -461,7 +514,7 @@ message_failure = "Échec!"
 
 ### Module `integrity`
 
-Vérification d'intégrité par checksums.
+Vérification d'intégrité par checksums, et ABC pour la vérification de sections INI.
 
 ```python
 from linux_python_utils import FileLogger, SHA256IntegrityChecker, calculate_checksum
@@ -486,6 +539,25 @@ else:
 
 # Obtenir le checksum avec logging
 checksum = checker.get_checksum("/path/to/file")
+```
+
+#### `IniSectionIntegrityChecker` — ABC pour fichiers INI
+
+Contrat abstrait pour implémenter la vérification d'intégrité d'une section INI après écriture.
+
+```python
+from pathlib import Path
+from linux_python_utils.integrity import IniSectionIntegrityChecker
+
+class MyIniChecker(IniSectionIntegrityChecker):
+    def verify(self, file_path: Path, section: object) -> bool:
+        """Vérifie que file_path contient les valeurs attendues de section."""
+        # ... lecture du fichier et comparaison
+        return True
+
+checker = MyIniChecker()
+if not checker.verify(Path("/etc/myapp.conf"), my_section):
+    raise RuntimeError("Intégrité compromise!")
 ```
 
 ### Module `dotconf`
@@ -651,20 +723,40 @@ bash_function = notif.to_bash_function()
 
 Validation de chemins et données avec support optionnel Pydantic.
 
-```python
-from linux_python_utils import PathChecker, FileConfigLoader
+Trois validateurs de chemins couvrent des besoins distincts :
 
-# Validation de chemins (répertoires parents existent et sont
-# accessibles en écriture)
+| Classe | Vérifie | Usage typique |
+|--------|---------|---------------|
+| `PathChecker` | Répertoires parents existent | Log files, config files |
+| `PathCheckerPermission` | Répertoires parents accessibles en écriture | Backup, sauvegardes |
+| `PathCheckerWorldWritable` | Fichiers non modifiables par tous | Scripts exécutés en root |
+
+```python
+from linux_python_utils import PathChecker, PathCheckerPermission, PathCheckerWorldWritable
+
+# Vérifie que les répertoires parents existent
 checker = PathChecker([
     "/var/log/myapp.log",
     "/etc/myapp/config.toml",
 ])
-checker.validate()  # Lève ValueError ou PermissionError
+checker.validate()  # Lève ValueError si répertoire absent
+
+# Vérifie les droits d'écriture sur les répertoires parents
+perm_checker = PathCheckerPermission([
+    "/var/log/myapp.log",
+    "/tmp/backup.tar.gz",
+])
+perm_checker.validate()  # Lève PermissionError si non accessible
+
+# Vérifie qu'un fichier de config n'est pas world-writable
+# (sécurité essentielle pour les scripts exécutés en root)
+ww_checker = PathCheckerWorldWritable("/etc/myapp/config.toml")
+ww_checker.validate()  # Lève PermissionError si bit S_IWOTH positionné
 
 # Validation de configuration avec Pydantic (optionnel)
 # pip install linux-python-utils[validation]
 from pydantic import BaseModel
+from linux_python_utils import FileConfigLoader
 
 class AppConfig(BaseModel):
     name: str
@@ -788,8 +880,9 @@ logger.log_info("Backup automatique configuré")
 
 | ABC (Interface) | Implémentation | Description |
 |-----------------|----------------|-------------|
-| `IntegrityChecker` | `SHA256IntegrityChecker` | Vérification checksums |
+| `IntegrityChecker` | `SHA256IntegrityChecker` | Vérification checksums fichiers/répertoires |
 | `ChecksumCalculator` | `HashLibChecksumCalculator` | Calcul checksums |
+| `IniSectionIntegrityChecker` | — (ABC à implémenter) | Vérification post-écriture de sections INI |
 
 #### Module `dotconf`
 
@@ -818,7 +911,9 @@ logger.log_info("Backup automatique configuré")
 
 | ABC (Interface) | Implémentation | Description |
 |-----------------|----------------|-------------|
-| `Validator` | `PathChecker` | Validation de chemins fichiers |
+| `Validator` | `PathChecker` | Répertoires parents existent |
+| `Validator` | `PathCheckerPermission` | Répertoires parents accessibles en écriture |
+| `Validator` | `PathCheckerWorldWritable` | Fichier non world-writable (sécurité root) |
 
 ### Dataclasses
 
@@ -995,8 +1090,10 @@ linux-python-utils/
 │   │   └── config.py            # NotificationConfig (dataclass)
 │   └── validation/
 │       ├── __init__.py
-│       ├── base.py              # ABC Validator
-│       └── path_checker.py      # PathChecker
+│       ├── base.py                        # ABC Validator
+│       ├── path_checker_Exist.py          # PathChecker
+│       ├── path_checker_permission.py     # PathCheckerPermission
+│       └── path_checker_world_writable.py # PathCheckerWorldWritable
 ├── tests/
 │   ├── __init__.py
 │   ├── test_logging.py              # 8 tests
@@ -1066,7 +1163,7 @@ make all
 | `test_commands.py` | 74 | CommandBuilder, formatters, exécution, streaming, dry-run, root/user |
 | `test_scripts.py` | 19 | BashScriptConfig, installation scripts |
 | `test_notification.py` | 13 | NotificationConfig, génération bash |
-| `test_validation.py` | 5 | PathChecker, permissions |
+| `test_validation.py` | 5 | PathChecker, PathCheckerPermission, PathCheckerWorldWritable |
 | **Total** | **474** | |
 
 ### Tests Paramétrés

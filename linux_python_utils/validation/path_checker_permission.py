@@ -1,0 +1,59 @@
+"""Validateur des permissions d'écriture sur les répertoires parents."""
+
+import os
+from pathlib import Path
+
+from linux_python_utils.validation.base import Validator
+
+
+class PathCheckerPermission(Validator):
+    """Vérifie que les répertoires parents des chemins sont accessibles en écriture.
+
+    Résout les chemins (.resolve()) pour prévenir les traversées de chemin
+    (path traversal — OWASP A03) avant toute vérification.
+
+    Vérifie préalablement l'existence du répertoire pour fournir un message
+    d'erreur précis : une absence de répertoire ne doit pas être confondue
+    avec un refus de permission.
+
+    Lève des exceptions standard (ValueError, PermissionError)
+    pour rester générique. Le consommateur peut les wrapper
+    vers ses propres exceptions métier.
+    """
+
+    def __init__(self, paths: list[str]) -> None:
+        """Initialise le validateur avec une liste de chemins.
+
+        Args:
+            paths: Liste de chemins de fichiers à valider.
+        """
+        self.paths = paths
+
+    def validate(self) -> None:
+        """Valide que tous les répertoires parents sont accessibles en écriture.
+
+        Raises:
+            ValueError: Si un répertoire parent n'existe pas.
+            PermissionError: Si un répertoire parent n'est pas accessible
+                en écriture.
+        """
+        for path in self.paths:
+            self._validate_permission(path)
+
+    def _validate_permission(self, path: str) -> None:
+        """Valide les permissions d'écriture d'un chemin spécifique.
+
+        Args:
+            path: Chemin du fichier à valider.
+        """
+        parent = Path(path).resolve().parent
+
+        if not parent.exists():
+            raise ValueError(
+                f"Le répertoire {parent} n'existe pas."
+            )
+
+        if not os.access(parent, os.W_OK):
+            raise PermissionError(
+                f"Permissions insuffisantes pour écrire dans {parent}."
+            )

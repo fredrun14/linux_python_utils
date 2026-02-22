@@ -243,6 +243,7 @@ __all__ = [
     # Validation
     "Validator",
     "PathChecker",
+    "PathCheckerPermission",
     # Credentials - ABCs
     "CredentialProvider",
     "CredentialStore",
