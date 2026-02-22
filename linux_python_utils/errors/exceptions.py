@@ -1,13 +1,8 @@
 """
-Module contenant les exceptions personnalisées pour flatpak_auto_update.
+Module contenant les exceptions communes.
 
 Ce module suit le principe SRP en isolant la gestion des exceptions.
 """
-import os
-from abc import ABC, abstractmethod
-
-from dnf_configurator.exceptions import RollbackError
-
 
 class ApplicationError(Exception):
     """Exception de base pour toutes les applications."""
@@ -18,11 +13,11 @@ class ConfigurationError(ApplicationError):
     pass
 
 class FileConfigurationError(ConfigurationError):
-    """ Exception de base pour toutes les fichiers de configurations    """
+    """ Exception de base pour tous les fichiers de configurations    """
     pass
 
 class SystemRequirementError(ApplicationError):
-    """Exception de base pour toutes les systemes de dépendances."""
+    """Exception de base pour tous les systèmes de dépendances."""
     pass
 
 class MissingDependencyError(SystemRequirementError):
@@ -31,6 +26,14 @@ class MissingDependencyError(SystemRequirementError):
 
 class ValidationError(ApplicationError):
     """Exception de base pour toutes les validations."""
+    pass
+
+class InstallationError(ApplicationError):
+    """Exception de base pour toutes les installations."""
+    pass
+
+class AppPermissionError(ApplicationError):
+    """Exception de base pour toutes les permissions applicatives."""
     pass
 
 class RollbackError(ApplicationError):

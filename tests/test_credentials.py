@@ -17,6 +17,7 @@ from linux_python_utils.credentials.base import (
 from linux_python_utils.credentials.chain import CredentialChain
 from linux_python_utils.credentials.exceptions import (
     CredentialNotFoundError,
+    CredentialProviderUnavailableError,
     CredentialStoreError,
 )
 from linux_python_utils.credentials.manager import CredentialManager
@@ -182,7 +183,14 @@ class TestDotEnvCredentialProvider:
         dotenv_file = tmp_path / ".env"
         dotenv_file.write_text("SECRET_DOTENV=valeur_dotenv\n")
         provider = DotEnvCredentialProvider(dotenv_path=dotenv_file)
-        result = provider.load()
+
+        def fake_load_dotenv(dotenv_path, override):
+            monkeypatch.setenv("SECRET_DOTENV", "valeur_dotenv")
+
+        mock_dotenv = MagicMock()
+        mock_dotenv.load_dotenv = fake_load_dotenv
+        with patch.dict("sys.modules", {"dotenv": mock_dotenv}):
+            result = provider.load()
         assert result is True
         assert os.environ.get("SECRET_DOTENV") == "valeur_dotenv"
 
@@ -205,7 +213,15 @@ class TestDotEnvCredentialProvider:
         dotenv_file = tmp_path / ".env"
         dotenv_file.write_text("SECRET_GET=valeur_get\n")
         provider = DotEnvCredentialProvider(dotenv_path=dotenv_file)
-        assert provider.get("monapp", "SECRET_GET") == "valeur_get"
+
+        def fake_load_dotenv(dotenv_path, override):
+            monkeypatch.setenv("SECRET_GET", "valeur_get")
+
+        mock_dotenv = MagicMock()
+        mock_dotenv.load_dotenv = fake_load_dotenv
+        with patch.dict("sys.modules", {"dotenv": mock_dotenv}):
+            result = provider.get("monapp", "SECRET_GET")
+        assert result == "valeur_get"
 
     def test_load_retourne_false_si_fichier_absent(
         self, tmp_path: Path
@@ -232,7 +248,8 @@ class TestDotEnvCredentialProvider:
         dotenv_file = tmp_path / ".env"
         dotenv_file.write_text("KEY=val\n")
         provider = DotEnvCredentialProvider(dotenv_path=dotenv_file)
-        assert provider.is_available() is True
+        with patch.dict("sys.modules", {"dotenv": MagicMock()}):
+            assert provider.is_available() is True
 
     def test_is_available_false_si_dotenv_absent(
         self, tmp_path: Path
@@ -245,6 +262,21 @@ class TestDotEnvCredentialProvider:
             "sys.modules", {"dotenv": None}
         ):
             assert provider.is_available() is False
+
+    def test_load_log_warning_si_fichier_absent_avec_logger(
+        self, tmp_path: Path
+    ) -> None:
+        """load() log un warning si le fichier est absent et logger fourni."""
+        mock_logger = MagicMock()
+        provider = DotEnvCredentialProvider(
+            dotenv_path=tmp_path / "inexistant.env",
+            logger=mock_logger,
+        )
+        mock_dotenv = MagicMock()
+        with patch.dict("sys.modules", {"dotenv": mock_dotenv}):
+            result = provider.load()
+        assert result is False
+        mock_logger.log_warning.assert_called_once()
 
     def test_source_name(self, tmp_path: Path) -> None:
         """source_name retourne 'dotenv'."""
@@ -345,6 +377,77 @@ class TestKeyringCredentialProvider:
         backend = MagicMock()
         provider = KeyringCredentialProvider(keyring_backend=backend)
         assert isinstance(provider, CredentialStore)
+
+    def test_get_keyring_retourne_module_si_installe(self) -> None:
+        """_get_keyring() retourne le module keyring quand installe sans backend."""
+        provider = KeyringCredentialProvider()
+        mock_keyring = MagicMock()
+        with patch.dict("sys.modules", {"keyring": mock_keyring}):
+            result = provider._get_keyring()
+        assert result is mock_keyring
+
+    def test_get_keyring_leve_erreur_sans_keyring_installe(self) -> None:
+        """_get_keyring() leve CredentialProviderUnavailableError si keyring absent."""
+        provider = KeyringCredentialProvider()
+        with patch.dict("sys.modules", {"keyring": None}):
+            with pytest.raises(CredentialProviderUnavailableError):
+                provider._get_keyring()
+
+    def test_get_retourne_none_si_provider_indisponible(self) -> None:
+        """get() retourne None si is_available() est False."""
+        provider = KeyringCredentialProvider()
+        with patch.dict("sys.modules", {"keyring": None}):
+            result = provider.get("svc", "key")
+        assert result is None
+
+    def test_get_retourne_none_sur_exception_get_password(self) -> None:
+        """get() retourne None si get_password leve une exception."""
+        backend = MagicMock()
+        backend.get_password.side_effect = Exception("erreur inattendue")
+        provider = KeyringCredentialProvider(keyring_backend=backend)
+        result = provider.get("svc", "key")
+        assert result is None
+
+    def test_set_log_info_avec_logger(self) -> None:
+        """set() log un message info si logger fourni et stockage reussi."""
+        mock_logger = MagicMock()
+        store: dict = {}
+        backend = self._make_backend(store)
+        provider = KeyringCredentialProvider(
+            keyring_backend=backend, logger=mock_logger
+        )
+        provider.set("svc", "key", "valeur")
+        mock_logger.log_info.assert_called_once()
+
+    def test_set_leve_store_error_si_keyring_indisponible(self) -> None:
+        """set() leve CredentialStoreError si keyring non installe."""
+        provider = KeyringCredentialProvider()
+        with patch.dict("sys.modules", {"keyring": None}):
+            with pytest.raises(CredentialStoreError):
+                provider.set("svc", "key", "valeur")
+
+    def test_delete_retourne_si_provider_indisponible(self) -> None:
+        """delete() retourne silencieusement si is_available() est False."""
+        provider = KeyringCredentialProvider()
+        with patch.dict("sys.modules", {"keyring": None}):
+            provider.delete("svc", "key")  # ne doit pas lever d'exception
+
+    def test_delete_log_info_avec_logger(self) -> None:
+        """delete() log un message info si logger fourni et suppression reussie."""
+        mock_logger = MagicMock()
+        store = {("svc", "key"): "val"}
+        backend = self._make_backend(store)
+        provider = KeyringCredentialProvider(
+            keyring_backend=backend, logger=mock_logger
+        )
+        provider.delete("svc", "key")
+        mock_logger.log_info.assert_called_once()
+
+    def test_is_available_true_avec_keyring_installe(self) -> None:
+        """is_available() retourne True si keyring est installe (sans backend)."""
+        provider = KeyringCredentialProvider()
+        with patch.dict("sys.modules", {"keyring": MagicMock()}):
+            assert provider.is_available() is True
 
 
 # ---------------------------------------------------------------------------
@@ -451,6 +554,25 @@ class TestCredentialChain:
         assert chain._providers[0].source_name == "env"
         assert chain._providers[1].source_name == "dotenv"
         assert chain._providers[2].source_name == "keyring"
+
+    def test_get_log_info_avec_logger(self) -> None:
+        """get() log l'info de source quand un logger est fourni."""
+        mock_logger = MagicMock()
+        p1 = _make_provider("valeur", source="env")
+        chain = CredentialChain([p1], logger=mock_logger)
+        result = chain.get("svc", "KEY")
+        assert result == "valeur"
+        mock_logger.log_info.assert_called_once()
+
+    def test_get_with_source_ignore_providers_indisponibles(self) -> None:
+        """get_with_source() ignore les providers indisponibles."""
+        p1 = _make_provider("valeur_p1", available=False, source="env")
+        p2 = _make_provider("valeur_p2", available=True, source="keyring")
+        chain = CredentialChain([p1, p2])
+        result = chain.get_with_source("svc", "KEY")
+        assert result is not None
+        assert result.source == "keyring"
+        p1.get.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

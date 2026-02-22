@@ -1,5 +1,5 @@
 """
-
+    LoggerErrorHandler
 """
 from linux_python_utils.errors.base import ErrorHandler
 from linux_python_utils.errors.exceptions import ApplicationError
@@ -13,7 +13,10 @@ class LoggerErrorHandler(ErrorHandler):
     injecté au constructeur.
     """
 
-    def __init__(self, logger: Logger):
+    def __init__(self,
+                 logger: Logger,
+                 base_error_type: type[Exception] = ApplicationError
+                 ) -> None:
         """Initialise le handler avec un logger.
 
         Args:

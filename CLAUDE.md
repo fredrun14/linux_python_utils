@@ -8,7 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - Python 3.11+ required (uses `tomllib` for TOML parsing)
 - No external runtime dependencies (stdlib only)
-- Optional dependency: `pydantic>=2.0` for schema validation (`pip install linux-python-utils[validation]`)
+- Optional dependencies:
+  - `pydantic>=2.0` for schema validation (`pip install linux-python-utils[validation]`)
+  - `python-dotenv` for `DotEnvCredentialProvider` (`pip install python-dotenv`)
+  - `keyring` for `KeyringCredentialProvider` (`pip install keyring`)
 - Platform: Linux only
 
 ## Code Conventions
@@ -23,7 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 make help             # Afficher toutes les commandes disponibles
 make install-dev      # Installer avec dépendances de développement
-make test             # Lancer les tests (310 tests)
+make test             # Lancer les tests (599 tests)
 make test-verbose     # Lancer les tests en mode verbose
 make lint             # Vérifier PEP8
 make clean            # Nettoyer les fichiers générés
@@ -55,6 +58,9 @@ The library uses Abstract Base Classes (ABCs) to define interfaces, with concret
 | `integrity` | File/directory checksum verification (`SHA256IntegrityChecker`) |
 | `dotconf` | INI-style configuration file management |
 | `validation` | Path validation and optional Pydantic schema validation (`Validator`, `PathChecker`) |
+| `errors` | Centralized error handling with handlers, chain and rollback context (`ErrorHandlerChain`, `ConsoleErrorHandler`, `LoggerErrorHandler`, `ErrorContext`) |
+| `credentials` | Credential management via priority chain: env vars → .env → keyring (`CredentialManager`, `CredentialChain`) |
+| `network` | LAN device scanning, inventory, DHCP/DNS management, router control (`LinuxArpScanner`, `LinuxNmapScanner`, `AsusRouterClient`) |
 
 ### Systemd Module
 
@@ -208,6 +214,19 @@ from linux_python_utils import (
     ValidatedSection, LinuxIniConfigManager, parse_validator, build_validators,
     # Validation
     Validator, PathChecker,
+    # Errors
+    ApplicationError, ConfigurationError, FileConfigurationError,
+    SystemRequirementError, MissingDependencyError, ValidationError,
+    InstallationError, AppPermissionError, RollbackError,
+    ErrorHandler, ConsoleErrorHandler, LoggerErrorHandler,
+    ErrorHandlerChain, ErrorContext,
+    # Credentials
+    CredentialProvider, CredentialStore,
+    CredentialError, CredentialNotFoundError,
+    CredentialStoreError, CredentialProviderUnavailableError,
+    Credential, CredentialKey,
+    EnvCredentialProvider, DotEnvCredentialProvider, KeyringCredentialProvider,
+    CredentialChain, CredentialManager,
 )
 ```
 

@@ -28,6 +28,7 @@ from linux_python_utils.credentials.base import (
 )
 from linux_python_utils.credentials.chain import CredentialChain
 from linux_python_utils.credentials.exceptions import (
+    CredentialError,
     CredentialNotFoundError,
     CredentialProviderUnavailableError,
     CredentialStoreError,
@@ -55,6 +56,7 @@ __all__ = [
     "Credential",
     "CredentialKey",
     # Exceptions
+    "CredentialError",
     "CredentialNotFoundError",
     "CredentialProviderUnavailableError",
     "CredentialStoreError",

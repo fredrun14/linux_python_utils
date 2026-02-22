@@ -1,15 +1,13 @@
 """
-
+    ConsoleErrorHandler (générique, configurable)
 """
 from linux_python_utils.errors.base import ErrorHandler
-from linux_python_utils.errors.exceptions import ApplicationError
+from linux_python_utils.errors.exceptions import (ApplicationError,
+                                                  ConfigurationError,
+                                                  MissingDependencyError,
+                                                  InstallationError,
+                                                  AppPermissionError)
 
-from flatpak_auto_update.exceptions import (
-    ConfigurationError,
-    InstallationError,
-    MissingDependencyError,
-    RollbackError,
-)
 
 class ConsoleErrorHandler(ErrorHandler):
     """Handler pour afficher les erreurs dans la console.
@@ -22,16 +20,18 @@ class ConsoleErrorHandler(ErrorHandler):
     def __init__(
         self,
         base_error_type: type[Exception] = ApplicationError,
-        solutions: dict[type[Exception],str] | None = None
+        solutions: dict[type[Exception], str] | None = None
     ) -> None:
-        """  ConsoleErrorHandler (générique, configurable)
+        """Initialise le handler console.
 
-            Attributes:
-                base_error_type : classe de base pour distinguer erreurs connues/inconnues
-                                   (défaut: ApplicationError)
-                solutions : dictionnaire {TypeException: "message solution"}
-                    Les projets passent leurs propres mappings à l'instanciation.
+        Args:
+            base_error_type: Classe de base pour distinguer erreurs connues/inconnues
+                             (défaut: ApplicationError).
+            solutions: Dictionnaire {TypeException: "message solution"}.
+                       Les projets passent leurs propres mappings à l'instanciation.
         """
+        self.base_error_type = base_error_type
+        self.solutions = solutions or {}
 
     def handle(self, error: Exception) -> None:
         """Affiche l'erreur dans la console avec des messages utilisateur.
@@ -57,6 +57,8 @@ class ConsoleErrorHandler(ErrorHandler):
 
         if isinstance(error, MissingDependencyError):
             print("\n🔧 Solution : Installez les dépendances manquantes comme indiqué.")
+        elif isinstance(error, AppPermissionError):
+            print("\n🔧 Solution : Exécutez avec sudo ou vérifiez les permissions.")
         elif isinstance(error, ConfigurationError):
             print("\n🔧 Solution : Vérifiez votre fichier de configuration.")
         elif isinstance(error, InstallationError):

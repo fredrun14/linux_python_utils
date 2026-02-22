@@ -1,4 +1,6 @@
-""" Interfaces abstraites pour la gestion des erreurs"""
+""" Interfaces abstraites pour la gestion des erreurs
+    Hiérarchie d'exceptions commune
+"""
 
 import sys
 from abc import ABC, abstractmethod
@@ -17,7 +19,7 @@ class ErrorHandler(ABC):
         Args:
             error: L'exception à traiter.
         """
-        pass
+        pass  # pragma: no cover
 
 
 class ErrorHandlerChain():

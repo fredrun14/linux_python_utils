@@ -27,7 +27,7 @@ class CredentialProvider(ABC):
         Returns:
             Valeur du credential ou None si absent.
         """
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     def is_available(self) -> bool:
@@ -36,7 +36,7 @@ class CredentialProvider(ABC):
         Returns:
             True si le provider peut etre utilise.
         """
-        pass
+        pass  # pragma: no cover
 
     @property
     @abstractmethod
@@ -46,7 +46,7 @@ class CredentialProvider(ABC):
         Returns:
             Nom de la source (ex: "env", "dotenv", "keyring").
         """
-        pass
+        pass  # pragma: no cover
 
 
 class CredentialStore(CredentialProvider):
@@ -74,7 +74,7 @@ class CredentialStore(CredentialProvider):
         Raises:
             CredentialStoreError: si le stockage echoue.
         """
-        pass
+        pass  # pragma: no cover
 
     @abstractmethod
     def delete(
@@ -90,4 +90,4 @@ class CredentialStore(CredentialProvider):
             service: Nom du service applicatif.
             key: Nom de la cle.
         """
-        pass
+        pass  # pragma: no cover

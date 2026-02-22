@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-474%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-598%20passed-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/Code%20Style-PEP8-black.svg)]()
 [![SOLID](https://img.shields.io/badge/Architecture-SOLID-purple.svg)]()
 
@@ -26,6 +26,9 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
   - [Module scripts](#module-scripts)
   - [Module notification](#module-notification)
   - [Module validation](#module-validation)
+  - [Module errors](#module-errors)
+  - [Module credentials](#module-credentials)
+  - [Module network](#module-network)
 - [Documentation API](#-documentation-api)
 - [Architecture des Classes](#-architecture-des-classes)
 - [Structure du Projet](#-structure-du-projet)
