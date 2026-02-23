@@ -1,14 +1,14 @@
 """Tests pour le module integrity."""
 
-import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from linux_python_utils.logging import FileLogger
 from linux_python_utils.integrity import (
     calculate_checksum,
-    SHA256IntegrityChecker
+    SHA256IntegrityChecker,
 )
 
 
@@ -146,3 +146,141 @@ class TestSHA256IntegrityChecker:
         checksum = checker.get_checksum(str(test_file))
 
         assert len(checksum) == 64
+
+    def test_calculate_checksum_static_method(self, tmp_path):
+        """Test de la méthode statique calculate_checksum."""
+        # Arrange
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("Test statique")
+
+        # Act
+        checksum = SHA256IntegrityChecker.calculate_checksum(str(test_file))
+
+        # Assert
+        assert len(checksum) == 64
+
+    def test_verify_file_oserror_returns_false(self, tmp_path, logger):
+        """Test que verify_file retourne False en cas d'OSError."""
+        # Arrange — fichier source inexistant déclenche FileNotFoundError
+        checker = SHA256IntegrityChecker(logger)
+
+        # Act
+        result = checker.verify_file(
+            str(tmp_path / "inexistant.txt"),
+            str(tmp_path / "dest.txt"),
+        )
+
+        # Assert
+        assert result is False
+
+    def test_verify_with_dest_subdir(self, tmp_path, logger):
+        """Test de verify avec un dest_subdir explicite."""
+        # Arrange
+        source_dir = tmp_path / "source"
+        source_dir.mkdir()
+        (source_dir / "file.txt").write_text("Contenu")
+
+        custom_dest = tmp_path / "dest" / "custom"
+        custom_dest.mkdir(parents=True)
+        (custom_dest / "file.txt").write_text("Contenu")
+
+        checker = SHA256IntegrityChecker(logger)
+
+        # Act
+        result = checker.verify(
+            str(source_dir),
+            str(tmp_path / "dest"),
+            dest_subdir="custom",
+        )
+
+        # Assert
+        assert result is True
+
+    def test_verify_directory_flat_destination(self, tmp_path, logger):
+        """Test que verify utilise la destination si le sous-dossier n'existe pas.
+
+        Quand destination/basename(source) n'existe pas,
+        actual_dest est remplacé par destination directement.
+        """
+        # Arrange
+        source_dir = tmp_path / "mysource"
+        source_dir.mkdir()
+        (source_dir / "file.txt").write_text("Contenu")
+
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+        (dest_dir / "file.txt").write_text("Contenu")
+        # tmp_path/dest/mysource n'existe pas → fallback sur dest_dir
+
+        checker = SHA256IntegrityChecker(logger)
+
+        # Act
+        result = checker.verify(str(source_dir), str(dest_dir))
+
+        # Assert
+        assert result is True
+
+    def test_verify_directory_with_subdirectories(self, tmp_path, logger):
+        """Test que verify ignore les sous-répertoires et traite les fichiers."""
+        # Arrange
+        source_dir = tmp_path / "source"
+        subdir = source_dir / "subdir"
+        subdir.mkdir(parents=True)
+        (source_dir / "file1.txt").write_text("Contenu 1")
+        (subdir / "file2.txt").write_text("Contenu 2")
+
+        dest_dir = tmp_path / "dest" / "source"
+        dest_subdir = dest_dir / "subdir"
+        dest_subdir.mkdir(parents=True)
+        (dest_dir / "file1.txt").write_text("Contenu 1")
+        (dest_subdir / "file2.txt").write_text("Contenu 2")
+
+        checker = SHA256IntegrityChecker(logger)
+
+        # Act
+        result = checker.verify(
+            str(source_dir), str(tmp_path / "dest")
+        )
+
+        # Assert
+        assert result is True
+
+    def test_verify_directory_checksum_mismatch(self, tmp_path, logger):
+        """Test que verify retourne False si un checksum diffère."""
+        # Arrange
+        source_dir = tmp_path / "source"
+        source_dir.mkdir()
+        (source_dir / "file.txt").write_text("Contenu original")
+
+        dest_dir = tmp_path / "dest" / "source"
+        dest_dir.mkdir(parents=True)
+        (dest_dir / "file.txt").write_text("Contenu modifié")
+
+        checker = SHA256IntegrityChecker(logger)
+
+        # Act
+        result = checker.verify(
+            str(source_dir), str(tmp_path / "dest")
+        )
+
+        # Assert
+        assert result is False
+
+    def test_verify_exception_returns_false(self, tmp_path, logger):
+        """Test que verify retourne False en cas d'exception inattendue."""
+        # Arrange
+        source_dir = tmp_path / "source"
+        source_dir.mkdir()
+        checker = SHA256IntegrityChecker(logger)
+
+        # Act
+        with patch(
+            "pathlib.Path.rglob",
+            side_effect=RuntimeError("Erreur inattendue"),
+        ):
+            result = checker.verify(
+                str(source_dir), str(tmp_path / "dest")
+            )
+
+        # Assert
+        assert result is False
