@@ -1,6 +1,6 @@
 """Tests pour les scanners reseau."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -96,10 +96,14 @@ class TestLinuxArpScanner:
         assert "192.168.1.0/24" in cmd
 
     def test_build_command_sans_interface(self) -> None:
-        """Commande sans option --interface."""
+        """Commande sans option --interface quand aucune interface disponible."""
         scanner, _ = self._make_scanner()
         config = NetworkConfig(cidr="192.168.1.0/24")
-        cmd = scanner._build_command(config)
+        with patch(
+            "linux_python_utils.network.scanner._detect_interface",
+            return_value="",
+        ):
+            cmd = scanner._build_command(config)
         assert "--interface" not in cmd
 
     def test_parse_output_deux_devices(self) -> None:

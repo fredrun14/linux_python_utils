@@ -6,6 +6,7 @@ from linux_python_utils.errors.exceptions import ApplicationError
 
 from linux_python_utils import Logger
 
+
 class LoggerErrorHandler(ErrorHandler):
     """Handler pour logger les erreurs.
 

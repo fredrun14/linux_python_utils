@@ -50,7 +50,8 @@ class ErrorContext:
 
         if rollback_errors:
             self.logger.log_warning(
-                f"Rollback partiel. {len(rollback_errors)} erreurs lors du rollback."
+                f"Rollback partiel."
+                f" {len(rollback_errors)} erreurs lors du rollback."
             )
             raise RollbackError(
                 f"Rollback partiel : {len(rollback_errors)} action(s) en échec"

@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from linux_python_utils.validation import PathChecker
+from linux_python_utils.validation import PathChecker, PathCheckerPermission
 
 
 class TestPathChecker:
@@ -19,20 +19,6 @@ class TestPathChecker:
         """Vérifie ValueError si le répertoire parent n'existe pas."""
         checker = PathChecker(["/nonexistent/dir/file.log"])
         with pytest.raises(ValueError, match="n'existe pas"):
-            checker.validate()
-
-    @patch(
-        'linux_python_utils.validation.path_checker.os.access',
-        return_value=False
-    )
-    @patch(
-        'linux_python_utils.validation.path_checker.os.path.exists',
-        return_value=True
-    )
-    def test_validate_no_write_permission(self, mock_exists, mock_access):
-        """Vérifie PermissionError si l'écriture est impossible."""
-        checker = PathChecker(["/restricted/dir/file.log"])
-        with pytest.raises(PermissionError, match="Permissions insuffisantes"):
             checker.validate()
 
     def test_validate_multiple_paths(self, tmp_path):
@@ -53,3 +39,31 @@ class TestPathChecker:
         checker = PathChecker(paths)
         with pytest.raises(ValueError):
             checker.validate()
+
+
+class TestPathCheckerPermission:
+    """Tests pour PathCheckerPermission."""
+
+    def test_validate_accessible_paths(self, tmp_path):
+        """Vérifie que la validation passe pour un répertoire accessible."""
+        checker = PathCheckerPermission([str(tmp_path / "file.txt")])
+        checker.validate()
+
+    def test_validate_nonexistent_directory(self):
+        """Vérifie ValueError si le répertoire parent n'existe pas."""
+        checker = PathCheckerPermission(["/nonexistent/dir/file.log"])
+        with pytest.raises(ValueError, match="n'existe pas"):
+            checker.validate()
+
+    def test_validate_no_write_permission(self, tmp_path):
+        """Vérifie PermissionError si l'écriture est impossible."""
+        checker = PathCheckerPermission([str(tmp_path / "file.log")])
+        with patch(
+            "linux_python_utils.validation.path_checker_permission"
+            ".os.access",
+            return_value=False,
+        ):
+            with pytest.raises(
+                PermissionError, match="Permissions insuffisantes"
+            ):
+                checker.validate()

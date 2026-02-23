@@ -7,7 +7,7 @@ from linux_python_utils.validation.base import Validator
 
 
 class PathCheckerPermission(Validator):
-    """Vérifie que les répertoires parents des chemins sont accessibles en écriture.
+    """Vérifie les permissions d'écriture sur les répertoires parents.
 
     Résout les chemins (.resolve()) pour prévenir les traversées de chemin
     (path traversal — OWASP A03) avant toute vérification.
@@ -30,7 +30,7 @@ class PathCheckerPermission(Validator):
         self.paths = paths
 
     def validate(self) -> None:
-        """Valide que tous les répertoires parents sont accessibles en écriture.
+        """Valide les permissions d'écriture de tous les chemins.
 
         Raises:
             ValueError: Si un répertoire parent n'existe pas.
