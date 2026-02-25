@@ -1,247 +1,52 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Projet
 
-## Project Overview
+**linux-python-utils** — bibliothèque utilitaire Python pour Linux (français).
 
-**linux-python-utils** is a French-language Python utility library for Linux systems. It provides reusable classes and functions for logging, configuration management, file operations, systemd service management, bash script generation, command execution, INI configuration management, data validation, and file integrity verification.
+- Python 3.11+ · stdlib uniquement · Linux only
+- Dépendances optionnelles : `pydantic>=2.0`, `python-dotenv`, `keyring`
 
-- Python 3.11+ required (uses `tomllib` for TOML parsing)
-- No external runtime dependencies (stdlib only)
-- Optional dependencies:
-  - `pydantic>=2.0` for schema validation (`pip install linux-python-utils[validation]`)
-  - `python-dotenv` for `DotEnvCredentialProvider` (`pip install python-dotenv`)
-  - `keyring` for `KeyringCredentialProvider` (`pip install keyring`)
-- Platform: Linux only
+## Conventions
 
-## Code Conventions
+- **PEP 8** : max-line-length = 79
+- **PEP 257** : docstrings en **français** — modules, classes, fonctions publiques
+- **PEP 484** : type hints obligatoires sur toutes les signatures
+- **SOLID** : ABCs + injection de dépendances · toutes les classes acceptent un `Logger` optionnel
 
-- **PEP 8**: Style guide (max-line-length = 79)
-- **PEP 257**: Docstrings en français pour tous les modules, classes et fonctions publiques
-- **PEP 484**: Type hints requis pour les signatures de fonctions et méthodes
-- **SOLID**: Architecture with ABCs and dependency injection
-
-## Development Commands
+## Commandes
 
 ```bash
-make help             # Afficher toutes les commandes disponibles
-make install-dev      # Installer avec dépendances de développement
-make test             # Lancer les tests (599 tests)
-make test-verbose     # Lancer les tests en mode verbose
-make lint             # Vérifier PEP8
-make clean            # Nettoyer les fichiers générés
-make build            # Construire le package
-make all              # Lint + tests + build
-```
-
-Pour lancer un test spécifique :
-```bash
-pytest tests/test_logging.py::TestFileLogger::test_log_info -v
+make test          # lancer les tests
+make lint          # vérifier PEP 8
+make all           # lint + tests + build
+pytest tests/test_foo.py::TestBar::test_baz -v  # test ciblé
 ```
 
 ## Architecture
 
-The library uses Abstract Base Classes (ABCs) to define interfaces, with concrete Linux implementations. All implementations accept an optional Logger instance for integrated logging.
+Interfaces via ABCs, implémentations concrètes Linux.
 
-### Module Structure
+| Module | Contenu clé |
+|--------|-------------|
+| `logging` | `FileLogger`, `SecurityLogger`, `SecurityEventType` |
+| `config` | `ConfigurationManager`, `FileConfigLoader` (TOML/JSON, dot-notation) |
+| `filesystem` | `LinuxFileManager`, `LinuxFileBackup` |
+| `systemd` | `LinuxServiceUnitManager`, `LinuxTimerUnitManager`, `LinuxMountUnitManager`, user variants, `SystemdScheduledTaskInstaller` |
+| `systemd.config_loaders` | `ServiceConfigLoader`, `TimerConfigLoader`, `MountConfigLoader`, `BashScriptConfigLoader` (TOML → dataclass) |
+| `commands` | `CommandBuilder` (fluent), `LinuxCommandExecutor`, `AnsiCommandFormatter` |
+| `scripts` | `BashScriptConfig`, `BashScriptInstaller` |
+| `notification` | `NotificationConfig` (KDE Plasma) |
+| `integrity` | `SHA256IntegrityChecker`, `IniSectionIntegrityChecker` |
+| `dotconf` | `LinuxIniConfigManager`, `ValidatedSection` |
+| `validation` | `PathChecker`, `PathCheckerPermission`, `PathCheckerWorldWritable` |
+| `errors` | `ErrorHandlerChain`, `ErrorContext`, hiérarchie d'exceptions |
+| `credentials` | `CredentialChain` : env → .env → keyring |
+| `network` | `LinuxArpScanner`, `LinuxNmapScanner`, `AsusRouterClient`, DHCP/DNS |
 
-| Module | Purpose |
-|--------|---------|
-| `logging` | File logging with optional console output (`Logger` → `FileLogger`) + structured security event logging (`SecurityLogger`, `SecurityEvent`, `SecurityEventType`) |
-| `config` | TOML/JSON config with dot-notation access (`ConfigurationManager`, `FileConfigLoader`) |
-| `filesystem` | File CRUD and metadata-preserving backups (`LinuxFileManager`, `LinuxFileBackup`) |
-| `systemd` | Complete systemd management (services, timers, mounts) |
-| `systemd.config_loaders` | TOML → dataclass loaders for systemd configs |
-| `scripts` | Bash script generation with notification support |
-| `notification` | Desktop notification configuration (KDE Plasma) |
-| `commands` | Command execution and building (`CommandBuilder`, `LinuxCommandExecutor`) |
-| `integrity` | File/directory checksum verification (`SHA256IntegrityChecker`) + INI section integrity ABC (`IniSectionIntegrityChecker`) |
-| `dotconf` | INI-style configuration file management |
-| `validation` | Path validation: existence (`PathChecker`), write permissions (`PathCheckerPermission`), world-writable check (`PathCheckerWorldWritable`) + optional Pydantic schema validation |
-| `errors` | Centralized error handling with handlers, chain and rollback context (`ErrorHandlerChain`, `ConsoleErrorHandler`, `LoggerErrorHandler`, `ErrorContext`) + `IntegrityError` |
-| `credentials` | Credential management via priority chain: env vars → .env → keyring (`CredentialManager`, `CredentialChain`) |
-| `network` | LAN device scanning, inventory, DHCP/DNS management, router control (`LinuxArpScanner`, `LinuxNmapScanner`, `AsusRouterClient`) |
+## Patterns clés
 
-### Systemd Module
-
-```
-systemd/
-├── base.py              # ABCs (UnitManager, UserUnitManager) + dataclasses
-├── executor.py          # SystemdExecutor, UserSystemdExecutor
-├── validators.py        # validate_unit_name(), validate_service_name()
-├── mount.py             # LinuxMountUnitManager
-├── timer.py             # LinuxTimerUnitManager
-├── service.py           # LinuxServiceUnitManager
-├── user_timer.py        # LinuxUserTimerUnitManager (no root)
-├── user_service.py      # LinuxUserServiceUnitManager (no root)
-├── scheduled_task.py    # SystemdScheduledTaskInstaller
-└── config_loaders/      # TOML → dataclass loaders
-    ├── base.py          # (rétrocompatibilité imports)
-    ├── service_loader.py
-    ├── timer_loader.py
-    ├── mount_loader.py
-    └── script_loader.py
-```
-
-### Config Loaders
-
-Load TOML files and create typed dataclasses:
-
-```python
-from linux_python_utils.systemd.config_loaders import (
-    ServiceConfigLoader,
-    TimerConfigLoader,
-    BashScriptConfigLoader,
-)
-
-# TOML → ServiceConfig
-loader = ServiceConfigLoader("config.toml")
-service_config = loader.load()
-
-# TOML → TimerConfig (with custom service name)
-loader = TimerConfigLoader("config.toml")
-timer_config = loader.load_for_service("my-service")
-
-# TOML → BashScriptConfig (with notifications)
-loader = BashScriptConfigLoader("config.toml")
-script_config = loader.load()
-```
-
-### Commands Module
-
-```
-commands/
-├── base.py        # CommandResult (dataclass) + CommandExecutor (ABC)
-├── builder.py     # CommandBuilder (fluent API)
-├── formatter.py   # CommandFormatter (ABC) + PlainCommandFormatter + AnsiCommandFormatter
-└── runner.py      # LinuxCommandExecutor (subprocess)
-```
-
-Build and execute system commands:
-
-```python
-from linux_python_utils.commands import (
-    CommandBuilder,
-    LinuxCommandExecutor,
-    AnsiCommandFormatter,
-)
-
-# Build a command with fluent API
-cmd = (
-    CommandBuilder("rsync")
-    .with_options(["-av", "--delete"])
-    .with_option("--compress-level", "3")
-    .with_flag("--stats")
-    .with_args(["/src/", "/dest/"])
-    .build()
-)
-
-# Execute with file logging ([ROOT] or [user] prefix)
-executor = LinuxCommandExecutor(logger=logger)
-result = executor.run(cmd)
-print(result.executed_as_root)  # True si uid=0
-
-# Add colored console output (ANSI, auto-disabled outside TTY)
-executor = LinuxCommandExecutor(
-    logger=logger,
-    console_formatter=AnsiCommandFormatter(),
-)
-
-# Stream output in real-time
-result = executor.run_streaming(cmd)
-```
-
-### Validation Module
-
-```
-validation/
-├── base.py                        # Validator (ABC)
-├── path_checker_Exist.py          # PathChecker (validates parent dirs exist)
-├── path_checker_permission.py     # PathCheckerPermission (write permission check)
-└── path_checker_world_writable.py # PathCheckerWorldWritable (security: no world-writable)
-```
-
-`FileConfigLoader` supports optional Pydantic schema validation:
-
-```python
-from linux_python_utils import FileConfigLoader
-
-# Without schema → returns dict
-loader = FileConfigLoader()
-config = loader.load("config.toml")
-
-# With Pydantic schema → returns validated model instance
-config = loader.load("config.toml", schema=MyPydanticModel)
-```
-
-### Key Patterns
-
-- **Dependency Injection**: All classes accept Logger and other dependencies
-- **Generic Config Loaders**: `ConfigFileLoader[T]` base class for type-safe loading
-- **Configuration-Driven**: `ConfigurationManager` supports deep merge, search paths, tilde expansion
-- **Fluent Command Builder**: `CommandBuilder` for type-safe command construction
-- **Input Validation**: All unit/service names validated via `validators.py` (regex + anti-traversal)
-- **TOCTOU-safe file I/O**: `os.open(O_NOFOLLOW)` + `os.fchmod(0o644)` in base classes
-- **UTF-8 Throughout**: Explicit UTF-8 encoding (important for French documentation)
-
-## Public API
-
-All public classes and functions are exported from the package root:
-
-```python
-from linux_python_utils import (
-    # Logging
-    FileLogger,
-    # Security Logging
-    SecurityLogger, SecurityEvent, SecurityEventType,
-    # Config
-    ConfigurationManager, FileConfigLoader,
-    # Filesystem
-    LinuxFileManager, LinuxFileBackup,
-    # Systemd
-    SystemdExecutor, UserSystemdExecutor,
-    LinuxServiceUnitManager, LinuxTimerUnitManager, LinuxMountUnitManager,
-    LinuxUserServiceUnitManager, LinuxUserTimerUnitManager,
-    SystemdScheduledTaskInstaller,
-    ServiceConfig, TimerConfig, MountConfig,
-    # Config Loaders
-    ServiceConfigLoader, TimerConfigLoader, MountConfigLoader, BashScriptConfigLoader,
-    # Scripts
-    BashScriptConfig, BashScriptInstaller,
-    # Notifications
-    NotificationConfig,
-    # Commands
-    CommandBuilder, LinuxCommandExecutor, CommandResult,
-    # Integrity
-    SHA256IntegrityChecker, calculate_checksum,
-    IniSectionIntegrityChecker,
-    # DotConf
-    ValidatedSection, LinuxIniConfigManager, parse_validator, build_validators,
-    # Validation
-    Validator, PathChecker, PathCheckerPermission, PathCheckerWorldWritable,
-    # Errors
-    ApplicationError, ConfigurationError, FileConfigurationError,
-    SystemRequirementError, MissingDependencyError, ValidationError,
-    InstallationError, AppPermissionError, RollbackError, IntegrityError,
-    ErrorHandler, ConsoleErrorHandler, LoggerErrorHandler,
-    ErrorHandlerChain, ErrorContext,
-    # Credentials
-    CredentialProvider, CredentialStore,
-    CredentialError, CredentialNotFoundError,
-    CredentialStoreError, CredentialProviderUnavailableError,
-    Credential, CredentialKey,
-    EnvCredentialProvider, DotEnvCredentialProvider, KeyringCredentialProvider,
-    CredentialChain, CredentialManager,
-)
-```
-
-## CI/CD
-
-GitHub Actions workflow (`.github/workflows/python-package.yml`) :
-- **lint**: Vérification PEP8
-- **test**: Tests sur Python 3.11, 3.12, 3.13, 3.14
-- **build**: Construction du package
-
-## Language
-
-All docstrings, comments, and documentation are in French.
+- **TOCTOU-safe** : `os.open(O_NOFOLLOW)` + `os.fchmod(0o644)` dans les classes de base
+- **Validation noms** : regex + anti-traversal dans `systemd/validators.py`
+- **UTF-8 explicite** partout (docstrings français)
+- **API publique** : tout exporté depuis `linux_python_utils/__init__.py`

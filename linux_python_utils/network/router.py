@@ -10,6 +10,7 @@ couche CLI avant d'etre passes via RouterConfig.
 
 import base64
 import dataclasses
+import ipaddress
 import json
 import re
 import urllib.parse
@@ -37,18 +38,22 @@ def _ip_to_int(ip: str) -> int:
     """Convertit une adresse IPv4 en entier.
 
     Args:
-        ip: Adresse IPv4.
+        ip: Adresse IPv4 au format a.b.c.d.
 
     Returns:
         Representation entiere.
+
+    Raises:
+        ValueError: Si ip n'est pas une adresse IPv4
+            valide.
     """
-    parts = [int(o) for o in ip.split(".")]
-    return (
-        (parts[0] << 24)
-        + (parts[1] << 16)
-        + (parts[2] << 8)
-        + parts[3]
-    )
+    try:
+        addr = ipaddress.IPv4Address(ip)
+    except ipaddress.AddressValueError as exc:
+        raise ValueError(
+            f"Adresse IPv4 invalide : {ip!r}"
+        ) from exc
+    return int(addr)
 
 
 def _int_to_ip(num: int) -> str:
@@ -89,6 +94,9 @@ _VENDOR_TYPES: Tuple = (
     ("intel", "PC/Laptop"),
     ("realtek", "PC/Laptop"),
 )
+
+
+_NVRAM_KEY_RE = re.compile(r'^[a-zA-Z0-9_]{1,64}$')
 
 
 def _infer_type_from_vendor(vendor: str) -> str:
@@ -213,6 +221,55 @@ def _next_available_ip(
     return None
 
 
+_LAN_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+]
+
+
+def _validate_router_url(url: str) -> None:
+    """Valide l'URL du routeur contre les risques SSRF.
+
+    Verifie que le scheme est http ou https et que
+    l'adresse IP (si fournie directement) appartient
+    a un reseau prive LAN. Les noms de domaine sont
+    acceptes sans resolution DNS.
+
+    Args:
+        url: URL du routeur a valider.
+
+    Raises:
+        ValueError: Si le scheme n'est pas http/https,
+            si l'hostname est absent, ou si l'adresse
+            IP n'appartient pas aux plages LAN privees
+            autorisees.
+    """
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(
+            f"Scheme non autorise : {parsed.scheme!r}"
+            " (http ou https requis)"
+        )
+    hostname = parsed.hostname or ""
+    if not hostname:
+        raise ValueError(
+            f"URL sans hostname : {url!r}"
+        )
+    try:
+        addr = ipaddress.ip_address(hostname)
+    except ValueError:
+        # Hostname non-IP : accepte sans resolution DNS
+        return
+    if not any(addr in net for net in _LAN_NETWORKS):
+        raise ValueError(
+            f"Adresse non autorisee : {hostname!r}. "
+            "Seules les adresses LAN privees "
+            "(10/8, 172.16/12, 192.168/16) "
+            "sont acceptees."
+        )
+
+
 # ---------------------------------------------------------------------------
 # Exceptions et configuration
 # ---------------------------------------------------------------------------
@@ -244,12 +301,10 @@ class RouterConfig:
         """Valide la configuration.
 
         Raises:
-            ValueError: Si url ou timeout sont invalides.
+            ValueError: Si url est invalide ou si
+                timeout est inferieur ou egal a zero.
         """
-        if not self.url.startswith("http"):
-            raise ValueError(
-                f"URL invalide : {self.url!r}"
-            )
+        _validate_router_url(self.url)
         if self.timeout <= 0:
             raise ValueError(
                 f"Timeout invalide : {self.timeout}"
@@ -299,12 +354,20 @@ class AsusRouterClient:
         """Authentifie la session sur le routeur.
 
         Args:
-            username: Nom d'utilisateur.
+            username: Nom d'utilisateur. Ne doit pas
+                contenir ':' (format Basic Auth).
             password: Mot de passe.
 
         Raises:
-            RouterAuthError: Si l'authentification echoue.
+            ValueError: Si username contient ':'.
+            RouterAuthError: Si l'authentification
+                echoue.
         """
+        if ":" in username:
+            raise ValueError(
+                "Le nom d'utilisateur ne doit pas "
+                "contenir ':'"
+            )
         credentials = base64.b64encode(
             f"{username}:{password}".encode("ascii")
         ).decode("ascii")
@@ -319,17 +382,26 @@ class AsusRouterClient:
         )
         try:
             with urllib.request.urlopen(
-                req, timeout=self._config.timeout
+                req, timeout=self._config.timeout  # nosec B310
             ) as resp:
                 body = json.loads(
                     resp.read().decode("utf-8")
                 )
         except Exception as exc:
+            if self._logger:
+                self._logger.log_error(
+                    f"Echec authentification routeur : {exc}"
+                )
             raise RouterAuthError(
                 f"Connexion echouee : {exc}"
             ) from exc
         token = body.get("asus_token")
         if not token:
+            if self._logger:
+                self._logger.log_error(
+                    "Authentification routeur : "
+                    "token absent de la reponse"
+                )
             raise RouterAuthError(
                 "Token absent de la reponse login"
             )
@@ -353,9 +425,9 @@ class AsusRouterClient:
         )
         try:
             urllib.request.urlopen(
-                req, timeout=self._config.timeout
+                req, timeout=self._config.timeout  # nosec B310
             )
-        except Exception:
+        except Exception:  # nosec B110
             pass
         finally:
             self._token = None
@@ -403,7 +475,7 @@ class AsusRouterClient:
         )
         try:
             with urllib.request.urlopen(
-                req, timeout=self._config.timeout
+                req, timeout=self._config.timeout  # nosec B310
             ) as resp:
                 return json.loads(
                     resp.read().decode("utf-8")
@@ -458,11 +530,22 @@ class AsusRouterClient:
         """Lit des variables NVRAM du routeur.
 
         Args:
-            *keys: Noms de variables NVRAM.
+            *keys: Noms de variables NVRAM. Seuls les
+                caracteres alphanumeriques et '_' sont
+                acceptes (longueur 1-64).
 
         Returns:
             Dictionnaire {cle: valeur}.
+
+        Raises:
+            ValueError: Si une cle contient des
+                caracteres non autorises.
         """
+        for key in keys:
+            if not _NVRAM_KEY_RE.match(key):
+                raise ValueError(
+                    f"Cle NVRAM invalide : {key!r}"
+                )
         hook = ";".join(
             f"nvram_get({k})" for k in keys
         )
@@ -522,7 +605,7 @@ class AsusRouterClient:
         )
         try:
             with urllib.request.urlopen(
-                req, timeout=self._config.timeout
+                req, timeout=self._config.timeout  # nosec B310
             ) as resp:
                 status = resp.status
         except Exception as exc:
@@ -716,7 +799,7 @@ class AsusRouterScanner(NetworkScanner):
             if len(mac) != 17:
                 continue
             ip = client.get("ip", "")
-            if not ip or ip == "0.0.0.0":
+            if not ip or ip == "0.0.0.0":  # nosec B104
                 ip = leases.get(mac, "")
             if not ip:
                 # Dernier recours : IP fixe de la

@@ -6,6 +6,7 @@ dnsmasq.
 """
 
 import dataclasses
+import ipaddress
 from typing import List, Optional, Set
 
 from linux_python_utils.logging.base import Logger
@@ -142,21 +143,25 @@ class LinuxDhcpReservationManager(DhcpReservationManager):
 
     @staticmethod
     def _ip_to_int(ip: str) -> int:
-        """Convertit une adresse IP en entier.
+        """Convertit une adresse IPv4 en entier.
 
         Args:
-            ip: Adresse IPv4.
+            ip: Adresse IPv4 au format a.b.c.d.
 
         Returns:
-            Representation entiere de l'IP.
+            Representation entiere.
+
+        Raises:
+            ValueError: Si ip n'est pas une adresse IPv4
+                valide.
         """
-        parts = [int(o) for o in ip.split(".")]
-        return (
-            (parts[0] << 24)
-            + (parts[1] << 16)
-            + (parts[2] << 8)
-            + parts[3]
-        )
+        try:
+            addr = ipaddress.IPv4Address(ip)
+        except ipaddress.AddressValueError as exc:
+            raise ValueError(
+                f"Adresse IPv4 invalide : {ip!r}"
+            ) from exc
+        return int(addr)
 
     @staticmethod
     def _int_to_ip(num: int) -> str:

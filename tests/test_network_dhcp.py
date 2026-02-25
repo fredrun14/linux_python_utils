@@ -179,3 +179,20 @@ class TestLinuxDhcpReservationManagerAvecLogger:
         output = mgr.export_reservations(devices)
         assert "dhcp-host=aa:bb:cc:dd:ee:ff" not in output
         assert "dhcp-host=bb:cc:dd:ee:ff:00" in output
+
+
+class TestIpToIntValidation:
+    """Tests de validation IPv4 dans _ip_to_int."""
+
+    def test_ip_to_int_valide(self) -> None:
+        """_ip_to_int() retourne l'entier correct pour une IP valide."""
+        result = LinuxDhcpReservationManager._ip_to_int(
+            "192.168.1.1"
+        )
+        assert result == 3232235777
+
+    def test_ip_to_int_invalide_leve_valueerror(self) -> None:
+        """_ip_to_int() leve ValueError pour une IP invalide."""
+        import pytest
+        with pytest.raises(ValueError, match="IPv4"):
+            LinuxDhcpReservationManager._ip_to_int("256.0.0.1")

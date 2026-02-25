@@ -4,7 +4,7 @@ Ce module fournit des implementations de NetworkScanner
 utilisant arp-scan et nmap.
 """
 
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # nosec B405
 from pathlib import Path
 from typing import List, Optional
 
@@ -312,7 +312,7 @@ class LinuxNmapScanner(NetworkScanner):
             Liste des peripheriques parses.
         """
         devices: List[NetworkDevice] = []
-        root = ET.fromstring(stdout)
+        root = ET.fromstring(stdout)  # nosec B314
         for host in root.findall("host"):
             status = host.find("status")
             if (

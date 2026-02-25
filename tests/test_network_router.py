@@ -13,6 +13,7 @@ from linux_python_utils.network.router import (
     AsusRouterClient,
     AsusRouterScanner,
     RouterConfig,
+    _ip_to_int,
     _parse_custom_clientlist,
     _parse_nvram_reservations,
 )
@@ -702,9 +703,9 @@ class TestRouterConfigValidation:
     """Tests pour la validation de RouterConfig."""
 
     def test_url_invalide_leve_value_error(self) -> None:
-        """URL sans 'http' lève ValueError."""
+        """URL avec scheme invalide lève ValueError."""
         from linux_python_utils.network.router import RouterConfig, RouterAuthError
-        with pytest.raises(ValueError, match="URL invalide"):
+        with pytest.raises(ValueError, match="Scheme"):
             RouterConfig(url="ftp://192.168.1.1", timeout=10)
 
     def test_timeout_negatif_leve_value_error(self) -> None:
@@ -1242,3 +1243,118 @@ class TestAsusRouterDhcpManagerEdgeCases:
                 ""
             )
         assert result == []
+
+
+class TestSecuriteRouter:
+    """Tests des corrections de securite dans router.py."""
+
+    # --- _ip_to_int ---
+
+    def test_ip_to_int_ip_valide(self) -> None:
+        """_ip_to_int() convertit correctement une IP valide."""
+        assert _ip_to_int("192.168.1.1") == 3232235777
+
+    def test_ip_to_int_ip_invalide_leve_valueerror(self) -> None:
+        """_ip_to_int() leve ValueError pour une IP hors plage."""
+        with pytest.raises(ValueError, match="IPv4"):
+            _ip_to_int("256.0.0.1")
+
+    def test_ip_to_int_chaine_vide_leve_valueerror(self) -> None:
+        """_ip_to_int() leve ValueError pour une chaine vide."""
+        with pytest.raises(ValueError):
+            _ip_to_int("")
+
+    def test_ip_to_int_format_invalide_leve_valueerror(self) -> None:
+        """_ip_to_int() leve ValueError pour un format non-IP."""
+        with pytest.raises(ValueError):
+            _ip_to_int("not.an.ip.addr")
+
+    # --- get_nvram ---
+
+    def test_get_nvram_cle_valide(
+        self, router_config: RouterConfig
+    ) -> None:
+        """get_nvram() accepte une cle NVRAM valide."""
+        from unittest.mock import patch
+        client = AsusRouterClient(router_config)
+        client._token = "tok"
+        with patch.object(
+            client, "_hook", return_value={}
+        ) as mock:
+            client.get_nvram("dhcp_start")
+            mock.assert_called_once_with(
+                "nvram_get(dhcp_start)"
+            )
+
+    def test_get_nvram_cle_invalide_leve_valueerror(
+        self, router_config: RouterConfig
+    ) -> None:
+        """get_nvram() leve ValueError pour une cle NVRAM invalide."""
+        client = AsusRouterClient(router_config)
+        client._token = "tok"
+        with pytest.raises(ValueError, match="NVRAM"):
+            client.get_nvram("dhcp_start);evil(")
+
+    def test_get_nvram_cle_avec_point_invalide(
+        self, router_config: RouterConfig
+    ) -> None:
+        """get_nvram() refuse les cles avec des points."""
+        client = AsusRouterClient(router_config)
+        client._token = "tok"
+        with pytest.raises(ValueError, match="NVRAM"):
+            client.get_nvram("cle.invalide")
+
+    # --- login ---
+
+    def test_login_username_avec_colon_leve_valueerror(
+        self, router_config: RouterConfig
+    ) -> None:
+        """login() leve ValueError si username contient ':'."""
+        client = AsusRouterClient(router_config)
+        with pytest.raises(ValueError, match=":"):
+            client.login("admin:evil", "password")
+
+    # --- RouterConfig URL ---
+
+    def test_router_config_url_loopback_refusee(self) -> None:
+        """RouterConfig rejette les adresses loopback."""
+        with pytest.raises(ValueError):
+            RouterConfig(url="http://127.0.0.1")
+
+    def test_router_config_url_link_local_refusee(self) -> None:
+        """RouterConfig rejette les adresses link-local (SSRF)."""
+        with pytest.raises(ValueError):
+            RouterConfig(url="http://169.254.169.254")
+
+    def test_router_config_url_lan_acceptee(self) -> None:
+        """RouterConfig accepte les adresses LAN privees."""
+        cfg = RouterConfig(url="http://192.168.1.1")
+        assert cfg.url == "http://192.168.1.1"
+
+    def test_router_config_url_scheme_invalide(self) -> None:
+        """RouterConfig rejette les schemes non http/https."""
+        with pytest.raises(ValueError, match="Scheme"):
+            RouterConfig(url="ftp://192.168.1.1")
+
+    def test_router_config_url_hostname_dns_accepte(self) -> None:
+        """RouterConfig accepte les noms de domaine."""
+        cfg = RouterConfig(url="http://router.local")
+        assert cfg.url == "http://router.local"
+
+    def test_login_echec_logue_erreur(
+        self, router_config: RouterConfig
+    ) -> None:
+        """login() log l'erreur via logger si connexion echoue."""
+        from unittest.mock import MagicMock, patch
+        from linux_python_utils.network.router import (
+            RouterAuthError,
+        )
+        logger = MagicMock()
+        client = AsusRouterClient(router_config, logger=logger)
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=OSError("connexion refusee"),
+        ):
+            with pytest.raises(RouterAuthError):
+                client.login("admin", "password")
+        logger.log_error.assert_called_once()
