@@ -83,6 +83,13 @@ class CredentialChain(CredentialProvider):
                         f"service={service!r}, key={key!r}"
                     )
                 return value
+            if self._logger:
+                self._logger.log_info(
+                    f"Credential absent de "
+                    f"{provider.source_name!r} : "
+                    f"service={service!r}, "
+                    f"key={key!r} — escalade"
+                )
         return None
 
     def get_with_source(

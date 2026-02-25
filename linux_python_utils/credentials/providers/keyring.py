@@ -88,7 +88,13 @@ class KeyringCredentialProvider(CredentialStore):
             kr = self._get_keyring()
             value = kr.get_password(service, key)
             return value if value else None
-        except Exception:
+        except Exception as exc:
+            if self._logger:
+                self._logger.log_warning(
+                    f"Erreur keyring get() : "
+                    f"service={service!r}, "
+                    f"key={key!r} : {exc}"
+                )
             return None
 
     def set(
@@ -146,7 +152,7 @@ class KeyringCredentialProvider(CredentialStore):
                     f"Credential supprime du keyring : "
                     f"service={service!r}, key={key!r}"
                 )
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     def is_available(self) -> bool:

@@ -408,6 +408,26 @@ class TestKeyringCredentialProvider:
         result = provider.get("svc", "key")
         assert result is None
 
+    def test_get_log_warning_sur_exception_keyring(self) -> None:
+        """get() log un warning si get_password leve une exception."""
+        backend = MagicMock()
+        backend.get_password.side_effect = Exception("bus D-Bus indisponible")
+        mock_logger = MagicMock()
+        provider = KeyringCredentialProvider(
+            keyring_backend=backend, logger=mock_logger
+        )
+        result = provider.get("svc", "KEY")
+        assert result is None
+        mock_logger.log_warning.assert_called_once()
+
+    def test_get_retourne_none_sans_log_si_pas_de_logger(self) -> None:
+        """get() retourne None sans erreur si pas de logger."""
+        backend = MagicMock()
+        backend.get_password.side_effect = Exception("erreur")
+        provider = KeyringCredentialProvider(keyring_backend=backend)
+        result = provider.get("svc", "KEY")
+        assert result is None
+
     def test_set_log_info_avec_logger(self) -> None:
         """set() log un message info si logger fourni et stockage reussi."""
         mock_logger = MagicMock()
@@ -564,6 +584,17 @@ class TestCredentialChain:
         assert result == "valeur"
         mock_logger.log_info.assert_called_once()
 
+    def test_get_log_info_escalade_provider(self) -> None:
+        """get() log l'escalade quand un provider ne trouve pas."""
+        mock_logger = MagicMock()
+        p1 = _make_provider(None, source="env")
+        p2 = _make_provider("valeur", source="keyring")
+        chain = CredentialChain([p1, p2], logger=mock_logger)
+        result = chain.get("svc", "KEY")
+        assert result == "valeur"
+        calls = [str(c) for c in mock_logger.log_info.call_args_list]
+        assert any("escalade" in c for c in calls)
+
     def test_get_with_source_ignore_providers_indisponibles(self) -> None:
         """get_with_source() ignore les providers indisponibles."""
         p1 = _make_provider("valeur_p1", available=False, source="env")
@@ -633,6 +664,18 @@ class TestCredentialManager:
         )
         with pytest.raises(CredentialNotFoundError, match="KEY"):
             manager.require("KEY")
+
+    def test_require_log_warning_si_absent(self) -> None:
+        """require() log un warning avant de lever CredentialNotFoundError."""
+        mock_logger = MagicMock()
+        manager = CredentialManager(
+            service="svc",
+            chain=self._make_chain(None),
+            logger=mock_logger,
+        )
+        with pytest.raises(CredentialNotFoundError):
+            manager.require("KEY")
+        mock_logger.log_warning.assert_called_once()
 
     def test_store_delegue_au_store(self) -> None:
         """store() appelle store.set() avec le bon service."""

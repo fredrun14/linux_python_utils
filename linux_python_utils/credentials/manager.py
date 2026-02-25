@@ -94,6 +94,13 @@ class CredentialManager:
         """
         value = self._chain.get(self._service, key)
         if value is None:
+            if self._logger:
+                self._logger.log_warning(
+                    f"Credential introuvable dans toute "
+                    f"la chaine : "
+                    f"service={self._service!r}, "
+                    f"key={key!r}"
+                )
             raise CredentialNotFoundError(
                 f"Credential introuvable : "
                 f"service={self._service!r}, key={key!r}"
