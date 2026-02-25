@@ -232,3 +232,31 @@ class TestJsonDeviceRepository:
         ])
         content = path.read_text(encoding="utf-8")
         assert "2026-01-15T10:30:00" in content
+
+
+class TestJsonDeviceRepositoryAvecLogger:
+    """Tests avec logger pour JsonDeviceRepository."""
+
+    def test_load_avec_logger(self, tmp_path) -> None:
+        """load() appelle logger.log_info si logger present."""
+        from unittest.mock import MagicMock
+        path = tmp_path / "devices.json"
+        repo_sans_logger = JsonDeviceRepository(str(path))
+        devices = [_device("192.168.1.1", "aa:bb:cc:dd:ee:01")]
+        repo_sans_logger.save(devices)
+
+        logger = MagicMock()
+        repo = JsonDeviceRepository(str(path), logger=logger)
+        result = repo.load()
+        assert len(result) == 1
+        logger.log_info.assert_called_once()
+
+    def test_save_avec_logger(self, tmp_path) -> None:
+        """save() appelle logger.log_info si logger present."""
+        from unittest.mock import MagicMock
+        path = tmp_path / "devices.json"
+        logger = MagicMock()
+        repo = JsonDeviceRepository(str(path), logger=logger)
+        devices = [_device()]
+        repo.save(devices)
+        logger.log_info.assert_called_once()

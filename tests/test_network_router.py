@@ -692,3 +692,553 @@ class TestAsusRouterScannerScan:
             scanner.scan(network_config)
 
         mock_client.logout.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Tests : RouterConfig validation
+# ---------------------------------------------------------------------------
+
+class TestRouterConfigValidation:
+    """Tests pour la validation de RouterConfig."""
+
+    def test_url_invalide_leve_value_error(self) -> None:
+        """URL sans 'http' lève ValueError."""
+        from linux_python_utils.network.router import RouterConfig, RouterAuthError
+        with pytest.raises(ValueError, match="URL invalide"):
+            RouterConfig(url="ftp://192.168.1.1", timeout=10)
+
+    def test_timeout_negatif_leve_value_error(self) -> None:
+        """Timeout <= 0 lève ValueError."""
+        from linux_python_utils.network.router import RouterConfig
+        with pytest.raises(ValueError, match="Timeout invalide"):
+            RouterConfig(url="http://192.168.1.1", timeout=0)
+
+    def test_config_valide_acceptee(self) -> None:
+        """Configuration valide est acceptée sans exception."""
+        from linux_python_utils.network.router import RouterConfig
+        config = RouterConfig(
+            url="https://192.168.50.1",
+            timeout=15,
+            username="admin",
+            password="secret"
+        )
+        assert config.url == "https://192.168.50.1"
+        assert config.timeout == 15
+
+
+# ---------------------------------------------------------------------------
+# Tests : helpers ip
+# ---------------------------------------------------------------------------
+
+class TestIpHelpers:
+    """Tests pour _ip_to_int, _int_to_ip, _next_available_ip."""
+
+    def test_ip_to_int(self) -> None:
+        """_ip_to_int() convertit correctement une IP."""
+        from linux_python_utils.network.router import _ip_to_int
+        assert _ip_to_int("192.168.50.1") == (
+            (192 << 24) + (168 << 16) + (50 << 8) + 1
+        )
+
+    def test_int_to_ip(self) -> None:
+        """_int_to_ip() convertit correctement un entier."""
+        from linux_python_utils.network.router import _int_to_ip
+        result = _int_to_ip((192 << 24) + (168 << 16) + (50 << 8) + 1)
+        assert result == "192.168.50.1"
+
+    def test_next_available_ip_premier_libre(self) -> None:
+        """_next_available_ip() retourne la première IP libre."""
+        from linux_python_utils.network.router import _next_available_ip
+        from linux_python_utils.network.config import DhcpRange
+        dhcp_range = DhcpRange(start="192.168.50.100", end="192.168.50.110")
+        used = {"192.168.50.100", "192.168.50.101"}
+        ip = _next_available_ip(dhcp_range, used)
+        assert ip == "192.168.50.102"
+
+    def test_next_available_ip_plage_epuisee(self) -> None:
+        """_next_available_ip() retourne None si plage épuisée."""
+        from linux_python_utils.network.router import _next_available_ip
+        from linux_python_utils.network.config import DhcpRange
+        dhcp_range = DhcpRange(start="192.168.50.100", end="192.168.50.102")
+        used = {
+            "192.168.50.100",
+            "192.168.50.101",
+            "192.168.50.102",
+        }
+        result = _next_available_ip(dhcp_range, used)
+        assert result is None
+
+    def test_infer_type_from_vendor(self) -> None:
+        """_infer_type_from_vendor() infère le type depuis le fabricant."""
+        from linux_python_utils.network.router import _infer_type_from_vendor
+        assert _infer_type_from_vendor("NVIDIA Corporation") == "Media Player"
+        assert _infer_type_from_vendor("Apple Inc") == "Apple"
+        assert _infer_type_from_vendor("Unknown Corp") == "unknown"
+        assert _infer_type_from_vendor("Raspberry Pi Foundation") == "Raspberry Pi"
+
+
+# ---------------------------------------------------------------------------
+# Tests : AsusRouterClient - login / logout / _require_token
+# ---------------------------------------------------------------------------
+
+class TestAsusRouterClientMocked:
+    """Tests pour AsusRouterClient avec urllib mocké."""
+
+    def _make_client(self, router_config):
+        """Crée un client avec logger mocké."""
+        from linux_python_utils.network.router import AsusRouterClient
+        logger = MagicMock()
+        return AsusRouterClient(router_config, logger=logger), logger
+
+    def test_require_token_sans_token_leve_erreur(
+        self, router_config: RouterConfig
+    ) -> None:
+        """_require_token() lève RouterAuthError si non authentifié."""
+        from linux_python_utils.network.router import (
+            AsusRouterClient, RouterAuthError
+        )
+        client = AsusRouterClient(router_config)
+        with pytest.raises(RouterAuthError, match="login"):
+            client._require_token()
+
+    def test_login_succes(self, router_config: RouterConfig) -> None:
+        """login() définit le token en cas de succès."""
+        from unittest.mock import patch, MagicMock
+        import json
+        from linux_python_utils.network.router import AsusRouterClient
+        client, logger = self._make_client(router_config)
+
+        mock_resp = MagicMock()
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.read.return_value = json.dumps(
+            {"asus_token": "tok123"}
+        ).encode("utf-8")
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            client.login("admin", "secret")
+
+        assert client._token == "tok123"
+        logger.log_info.assert_called_once()
+
+    def test_login_echec_connexion(self, router_config: RouterConfig) -> None:
+        """login() lève RouterAuthError en cas d'erreur réseau."""
+        from unittest.mock import patch
+        from linux_python_utils.network.router import (
+            AsusRouterClient, RouterAuthError
+        )
+        client, _ = self._make_client(router_config)
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=Exception("Connexion refusée")
+        ):
+            with pytest.raises(RouterAuthError, match="Connexion echouee"):
+                client.login("admin", "secret")
+
+    def test_login_token_absent_leve_erreur(
+        self, router_config: RouterConfig
+    ) -> None:
+        """login() lève RouterAuthError si token absent de la réponse."""
+        from unittest.mock import patch, MagicMock
+        import json
+        from linux_python_utils.network.router import (
+            AsusRouterClient, RouterAuthError
+        )
+        client, _ = self._make_client(router_config)
+        mock_resp = MagicMock()
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.read.return_value = json.dumps({}).encode("utf-8")
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            with pytest.raises(RouterAuthError, match="Token absent"):
+                client.login("admin", "secret")
+
+    def test_logout_sans_token_ne_fait_rien(
+        self, router_config: RouterConfig
+    ) -> None:
+        """logout() ne fait rien si non authentifié."""
+        from linux_python_utils.network.router import AsusRouterClient
+        client = AsusRouterClient(router_config)
+        client.logout()  # Ne doit pas lever d'exception
+
+    def test_logout_avec_token(self, router_config: RouterConfig) -> None:
+        """logout() efface le token après déconnexion."""
+        from unittest.mock import patch, MagicMock
+        from linux_python_utils.network.router import AsusRouterClient
+        client = AsusRouterClient(router_config)
+        client._token = "tok123"
+        mock_resp = MagicMock()
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            client.logout()
+        assert client._token is None
+
+    def test_logout_ignore_exception_reseau(
+        self, router_config: RouterConfig
+    ) -> None:
+        """logout() ignore les erreurs réseau."""
+        from unittest.mock import patch
+        from linux_python_utils.network.router import AsusRouterClient
+        client = AsusRouterClient(router_config)
+        client._token = "tok123"
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=Exception("timeout")
+        ):
+            client.logout()  # Ne doit pas lever d'exception
+        assert client._token is None
+
+    def test_get_dhcp_leases_parse_format_dnsmasq(
+        self, router_config: RouterConfig
+    ) -> None:
+        """get_dhcp_leases() parse le format dnsmasq correctement."""
+        from linux_python_utils.network.router import AsusRouterClient
+        client = AsusRouterClient(router_config)
+        client._token = "fake-token"
+        leases_str = (
+            "1234567890 48:b0:2d:03:1e:ea 192.168.50.3 Shield *\n"
+            "1234567891 58:16:d7:f1:77:6e 192.168.50.7 Thermomix *\n"
+        )
+        client._hook = MagicMock(
+            return_value={"dhcpLeaseMacList": leases_str}
+        )
+        result = client.get_dhcp_leases()
+        assert result["48:b0:2d:03:1e:ea"] == "192.168.50.3"
+        assert result["58:16:d7:f1:77:6e"] == "192.168.50.7"
+
+    def test_get_dhcp_leases_ignore_ip_etoile(
+        self, router_config: RouterConfig
+    ) -> None:
+        """get_dhcp_leases() ignore les lignes avec ip='*'."""
+        from linux_python_utils.network.router import AsusRouterClient
+        client = AsusRouterClient(router_config)
+        client._token = "fake-token"
+        leases_str = "123 48:b0:2d:03:1e:ea * Shield *\n"
+        client._hook = MagicMock(
+            return_value={"dhcpLeaseMacList": leases_str}
+        )
+        result = client.get_dhcp_leases()
+        assert result == {}
+
+    def test_get_nvram_retourne_dict(
+        self, router_config: RouterConfig
+    ) -> None:
+        """get_nvram() retourne le dictionnaire de variables NVRAM."""
+        from linux_python_utils.network.router import AsusRouterClient
+        client = AsusRouterClient(router_config)
+        client._token = "fake-token"
+        client._hook = MagicMock(
+            return_value={
+                "dhcp_staticlist": "<AA:BB:CC:DD:EE:FF>192.168.50.10",
+                "dhcp_hostnames": ""
+            }
+        )
+        result = client.get_nvram("dhcp_staticlist", "dhcp_hostnames")
+        assert "dhcp_staticlist" in result
+
+
+# ---------------------------------------------------------------------------
+# Tests : AsusRouterScanner avec logger
+# ---------------------------------------------------------------------------
+
+class TestAsusRouterScannerAvecLogger:
+    """Tests pour AsusRouterScanner avec logger actif."""
+
+    def test_scan_avec_logger_logge_decouverte(
+        self,
+        router_config: RouterConfig,
+        network_config: NetworkConfig,
+    ) -> None:
+        """scan() logge le nombre de périphériques découverts."""
+        logger = MagicMock()
+        mock_client = MagicMock(spec=AsusRouterClient)
+        mock_client.get_clients.return_value = [
+            {
+                "mac": "48:b0:2d:03:1e:ea",
+                "ip": "192.168.50.3",
+                "isOnline": "1",
+                "nickName": "Shield",
+                "vendor": "NVIDIA",
+                "dpiDevice": "AndroidTV",
+                "ipMethod": "Manual",
+            }
+        ]
+        mock_client.get_dhcp_leases.return_value = {}
+        mock_client.get_nvram.return_value = {
+            "dhcp_staticlist": "",
+            "dhcp_hostnames": "",
+            "custom_clientlist": "<Shield>48:B0:2D:03:1E:EA>5>",
+        }
+        scanner = AsusRouterScanner(
+            router_config, logger=logger, client=mock_client
+        )
+        result = scanner.scan(network_config)
+        assert len(result) == 1
+        logger.log_info.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Tests : AsusRouterDhcpManager
+# ---------------------------------------------------------------------------
+
+class TestAsusRouterDhcpManager:
+    """Tests pour AsusRouterDhcpManager."""
+
+    def _make_manager(self, router_config, network_config):
+        """Crée un gestionnaire DHCP avec client mocké."""
+        from linux_python_utils.network.router import AsusRouterDhcpManager
+        mock_client = MagicMock(spec=AsusRouterClient)
+        logger = MagicMock()
+        manager = AsusRouterDhcpManager(
+            config=network_config,
+            router_config=router_config,
+            logger=logger,
+            client=mock_client,
+        )
+        return manager, mock_client, logger
+
+    def test_init_avec_client_injecte(
+        self, router_config: RouterConfig, network_config: NetworkConfig
+    ) -> None:
+        """AsusRouterDhcpManager s'initialise avec un client injecté."""
+        manager, mock_client, _ = self._make_manager(
+            router_config, network_config
+        )
+        assert manager._client is mock_client
+
+    def test_generate_reservations_alloue_ips(
+        self, router_config: RouterConfig, network_config: NetworkConfig
+    ) -> None:
+        """generate_reservations() alloue des IP fixes depuis la plage DHCP."""
+        from linux_python_utils.network.models import NetworkDevice
+        manager, _, _ = self._make_manager(router_config, network_config)
+        devices = [
+            NetworkDevice(
+                ip="192.168.50.3",
+                mac="48:b0:2d:03:1e:ea",
+                hostname="Shield",
+            )
+        ]
+        result = manager.generate_reservations(devices)
+        assert len(result) == 1
+        assert result[0].fixed_ip is not None
+
+    def test_generate_reservations_conserve_ip_fixe(
+        self, router_config: RouterConfig, network_config: NetworkConfig
+    ) -> None:
+        """generate_reservations() conserve les IP déjà fixées."""
+        from linux_python_utils.network.models import NetworkDevice
+        manager, _, _ = self._make_manager(router_config, network_config)
+        devices = [
+            NetworkDevice(
+                ip="192.168.50.10",
+                mac="48:b0:2d:03:1e:ea",
+                hostname="Shield",
+                fixed_ip="192.168.50.10"
+            )
+        ]
+        result = manager.generate_reservations(devices)
+        assert result[0].fixed_ip == "192.168.50.10"
+
+    def test_generate_reservations_sans_plage_dhcp(
+        self, router_config: RouterConfig
+    ) -> None:
+        """generate_reservations() lève ValueError si pas de plage DHCP."""
+        from linux_python_utils.network.config import NetworkConfig
+        from linux_python_utils.network.router import AsusRouterDhcpManager
+        config_sans_dhcp = NetworkConfig(cidr="192.168.50.0/24")
+        mock_client = MagicMock(spec=AsusRouterClient)
+        manager = AsusRouterDhcpManager(
+            config=config_sans_dhcp,
+            router_config=router_config,
+            client=mock_client,
+        )
+        with pytest.raises(ValueError, match="Plage DHCP non configuree"):
+            manager.generate_reservations([])
+
+    def test_export_reservations_format_nvram(
+        self, router_config: RouterConfig, network_config: NetworkConfig
+    ) -> None:
+        """export_reservations() génère le format NVRAM ASUS."""
+        from linux_python_utils.network.models import NetworkDevice
+        manager, _, _ = self._make_manager(router_config, network_config)
+        devices = [
+            NetworkDevice(
+                ip="192.168.50.10",
+                mac="48:b0:2d:03:1e:ea",
+                hostname="Shield",
+                fixed_ip="192.168.50.10"
+            )
+        ]
+        result = manager.export_reservations(devices)
+        assert "48:B0:2D:03:1E:EA" in result
+        assert "192.168.50.10" in result
+
+    def test_export_reservations_ignore_sans_ip_fixe(
+        self, router_config: RouterConfig, network_config: NetworkConfig
+    ) -> None:
+        """export_reservations() ignore les appareils sans fixed_ip."""
+        from linux_python_utils.network.models import NetworkDevice
+        manager, _, _ = self._make_manager(router_config, network_config)
+        devices = [
+            NetworkDevice(
+                ip="192.168.50.3",
+                mac="48:b0:2d:03:1e:ea",
+                hostname="Shield",
+            )
+        ]
+        result = manager.export_reservations(devices)
+        assert result == ""
+
+    def test_apply_reservations_appelle_login_logout(
+        self, router_config: RouterConfig, network_config: NetworkConfig
+    ) -> None:
+        """apply_reservations() appelle login et logout."""
+        from linux_python_utils.network.models import NetworkDevice
+        manager, mock_client, logger = self._make_manager(
+            router_config, network_config
+        )
+        mock_client.get_nvram.return_value = {
+            "dhcp_enable_x": "1",
+            "dhcp_start": "192.168.50.100",
+            "dhcp_end": "192.168.50.254",
+            "dhcp_lease": "86400",
+            "dhcp_static_x": "1",
+        }
+        devices = [
+            NetworkDevice(
+                ip="192.168.50.10",
+                mac="48:b0:2d:03:1e:ea",
+                hostname="Shield",
+                fixed_ip="192.168.50.10"
+            )
+        ]
+        manager.apply_reservations(devices)
+        mock_client.login.assert_called_once()
+        mock_client.logout.assert_called_once()
+        logger.log_info.assert_called_once()
+
+    def test_read_reservations_retourne_liste(
+        self, router_config: RouterConfig, network_config: NetworkConfig
+    ) -> None:
+        """read_reservations() retourne les réservations du routeur."""
+        manager, mock_client, _ = self._make_manager(
+            router_config, network_config
+        )
+        mock_client.get_nvram.return_value = {
+            "dhcp_staticlist": "<48:B0:2D:03:1E:EA>192.168.50.10",
+            "dhcp_hostnames": "",
+        }
+        result = manager.read_reservations()
+        assert len(result) == 1
+        assert result[0].fixed_ip == "192.168.50.10"
+        mock_client.login.assert_called_once()
+        mock_client.logout.assert_called_once()
+
+
+class TestAsusRouterClientHook:
+    """Tests pour AsusRouterClient._hook() avec urllib mocke."""
+
+    def test_hook_succes_retourne_json(
+        self, router_config: RouterConfig
+    ) -> None:
+        """_hook() retourne le JSON parse depuis la reponse."""
+        import json
+        from unittest.mock import patch, MagicMock
+        client = AsusRouterClient(router_config)
+        client._token = "fake-token"
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(
+            {"get_clientlist": {}}
+        ).encode("utf-8")
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch(
+            "linux_python_utils.network.router.urllib.request.urlopen",
+            return_value=mock_resp
+        ):
+            result = client._hook("get_clientlist(appobj)")
+        assert "get_clientlist" in result
+
+    def test_hook_erreur_leve_runtime_error(
+        self, router_config: RouterConfig
+    ) -> None:
+        """_hook() leve RuntimeError en cas d'erreur urllib."""
+        from unittest.mock import patch
+        client = AsusRouterClient(router_config)
+        client._token = "fake-token"
+
+        with patch(
+            "linux_python_utils.network.router.urllib.request.urlopen",
+            side_effect=Exception("network error")
+        ):
+            with pytest.raises(RuntimeError, match="hook"):
+                client._hook("get_clientlist(appobj)")
+
+    def test_require_token_retourne_token(
+        self, router_config: RouterConfig
+    ) -> None:
+        """_require_token() retourne le token si present."""
+        client = AsusRouterClient(router_config)
+        client._token = "my-token"
+        token = client._require_token()
+        assert token == "my-token"
+
+
+class TestAsusRouterDhcpManagerEdgeCases:
+    """Tests pour les cas limites d'AsusRouterDhcpManager."""
+
+    def test_generate_reservations_plage_epuisee(
+        self, router_config: RouterConfig, network_config: NetworkConfig
+    ) -> None:
+        """generate_reservations() leve ValueError si plage epuisee."""
+        from linux_python_utils.network.router import AsusRouterDhcpManager
+        from linux_python_utils.network.config import DhcpRange
+        from linux_python_utils.network.models import NetworkDevice
+
+        small_config = NetworkConfig(
+            cidr="192.168.50.0/24",
+            dhcp_range=DhcpRange(start="192.168.50.100", end="192.168.50.100"),
+        )
+        mgr = AsusRouterDhcpManager(small_config, router_config)
+        devices = [
+            NetworkDevice(ip="192.168.50.1", mac="aa:bb:cc:dd:ee:01"),
+            NetworkDevice(ip="192.168.50.2", mac="aa:bb:cc:dd:ee:02"),
+        ]
+        with pytest.raises(ValueError, match="epuisee"):
+            mgr.generate_reservations(devices)
+
+    def test_build_nvram_strings_skip_sans_fixed_ip(
+        self, router_config: RouterConfig, network_config: NetworkConfig
+    ) -> None:
+        """_build_nvram_strings() ignore les devices sans fixed_ip."""
+        from linux_python_utils.network.router import AsusRouterDhcpManager
+        from linux_python_utils.network.models import NetworkDevice
+
+        mgr = AsusRouterDhcpManager(network_config, router_config)
+        devices = [
+            NetworkDevice(ip="192.168.50.1", mac="aa:bb:cc:dd:ee:01"),
+            NetworkDevice(ip="192.168.50.2", mac="aa:bb:cc:dd:ee:02", fixed_ip="192.168.50.2"),
+        ]
+        static_list, hostnames = mgr._build_nvram_strings(devices)
+        assert "AA:BB:CC:DD:EE:01" not in static_list
+        assert "AA:BB:CC:DD:EE:02" in static_list
+
+    def test_parse_nvram_staticlist_value_error(
+        self, router_config: RouterConfig, network_config: NetworkConfig
+    ) -> None:
+        """_parse_nvram_staticlist() ignore les entrees avec MAC invalide."""
+        from linux_python_utils.network.router import AsusRouterDhcpManager
+        from unittest.mock import patch
+
+        mgr = AsusRouterDhcpManager(network_config, router_config)
+        with patch(
+            "linux_python_utils.network.router.NetworkDevice",
+            side_effect=ValueError("bad mac")
+        ):
+            result = mgr._parse_nvram_staticlist(
+                "<AA:BB:CC:DD:EE:01>192.168.50.1",
+                ""
+            )
+        assert result == []

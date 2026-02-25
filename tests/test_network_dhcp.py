@@ -155,3 +155,27 @@ class TestLinuxDhcpReservationManager:
         ]
         result = mgr.generate_reservations(devices)
         assert result[1].fixed_ip == "192.168.1.101"
+
+
+class TestLinuxDhcpReservationManagerAvecLogger:
+    """Tests avec logger pour LinuxDhcpReservationManager."""
+
+    def test_generate_reservations_avec_logger(self) -> None:
+        """generate_reservations() appelle logger.log_info si logger present."""
+        from unittest.mock import MagicMock
+        logger = MagicMock()
+        mgr = LinuxDhcpReservationManager(_config(), logger=logger)
+        devices = [_device()]
+        mgr.generate_reservations(devices)
+        logger.log_info.assert_called_once()
+
+    def test_export_reservations_skip_sans_fixed_ip(self) -> None:
+        """export_reservations() ignore les devices sans fixed_ip."""
+        mgr = LinuxDhcpReservationManager(_config())
+        devices = [
+            _device(),                           # sans fixed_ip
+            _device("192.168.1.2", "bb:cc:dd:ee:ff:00", fixed_ip="192.168.1.2"),
+        ]
+        output = mgr.export_reservations(devices)
+        assert "dhcp-host=aa:bb:cc:dd:ee:ff" not in output
+        assert "dhcp-host=bb:cc:dd:ee:ff:00" in output

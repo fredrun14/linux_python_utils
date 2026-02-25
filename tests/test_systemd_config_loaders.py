@@ -547,3 +547,12 @@ class TestConfigFileLoaderBase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestConfigLoadersBaseImport:
+    """Import du module base pour la couverture."""
+
+    def test_import_base_module(self) -> None:
+        """L'import du module base s'effectue sans erreur."""
+        import linux_python_utils.systemd.config_loaders.base  # noqa: F401
+        assert True

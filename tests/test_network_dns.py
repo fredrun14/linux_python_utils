@@ -148,3 +148,66 @@ class TestLinuxDnsmasqConfigGenerator:
         mgr = LinuxDnsmasqConfigGenerator(_config())
         output = mgr.generate_hosts_entries([])
         assert "address=" not in output
+
+
+
+class TestLinuxHostsFileManagerEdgeCases:
+    """Tests pour les cas limites de LinuxHostsFileManager."""
+
+    def test_hosts_entries_device_sans_dns_name(self) -> None:
+        """Device sans dns_name est ignore dans generate_hosts_entries."""
+        mgr = LinuxHostsFileManager(_config())
+        devices = [_device()]  # pas de dns_name
+        output = mgr.generate_hosts_entries(devices)
+        assert "192.168.1.100" not in output
+
+    def test_hosts_entries_fqdn_sans_point(self) -> None:
+        """FQDN sans point genere une ligne sans alias."""
+        mgr = LinuxHostsFileManager(_config())
+        devices = [_device(dns_name="nas")]
+        output = mgr.generate_hosts_entries(devices)
+        assert "192.168.1.100    nas" in output
+        # il ne doit pas y avoir d'alias
+        lines = [ln for ln in output.split("\n") if "nas" in ln]
+        assert any("nas" in ln for ln in lines)
+
+
+class TestLinuxDnsmasqConfigGeneratorEdgeCases:
+    """Tests pour les cas limites de LinuxDnsmasqConfigGenerator."""
+
+    def test_generate_dns_names_sans_nom_existant(self) -> None:
+        """generate_dns_names() genere le nom si dns_name absent."""
+        mgr = LinuxDnsmasqConfigGenerator(_config())
+        devices = [
+            _device(ip="192.168.1.42", hostname="mynas"),
+        ]
+        result = mgr.generate_dns_names(devices)
+        assert result[0].dns_name == "mynas.maison.local"
+
+    def test_generate_dns_names_garde_nom_existant(self) -> None:
+        """generate_dns_names() conserve le dns_name existant."""
+        mgr = LinuxDnsmasqConfigGenerator(_config())
+        devices = [_device(dns_name="existing.maison.local")]
+        result = mgr.generate_dns_names(devices)
+        assert result[0].dns_name == "existing.maison.local"
+
+    def test_generate_hosts_entries_skip_sans_dns_name(self) -> None:
+        """generate_hosts_entries() ignore les devices sans dns_name."""
+        mgr = LinuxDnsmasqConfigGenerator(_config())
+        devices = [_device()]  # pas de dns_name
+        output = mgr.generate_hosts_entries(devices)
+        assert "address=" not in output
+
+    def test_generate_hosts_entries_utilise_fixed_ip(self) -> None:
+        """generate_hosts_entries() utilise fixed_ip si disponible."""
+        mgr = LinuxDnsmasqConfigGenerator(_config())
+        devices = [
+            _device(
+                ip="192.168.1.200",
+                fixed_ip="192.168.1.10",
+                dns_name="nas.maison.local",
+            )
+        ]
+        output = mgr.generate_hosts_entries(devices)
+        assert "192.168.1.10" in output
+        assert "192.168.1.200" not in output

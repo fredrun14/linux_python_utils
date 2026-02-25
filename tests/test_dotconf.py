@@ -292,3 +292,92 @@ class TestLinuxIniConfigManager:
         assert "main" in result
         assert result["commands"]["upgrade_type"] == "security"
         assert result["main"]["fastestmirror"] == "true"
+
+    def test_write_config(self, manager, temp_ini_file):
+        """Teste write() avec un IniConfig complet."""
+        from linux_python_utils.dotconf.base import IniConfig
+        from dataclasses import dataclass
+
+        path = Path(temp_ini_file)
+
+        class SimpleConfig(IniConfig):
+            def sections(self):
+                return [CommandsSectionFixture(upgrade_type="security")]
+
+            def to_ini(self) -> str:
+                return manager.config_to_ini(self)
+
+            @classmethod
+            def from_file(cls, path):
+                raise NotImplementedError
+
+        config = SimpleConfig()
+        manager.write(path, config)
+        result = manager.read(path)
+        assert "commands" in result
+        assert result["commands"]["upgrade_type"] == "security"
+
+    def test_config_to_ini(self, manager):
+        """Teste config_to_ini() avec plusieurs sections."""
+        from linux_python_utils.dotconf.base import IniConfig
+
+        class SimpleConfig(IniConfig):
+            def sections(self):
+                return [
+                    CommandsSectionFixture(upgrade_type="security"),
+                    MainSectionFixture(fastestmirror="true"),
+                ]
+
+            def to_ini(self) -> str:
+                return manager.config_to_ini(self)
+
+            @classmethod
+            def from_file(cls, path):
+                raise NotImplementedError
+
+        config = SimpleConfig()
+        ini = manager.config_to_ini(config)
+        assert "[commands]" in ini
+        assert "[main]" in ini
+        assert "upgrade_type = security" in ini
+
+    def test_update_section_fichier_inexistant(self, manager, tmp_path):
+        """update_section() sur un fichier inexistant cree la section."""
+        path = tmp_path / "new_config.conf"
+        section = CommandsSectionFixture(upgrade_type="security")
+        updated = manager.update_section(path, section)
+        assert updated is True
+        result = manager.read(path)
+        assert result["commands"]["upgrade_type"] == "security"
+
+
+class TestValidatedSectionEdgeCases:
+    """Tests pour les cas limites de ValidatedSection."""
+
+    def test_section_name_not_implemented(self):
+        """section_name() leve NotImplementedError si non redefini."""
+        import pytest
+        with pytest.raises(NotImplementedError):
+            ValidatedSection.section_name()
+
+    def test_private_field_skipped_in_validation(self):
+        """Les champs prives (commencant par _) sont ignores."""
+        from dataclasses import dataclass, field as dataclass_field
+
+        @dataclass(frozen=True)
+        class SectionWithPrivate(ValidatedSection):
+            public: str = "val"
+            _private: str = dataclass_field(default="priv", init=False)
+
+            @staticmethod
+            def section_name() -> str:
+                return "test"
+
+        SectionWithPrivate.set_validators({
+            "public": ["val", "other"],
+        })
+        try:
+            section = SectionWithPrivate()
+            assert section.public == "val"
+        finally:
+            SectionWithPrivate.clear_validators()

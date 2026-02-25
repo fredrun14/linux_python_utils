@@ -207,3 +207,18 @@ class TestDiffReporter:
         assert "disparus" in output
         assert "1 nouveau" in output
         assert "1 disparu" in output
+
+
+class TestDiffReporterIpChange:
+    """Tests pour DiffReporter avec IP changee."""
+
+    def test_rapport_inclut_ip_changee(self) -> None:
+        """DiffReporter signale les appareils dont l'IP a change."""
+        from linux_python_utils.network.reporter import DiffReporter
+        reporter = DiffReporter([], [])
+        current = [
+            _device("192.168.1.200", "aa:bb:cc:dd:ee:ff", fixed_ip="192.168.1.10")
+        ]
+        output = reporter.report(current)
+        assert "IP changee" in output
+        assert "192.168.1.10" in output

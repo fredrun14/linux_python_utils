@@ -414,3 +414,516 @@ class TestWriteUnitFileAntiSymlink:
             assert result is True
         finally:
             shutil.rmtree(temp_dir)
+
+
+class TestLinuxServiceUnitManagerSuccessPaths:
+    """Tests pour les chemins succès de LinuxServiceUnitManager."""
+
+    def _make_manager(self, tmp_path):
+        """Crée un manager avec mocks et répertoire temporaire."""
+        logger = MagicMock()
+        executor = MagicMock()
+        executor.reload_systemd.return_value = True
+        executor.start_unit.return_value = True
+        executor.stop_unit.return_value = True
+        executor.restart_unit.return_value = True
+        executor.enable_unit.return_value = True
+        executor.disable_unit.return_value = True
+        executor.get_status.return_value = "active"
+        executor.is_enabled.return_value = True
+        manager = LinuxServiceUnitManager(logger, executor)
+        manager.SYSTEMD_UNIT_PATH = str(tmp_path)
+        return manager, logger, executor
+
+    def test_install_service_unit_succes(self, tmp_path):
+        """install_service_unit() retourne True en cas de succès."""
+        manager, logger, _ = self._make_manager(tmp_path)
+        config = ServiceConfig(
+            description="Service de test",
+            exec_start="/usr/bin/test-daemon"
+        )
+        result = manager.install_service_unit(config)
+        assert result is True
+        logger.log_info.assert_called()
+
+    def test_install_service_unit_rechargement_echoue(self, tmp_path):
+        """install_service_unit() retourne False si reload_systemd échoue."""
+        manager, _, executor = self._make_manager(tmp_path)
+        executor.reload_systemd.return_value = False
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/test-daemon"
+        )
+        result = manager.install_service_unit(config)
+        assert result is False
+
+    def test_install_service_unit_with_name_succes(self, tmp_path):
+        """install_service_unit_with_name() retourne True en cas de succès."""
+        manager, logger, _ = self._make_manager(tmp_path)
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/test-daemon"
+        )
+        result = manager.install_service_unit_with_name("my-service", config)
+        assert result is True
+        logger.log_info.assert_called()
+
+    def test_install_service_unit_with_name_reload_echoue(self, tmp_path):
+        """install_service_unit_with_name() retourne False si reload échoue."""
+        manager, _, executor = self._make_manager(tmp_path)
+        executor.reload_systemd.return_value = False
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/test-daemon"
+        )
+        result = manager.install_service_unit_with_name("my-service", config)
+        assert result is False
+
+    def test_start_service_appelle_executor(self, tmp_path):
+        """start_service() appelle executor.start_unit()."""
+        manager, _, executor = self._make_manager(tmp_path)
+        result = manager.start_service("my-service")
+        assert result is True
+        executor.start_unit.assert_called_once_with("my-service.service")
+
+    def test_stop_service_appelle_executor(self, tmp_path):
+        """stop_service() appelle executor.stop_unit()."""
+        manager, _, executor = self._make_manager(tmp_path)
+        result = manager.stop_service("my-service")
+        assert result is True
+        executor.stop_unit.assert_called_once_with("my-service.service")
+
+    def test_restart_service_appelle_executor(self, tmp_path):
+        """restart_service() appelle executor.restart_unit()."""
+        manager, _, executor = self._make_manager(tmp_path)
+        result = manager.restart_service("my-service")
+        assert result is True
+        executor.restart_unit.assert_called_once_with("my-service.service")
+
+    def test_enable_service_appelle_executor(self, tmp_path):
+        """enable_service() appelle executor.enable_unit()."""
+        manager, _, executor = self._make_manager(tmp_path)
+        result = manager.enable_service("my-service")
+        assert result is True
+        executor.enable_unit.assert_called_once_with("my-service.service")
+
+    def test_disable_service_appelle_executor(self, tmp_path):
+        """disable_service() appelle executor.disable_unit()."""
+        manager, _, executor = self._make_manager(tmp_path)
+        result = manager.disable_service("my-service")
+        assert result is True
+        executor.disable_unit.assert_called_with(
+            "my-service.service", ignore_errors=False
+        )
+
+    def test_remove_service_unit_succes(self, tmp_path):
+        """remove_service_unit() retourne True en cas de succès."""
+        service_file = tmp_path / "my-service.service"
+        service_file.write_text("[Unit]\nDescription=Test\n")
+        manager, logger, _ = self._make_manager(tmp_path)
+        result = manager.remove_service_unit("my-service")
+        assert result is True
+        logger.log_info.assert_called()
+
+    def test_get_service_status_retourne_statut(self, tmp_path):
+        """get_service_status() retourne le statut via l'executor."""
+        manager, _, executor = self._make_manager(tmp_path)
+        status = manager.get_service_status("my-service")
+        assert status == "active"
+        executor.get_status.assert_called_once_with("my-service.service")
+
+    def test_is_service_active_retourne_true(self, tmp_path):
+        """is_service_active() retourne True si statut == 'active'."""
+        manager, _, executor = self._make_manager(tmp_path)
+        executor.get_status.return_value = "active"
+        assert manager.is_service_active("my-service") is True
+
+    def test_is_service_active_retourne_false(self, tmp_path):
+        """is_service_active() retourne False si inactif."""
+        manager, _, executor = self._make_manager(tmp_path)
+        executor.get_status.return_value = "inactive"
+        assert manager.is_service_active("my-service") is False
+
+    def test_is_service_enabled_retourne_true(self, tmp_path):
+        """is_service_enabled() retourne True si activé."""
+        manager, _, executor = self._make_manager(tmp_path)
+        assert manager.is_service_enabled("my-service") is True
+        executor.is_enabled.assert_called_once_with("my-service.service")
+
+    def test_is_service_enabled_retourne_false(self, tmp_path):
+        """is_service_enabled() retourne False si non activé."""
+        manager, _, executor = self._make_manager(tmp_path)
+        executor.is_enabled.return_value = False
+        assert manager.is_service_enabled("my-service") is False
+
+
+class TestLinuxUserServiceUnitManagerSuccessPaths:
+    """Tests pour les chemins succès de LinuxUserServiceUnitManager."""
+
+    def _make_manager(self, tmp_path):
+        """Crée un manager utilisateur avec mocks."""
+        logger = MagicMock()
+        executor = MagicMock()
+        executor.reload_systemd.return_value = True
+        executor.start_unit.return_value = True
+        executor.stop_unit.return_value = True
+        executor.restart_unit.return_value = True
+        executor.enable_unit.return_value = True
+        executor.disable_unit.return_value = True
+        executor.get_status.return_value = "active"
+        executor.is_enabled.return_value = True
+        manager = LinuxUserServiceUnitManager(logger, executor)
+        manager._unit_path = str(tmp_path)
+        return manager, logger, executor
+
+    def test_generate_service_unit_minimal(self, tmp_path):
+        """generate_service_unit() génère le contenu minimal."""
+        manager, _, _ = self._make_manager(tmp_path)
+        config = ServiceConfig(
+            description="Service utilisateur",
+            exec_start="/usr/bin/my-app"
+        )
+        content = manager.generate_service_unit(config)
+        assert "[Unit]" in content
+        assert "Description=Service utilisateur" in content
+        assert "[Service]" in content
+        assert "ExecStart=/usr/bin/my-app" in content
+        assert "[Install]" in content
+
+    def test_generate_service_unit_avec_working_dir(self, tmp_path):
+        """generate_service_unit() inclut WorkingDirectory si défini."""
+        manager, _, _ = self._make_manager(tmp_path)
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/app",
+            working_directory="/var/lib/app"
+        )
+        content = manager.generate_service_unit(config)
+        assert "WorkingDirectory=/var/lib/app" in content
+
+    def test_generate_service_unit_avec_env(self, tmp_path):
+        """generate_service_unit() inclut les variables d'environnement."""
+        manager, _, _ = self._make_manager(tmp_path)
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/app",
+            environment={"HOME": "/home/user"}
+        )
+        content = manager.generate_service_unit(config)
+        assert "Environment=HOME=/home/user" in content
+
+    def test_generate_service_unit_avec_restart(self, tmp_path):
+        """generate_service_unit() inclut Restart si non 'no'."""
+        manager, _, _ = self._make_manager(tmp_path)
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/app",
+            restart="on-failure",
+            restart_sec=5
+        )
+        content = manager.generate_service_unit(config)
+        assert "Restart=on-failure" in content
+        assert "RestartSec=5" in content
+
+    def test_install_service_unit_succes(self, tmp_path):
+        """install_service_unit() retourne True en cas de succès."""
+        manager, logger, _ = self._make_manager(tmp_path)
+        config = ServiceConfig(
+            description="Service test",
+            exec_start="/usr/bin/test-app"
+        )
+        result = manager.install_service_unit(config)
+        assert result is True
+        logger.log_info.assert_called()
+
+    def test_install_service_unit_with_name_succes(self, tmp_path):
+        """install_service_unit_with_name() retourne True en cas de succès."""
+        manager, logger, _ = self._make_manager(tmp_path)
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/test-app"
+        )
+        result = manager.install_service_unit_with_name(
+            "user-service", config
+        )
+        assert result is True
+        logger.log_info.assert_called()
+
+    def test_install_service_unit_with_name_nom_invalide(self, tmp_path):
+        """install_service_unit_with_name() retourne False si nom invalide."""
+        manager, logger, _ = self._make_manager(tmp_path)
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/test-app"
+        )
+        result = manager.install_service_unit_with_name(
+            "../etc/passwd", config
+        )
+        assert result is False
+        logger.log_error.assert_called_once()
+
+    def test_start_service_appelle_executor(self, tmp_path):
+        """start_service() appelle executor.start_unit()."""
+        manager, _, executor = self._make_manager(tmp_path)
+        result = manager.start_service("user-service")
+        assert result is True
+        executor.start_unit.assert_called_once_with("user-service.service")
+
+    def test_stop_service_appelle_executor(self, tmp_path):
+        """stop_service() appelle executor.stop_unit()."""
+        manager, _, executor = self._make_manager(tmp_path)
+        result = manager.stop_service("user-service")
+        assert result is True
+        executor.stop_unit.assert_called_once_with("user-service.service")
+
+    def test_restart_service_appelle_executor(self, tmp_path):
+        """restart_service() appelle executor.restart_unit()."""
+        manager, _, executor = self._make_manager(tmp_path)
+        result = manager.restart_service("user-service")
+        assert result is True
+        executor.restart_unit.assert_called_once_with("user-service.service")
+
+    def test_enable_service_appelle_executor(self, tmp_path):
+        """enable_service() appelle executor.enable_unit()."""
+        manager, _, executor = self._make_manager(tmp_path)
+        result = manager.enable_service("user-service")
+        assert result is True
+        executor.enable_unit.assert_called_once_with("user-service.service")
+
+    def test_disable_service_appelle_executor(self, tmp_path):
+        """disable_service() appelle executor.disable_unit()."""
+        manager, _, executor = self._make_manager(tmp_path)
+        result = manager.disable_service("user-service")
+        assert result is True
+        executor.disable_unit.assert_called_with(
+            "user-service.service", ignore_errors=False
+        )
+
+    def test_remove_service_unit_succes(self, tmp_path):
+        """remove_service_unit() retourne True en cas de succès."""
+        service_file = tmp_path / "user-service.service"
+        service_file.write_text("[Unit]\n")
+        manager, logger, _ = self._make_manager(tmp_path)
+        result = manager.remove_service_unit("user-service")
+        assert result is True
+        logger.log_info.assert_called()
+
+    def test_get_service_status_retourne_statut(self, tmp_path):
+        """get_service_status() retourne le statut via l'executor."""
+        manager, _, executor = self._make_manager(tmp_path)
+        status = manager.get_service_status("user-service")
+        assert status == "active"
+        executor.get_status.assert_called_once_with("user-service.service")
+
+    def test_is_service_active_retourne_true(self, tmp_path):
+        """is_service_active() retourne True si actif."""
+        manager, _, executor = self._make_manager(tmp_path)
+        executor.get_status.return_value = "active"
+        assert manager.is_service_active("user-service") is True
+
+    def test_is_service_active_retourne_false(self, tmp_path):
+        """is_service_active() retourne False si inactif."""
+        manager, _, executor = self._make_manager(tmp_path)
+        executor.get_status.return_value = "inactive"
+        assert manager.is_service_active("user-service") is False
+
+    def test_is_service_enabled_retourne_resultat(self, tmp_path):
+        """is_service_enabled() délègue à l'executor."""
+        manager, _, executor = self._make_manager(tmp_path)
+        assert manager.is_service_enabled("user-service") is True
+        executor.is_enabled.assert_called_once_with("user-service.service")
+
+
+class TestUnitManagerErrorPaths:
+    """Tests pour les chemins d'erreur de _write_unit_file et _remove_unit_file."""
+
+    def test_write_unit_permission_error(self, tmp_path):
+        """_write_unit_file retourne False sur PermissionError."""
+        from unittest.mock import patch
+        logger = MagicMock()
+        executor = MagicMock()
+        manager = LinuxServiceUnitManager(logger, executor)
+        manager.SYSTEMD_UNIT_PATH = str(tmp_path)
+        with patch(
+            "linux_python_utils.systemd.base.os.open",
+            side_effect=PermissionError("Permission refusée")
+        ):
+            result = manager._write_unit_file("test.service", "[Unit]\n")
+        assert result is False
+        logger.log_error.assert_called_once()
+        assert "root" in logger.log_error.call_args[0][0].lower() or \
+               "permission" in logger.log_error.call_args[0][0].lower()
+
+    def test_write_unit_generic_os_error(self, tmp_path):
+        """_write_unit_file retourne False sur OSError générique."""
+        from unittest.mock import patch
+        import errno
+        logger = MagicMock()
+        executor = MagicMock()
+        manager = LinuxServiceUnitManager(logger, executor)
+        manager.SYSTEMD_UNIT_PATH = str(tmp_path)
+        err = OSError(errno.EIO, "IO error")
+        with patch(
+            "linux_python_utils.systemd.base.os.open",
+            side_effect=err
+        ):
+            result = manager._write_unit_file("test.service", "[Unit]\n")
+        assert result is False
+        logger.log_error.assert_called_once()
+
+    def test_remove_unit_permission_error(self, tmp_path):
+        """_remove_unit_file retourne False sur PermissionError."""
+        from unittest.mock import patch
+        logger = MagicMock()
+        executor = MagicMock()
+        manager = LinuxServiceUnitManager(logger, executor)
+        manager.SYSTEMD_UNIT_PATH = str(tmp_path)
+        with patch(
+            "linux_python_utils.systemd.base.os.remove",
+            side_effect=PermissionError("Permission refusée")
+        ):
+            result = manager._remove_unit_file("test.service")
+        assert result is False
+        logger.log_error.assert_called_once()
+
+    def test_remove_unit_generic_os_error(self, tmp_path):
+        """_remove_unit_file retourne False sur OSError générique."""
+        from unittest.mock import patch
+        import errno
+        logger = MagicMock()
+        executor = MagicMock()
+        manager = LinuxServiceUnitManager(logger, executor)
+        manager.SYSTEMD_UNIT_PATH = str(tmp_path)
+        err = OSError(errno.EIO, "IO error")
+        with patch(
+            "linux_python_utils.systemd.base.os.remove",
+            side_effect=err
+        ):
+            result = manager._remove_unit_file("test.service")
+        assert result is False
+        logger.log_error.assert_called_once()
+
+
+
+class TestUnitFileWriteErrorPaths:
+    """Tests pour les chemins d'erreur lies a l'ecriture des fichiers unit."""
+
+    def _make_manager(self, tmp_path):
+        """Cree un manager avec mocks."""
+        logger = MagicMock()
+        executor = MagicMock()
+        executor.reload_systemd.return_value = True
+        manager = LinuxServiceUnitManager(logger, executor)
+        manager.SYSTEMD_UNIT_PATH = str(tmp_path)
+        return manager, logger, executor
+
+    def _make_user_manager(self, tmp_path):
+        """Cree un manager utilisateur avec mocks."""
+        logger = MagicMock()
+        executor = MagicMock()
+        executor.reload_systemd.return_value = True
+        executor.disable_unit.return_value = True
+        manager = LinuxUserServiceUnitManager(logger, executor)
+        manager._unit_path = str(tmp_path)
+        return manager, logger, executor
+
+    def test_install_service_write_echoue(self, tmp_path):
+        """install_service_unit() retourne False si ecriture echoue."""
+        from unittest.mock import patch
+        manager, _, _ = self._make_manager(tmp_path)
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/test-daemon"
+        )
+        with patch(
+            "linux_python_utils.systemd.base.os.open",
+            side_effect=PermissionError("no write")
+        ):
+            result = manager.install_service_unit(config)
+        assert result is False
+
+    def test_install_service_with_name_write_echoue(self, tmp_path):
+        """install_service_unit_with_name() retourne False si ecriture echoue."""
+        from unittest.mock import patch
+        manager, _, _ = self._make_manager(tmp_path)
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/test-daemon"
+        )
+        with patch(
+            "linux_python_utils.systemd.base.os.open",
+            side_effect=PermissionError("no write")
+        ):
+            result = manager.install_service_unit_with_name("my-service", config)
+        assert result is False
+
+    def test_remove_service_echec_suppression(self, tmp_path):
+        """remove_service_unit() retourne False si suppression echoue."""
+        from unittest.mock import patch
+        manager, _, executor = self._make_manager(tmp_path)
+        executor.disable_unit.return_value = True
+        executor.stop_unit.return_value = True
+        service_file = tmp_path / "my-service.service"
+        service_file.write_text("[Unit]\n")
+        with patch(
+            "linux_python_utils.systemd.base.os.remove",
+            side_effect=PermissionError("no remove")
+        ):
+            result = manager.remove_service_unit("my-service")
+        assert result is False
+
+    def test_user_install_service_write_echoue(self, tmp_path):
+        """LinuxUserServiceUnitManager: install retourne False si ecriture echoue."""
+        from unittest.mock import patch
+        manager, _, _ = self._make_user_manager(tmp_path)
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/test-app"
+        )
+        with patch(
+            "linux_python_utils.systemd.base.os.open",
+            side_effect=PermissionError("no write")
+        ):
+            result = manager.install_service_unit(config)
+        assert result is False
+
+    def test_user_install_service_reload_echoue(self, tmp_path):
+        """LinuxUserServiceUnitManager: install retourne False si reload echoue."""
+        manager, _, executor = self._make_user_manager(tmp_path)
+        executor.reload_systemd.return_value = False
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/test-app"
+        )
+        result = manager.install_service_unit(config)
+        assert result is False
+
+    def test_user_install_with_name_write_echoue(self, tmp_path):
+        """LinuxUserServiceUnitManager: install_with_name retourne False si ecriture echoue."""
+        from unittest.mock import patch
+        manager, _, _ = self._make_user_manager(tmp_path)
+        config = ServiceConfig(
+            description="Test",
+            exec_start="/usr/bin/test-app"
+        )
+        with patch(
+            "linux_python_utils.systemd.base.os.open",
+            side_effect=PermissionError("no write")
+        ):
+            result = manager.install_service_unit_with_name("user-svc", config)
+        assert result is False
+
+    def test_user_remove_service_echec_suppression(self, tmp_path):
+        """LinuxUserServiceUnitManager: remove retourne False si suppression echoue."""
+        from unittest.mock import patch
+        manager, _, executor = self._make_user_manager(tmp_path)
+        executor.disable_unit.return_value = True
+        executor.stop_unit.return_value = True
+        service_file = tmp_path / "user-svc.service"
+        service_file.write_text("[Unit]\n")
+        with patch(
+            "linux_python_utils.systemd.base.os.remove",
+            side_effect=PermissionError("no remove")
+        ):
+            result = manager.remove_service_unit("user-svc")
+        assert result is False

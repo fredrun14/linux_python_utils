@@ -239,10 +239,6 @@ class DiffReporter(DeviceReporter):
         """
         lines: List[str] = []
 
-        if not self._new_devices and not self._disappeared:
-            lines.append("Aucun changement detecte.")
-            return "\n".join(lines) + "\n"
-
         if self._new_devices:
             lines.append(
                 f"=== Nouveaux peripheriques "
@@ -285,6 +281,10 @@ class DiffReporter(DeviceReporter):
                     f"{d.fixed_ip} -> {d.ip}"
                 )
             lines.append("")
+
+        if not lines:
+            lines.append("Aucun changement detecte.")
+            return "\n".join(lines) + "\n"
 
         total_changes = (
             len(self._new_devices)

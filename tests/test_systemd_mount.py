@@ -663,3 +663,77 @@ class TestAutomountConfigDataclass:
 
         # Assert
         assert config.timeout_idle_sec == 600
+
+
+
+class TestMountUnitManagerErrorPaths:
+    """Tests pour les chemins d'erreur de LinuxMountUnitManager."""
+
+    def _make_manager(self, tmp_path):
+        """Cree un manager avec mocks."""
+        from unittest.mock import MagicMock
+        logger = MagicMock()
+        executor = MagicMock()
+        executor.reload_systemd.return_value = True
+        executor.enable_unit.return_value = True
+        executor.disable_unit.return_value = True
+        executor.get_status.return_value = "inactive"
+        from linux_python_utils.systemd import LinuxMountUnitManager
+        manager = LinuxMountUnitManager(logger, executor)
+        manager.SYSTEMD_UNIT_PATH = str(tmp_path)
+        return manager, logger, executor
+
+    def test_ensure_mount_point_oserror(self, tmp_path):
+        """_ensure_mount_point() retourne False en cas d'OSError."""
+        from unittest.mock import patch
+        manager, logger, _ = self._make_manager(tmp_path)
+        with patch(
+            "linux_python_utils.systemd.mount.Path.mkdir",
+            side_effect=OSError("device busy")
+        ):
+            result = manager._ensure_mount_point("/mnt/test")
+        assert result is False
+        logger.log_error.assert_called_once()
+
+    def test_install_mount_write_echoue(self, tmp_path):
+        """install_mount_unit() retourne False si _write_unit_file echoue."""
+        from unittest.mock import patch
+        manager, _, _ = self._make_manager(tmp_path)
+        config = MountConfig(
+            description="Test",
+            what="server:/share",
+            where=str(tmp_path / "mnt" / "test"),
+            type="nfs"
+        )
+        with patch(
+            "linux_python_utils.systemd.base.os.open",
+            side_effect=PermissionError("no write")
+        ):
+            result = manager.install_mount_unit(config)
+        assert result is False
+
+    def test_install_mount_reload_echoue(self, tmp_path):
+        """install_mount_unit() retourne False si reload_systemd echoue."""
+        manager, _, executor = self._make_manager(tmp_path)
+        executor.reload_systemd.return_value = False
+        config = MountConfig(
+            description="Test",
+            what="server:/share",
+            where=str(tmp_path / "mnt" / "test"),
+            type="nfs"
+        )
+        result = manager.install_mount_unit(config)
+        assert result is False
+
+    def test_remove_mount_echec_suppression(self, tmp_path):
+        """remove_mount_unit() retourne False si _remove_unit_file echoue."""
+        from unittest.mock import patch
+        manager, _, _ = self._make_manager(tmp_path)
+        mount_file = tmp_path / "mnt-test.mount"
+        mount_file.write_text("[Unit]\n")
+        with patch(
+            "linux_python_utils.systemd.base.os.remove",
+            side_effect=PermissionError("no remove")
+        ):
+            result = manager.remove_mount_unit("/mnt/test")
+        assert result is False
