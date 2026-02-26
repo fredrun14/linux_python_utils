@@ -312,6 +312,47 @@ class TestLinuxCommandExecutorRun:
         assert result.success is True
         assert result.stdout == "ok"
 
+    @patch(
+        "linux_python_utils.commands.runner.subprocess.run"
+    )
+    def test_run_logue_erreur_si_code_retour_non_zero(
+        self, mock_run
+    ):
+        """Vérifie que log_error est appelé si returncode != 0."""
+        # Arrange
+        mock_run.return_value = MagicMock(
+            returncode=2, stdout="", stderr="echec",
+        )
+
+        # Act
+        result = self.executor.run(["rsync", "-av", "/src"])
+
+        # Assert
+        assert result.success is False
+        assert result.return_code == 2
+        self.mock_logger.log_error.assert_called_once()
+        msg = self.mock_logger.log_error.call_args[0][0]
+        assert "2" in msg
+        assert "rsync" in msg
+
+    @patch(
+        "linux_python_utils.commands.runner.subprocess.run"
+    )
+    def test_run_pas_log_erreur_si_code_retour_zero(
+        self, mock_run
+    ):
+        """Vérifie que log_error n'est pas appelé si returncode=0."""
+        # Arrange
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="ok", stderr="",
+        )
+
+        # Act
+        self.executor.run(["ls", "-la"])
+
+        # Assert
+        self.mock_logger.log_error.assert_not_called()
+
 
 # --- Tests LinuxCommandExecutor.run_streaming ---
 
@@ -418,6 +459,51 @@ class TestLinuxCommandExecutorRunStreaming:
 
         assert result.success is True
         assert result.stdout == "ligne1"
+
+    @patch(
+        "linux_python_utils.commands.runner"
+        ".subprocess.Popen"
+    )
+    def test_streaming_logue_erreur_si_code_retour_non_zero(
+        self, mock_popen
+    ):
+        """Vérifie que log_error est appelé si returncode != 0."""
+        # Arrange
+        mock_popen.return_value = self._make_mock_proc(
+            ["ligne1\n"], stderr="echec", returncode=1,
+        )
+
+        # Act
+        result = self.executor.run_streaming(
+            ["systemctl", "start", "svc"]
+        )
+
+        # Assert
+        assert result.success is False
+        assert result.return_code == 1
+        self.mock_logger.log_error.assert_called_once()
+        msg = self.mock_logger.log_error.call_args[0][0]
+        assert "1" in msg
+        assert "systemctl" in msg
+
+    @patch(
+        "linux_python_utils.commands.runner"
+        ".subprocess.Popen"
+    )
+    def test_streaming_pas_log_erreur_si_code_retour_zero(
+        self, mock_popen
+    ):
+        """Vérifie que log_error n'est pas appelé si returncode=0."""
+        # Arrange
+        mock_popen.return_value = self._make_mock_proc(
+            ["ligne1\n"], returncode=0,
+        )
+
+        # Act
+        self.executor.run_streaming(["cmd"])
+
+        # Assert
+        self.mock_logger.log_error.assert_not_called()
 
 
 # --- Tests LinuxCommandExecutor dry_run ---

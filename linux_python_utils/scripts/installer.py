@@ -102,6 +102,11 @@ class BashScriptInstaller(ScriptInstaller):
 
         Returns:
             True si l'installation a réussi, False sinon.
+
+        Note:
+            La permission d'exécution est appliquée via os.fchmod()
+            (fd-safe, TOCTOU-safe) pour éviter les attaques par
+            substitution de lien symbolique.
         """
         if self.exists(path):
             self._logger.log_info(
@@ -134,7 +139,10 @@ class BashScriptInstaller(ScriptInstaller):
         return self._file_manager.file_exists(path)
 
     def _set_executable(self, path: str) -> bool:
-        """Rend le script exécutable.
+        """Rend le script exécutable via fd (TOCTOU-safe).
+
+        Utilise O_NOFOLLOW pour refuser les liens symboliques,
+        puis fchmod pour appliquer les permissions via le fd.
 
         Args:
             path: Chemin du script.
@@ -143,7 +151,11 @@ class BashScriptInstaller(ScriptInstaller):
             True si l'opération a réussi, False sinon.
         """
         try:
-            os.chmod(path, self._default_mode)
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+            try:
+                os.fchmod(fd, self._default_mode)
+            finally:
+                os.close(fd)
             return True
         except OSError as e:
             self._logger.log_error(

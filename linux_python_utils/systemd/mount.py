@@ -170,7 +170,12 @@ class LinuxMountUnitManager(MountUnitManager):
         unit_name = self.path_to_unit_name(mount_path)
 
         # D'abord désactiver les unités
-        self.disable_mount(mount_path)
+        if not self.disable_mount(mount_path):
+            self.logger.log_warning(
+                f"disable_mount échoué pour {mount_path!r} "
+                "(montage peut-être déjà inactif) — "
+                "suppression des fichiers unit quand même"
+            )
 
         # Supprimer les fichiers
         success = True

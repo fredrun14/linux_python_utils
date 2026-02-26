@@ -1,5 +1,6 @@
 """Tests pour le module scripts."""
 
+import os
 from unittest.mock import MagicMock, patch
 import pytest
 
@@ -148,7 +149,8 @@ class TestBashScriptInstaller:
         self.mock_file_manager.file_exists.return_value = False
         self.mock_file_manager.create_file.return_value = True
 
-        with patch("os.chmod"):
+        with patch("os.open", return_value=3), \
+                patch("os.fchmod"), patch("os.close"):
             result = self.installer.install("/tmp/test.sh", self.config)
 
         assert result is True
@@ -175,20 +177,25 @@ class TestBashScriptInstaller:
         self.mock_logger.log_error.assert_called()
 
     def test_install_sets_executable_permission(self):
-        """Vérifie que le script est rendu exécutable."""
+        """Vérifie que le script est rendu exécutable (fd-safe)."""
         self.mock_file_manager.file_exists.return_value = False
         self.mock_file_manager.create_file.return_value = True
 
-        with patch("os.chmod") as mock_chmod:
+        with patch("os.open", return_value=3) as mock_open, \
+                patch("os.fchmod") as mock_fchmod, \
+                patch("os.close"):
             self.installer.install("/tmp/test.sh", self.config)
-            mock_chmod.assert_called_once_with("/tmp/test.sh", 0o755)
+            mock_open.assert_called_once_with(
+                "/tmp/test.sh", os.O_RDONLY | os.O_NOFOLLOW
+            )
+            mock_fchmod.assert_called_once_with(3, 0o755)
 
     def test_install_returns_false_on_chmod_failure(self):
-        """Vérifie le retour False si chmod échoue."""
+        """Vérifie le retour False si les permissions ne peuvent pas être appliquées."""
         self.mock_file_manager.file_exists.return_value = False
         self.mock_file_manager.create_file.return_value = True
 
-        with patch("os.chmod", side_effect=OSError("Permission denied")):
+        with patch("os.open", side_effect=OSError("Permission denied")):
             result = self.installer.install("/tmp/test.sh", self.config)
 
         assert result is False
@@ -199,7 +206,8 @@ class TestBashScriptInstaller:
         self.mock_file_manager.file_exists.return_value = False
         self.mock_file_manager.create_file.return_value = True
 
-        with patch("os.chmod"):
+        with patch("os.open", return_value=3), \
+                patch("os.fchmod"), patch("os.close"):
             self.installer.install("/tmp/test.sh", self.config)
 
         call_args = self.mock_file_manager.create_file.call_args
@@ -228,6 +236,43 @@ class TestBashScriptInstaller:
         self.mock_file_manager.file_exists.return_value = False
         self.mock_file_manager.create_file.return_value = True
 
-        with patch("os.chmod") as mock_chmod:
+        with patch("os.open", return_value=3), \
+                patch("os.fchmod") as mock_fchmod, \
+                patch("os.close"):
             installer.install("/tmp/test.sh", self.config)
-            mock_chmod.assert_called_once_with("/tmp/test.sh", 0o700)
+            mock_fchmod.assert_called_once_with(3, 0o700)
+
+
+class TestSetExecutableFdSafe:
+    """Tests TOCTOU-safe pour BashScriptInstaller._set_executable()."""
+
+    def setup_method(self):
+        """Initialise les mocks avant chaque test."""
+        self.mock_logger = MagicMock()
+        self.mock_file_manager = MagicMock()
+        self.installer = BashScriptInstaller(
+            self.mock_logger,
+            self.mock_file_manager
+        )
+
+    def test_set_executable_refuse_les_symlinks(self, tmp_path):
+        """_set_executable() retourne False et logue si le chemin est un symlink."""
+        real_file = tmp_path / "target.sh"
+        real_file.write_text("#!/bin/bash\n")
+        symlink = tmp_path / "link.sh"
+        symlink.symlink_to(real_file)
+
+        result = self.installer._set_executable(str(symlink))
+
+        assert result is False
+        self.mock_logger.log_error.assert_called_once()
+
+    def test_set_executable_applique_le_mode_correct(self, tmp_path):
+        """_set_executable() applique le mode 0o755 sur un fichier réel."""
+        script = tmp_path / "script.sh"
+        script.write_text("#!/bin/bash\n")
+
+        result = self.installer._set_executable(str(script))
+
+        assert result is True
+        assert oct(script.stat().st_mode & 0o777) == oct(0o755)

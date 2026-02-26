@@ -39,7 +39,7 @@ Example :
 """
 
 import os
-import subprocess
+import subprocess  # nosec B404
 import time
 from typing import Dict, List, Optional
 
@@ -240,6 +240,10 @@ class LinuxCommandExecutor(CommandExecutor):
         Returns:
             CommandResult avec les sorties capturées et
             executed_as_root indiquant le contexte d'exécution.
+
+        Note:
+            Logue une erreur si le code retour est non-nul et qu'un
+            logger est configuré.
         """
         if self._dry_run:
             return self._make_dry_run_result(command)
@@ -261,7 +265,7 @@ class LinuxCommandExecutor(CommandExecutor):
 
         start = time.monotonic()
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # nosec B603
                 command,
                 capture_output=True,
                 text=True,
@@ -270,6 +274,11 @@ class LinuxCommandExecutor(CommandExecutor):
                 timeout=effective_timeout,
             )
             duration = time.monotonic() - start
+            if proc.returncode != 0:
+                self._log_error(
+                    f"Code retour {proc.returncode} : "
+                    f"{' '.join(command)}"
+                )
             return CommandResult(
                 command=command,
                 return_code=proc.returncode,
@@ -329,6 +338,10 @@ class LinuxCommandExecutor(CommandExecutor):
         Returns:
             CommandResult avec les sorties capturées et
             executed_as_root indiquant le contexte d'exécution.
+
+        Note:
+            Logue une erreur si le code retour est non-nul et qu'un
+            logger est configuré.
         """
         if self._dry_run:
             return self._make_dry_run_result(command)
@@ -351,7 +364,7 @@ class LinuxCommandExecutor(CommandExecutor):
         start = time.monotonic()
         stdout_lines: List[str] = []
         try:
-            with subprocess.Popen(
+            with subprocess.Popen(  # nosec B603
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -378,6 +391,11 @@ class LinuxCommandExecutor(CommandExecutor):
                 stderr = proc.stderr.read()
 
                 duration = time.monotonic() - start
+                if proc.returncode != 0:
+                    self._log_error(
+                        f"Code retour {proc.returncode} : "
+                        f"{' '.join(command)}"
+                    )
                 return CommandResult(
                     command=command,
                     return_code=proc.returncode,

@@ -1,6 +1,6 @@
 """Exécuteur de commandes systemctl."""
 
-import subprocess
+import subprocess  # nosec B404
 
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.systemd.validators import validate_unit_name
@@ -41,7 +41,7 @@ class SystemdExecutor:
             Résultat de la commande
         """
         cmd = ["systemctl"] + args
-        return subprocess.run(
+        return subprocess.run(  # nosec B603
             cmd, check=check, capture_output=True, text=True
         )
 
@@ -282,7 +282,7 @@ class UserSystemdExecutor(SystemdExecutor):
             Résultat de la commande
         """
         cmd = ["systemctl", "--user"] + args
-        return subprocess.run(
+        return subprocess.run(  # nosec B603
             cmd, check=check, capture_output=True, text=True
         )
 

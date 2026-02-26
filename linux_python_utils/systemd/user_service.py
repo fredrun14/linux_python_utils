@@ -242,7 +242,12 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
         """
         validate_service_name(service_name)
         # D'abord désactiver et arrêter le service
-        self.disable_service(service_name)
+        if not self.disable_service(service_name):
+            self.logger.log_warning(
+                f"disable_service échoué pour {service_name!r} "
+                "(service peut-être déjà inactif) — "
+                "suppression du fichier unit quand même"
+            )
 
         # Supprimer le fichier
         if not self._remove_unit_file(f"{service_name}.service"):

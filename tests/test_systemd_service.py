@@ -927,3 +927,82 @@ class TestUnitFileWriteErrorPaths:
         ):
             result = manager.remove_service_unit("user-svc")
         assert result is False
+
+
+class TestRemoveServiceLogWarning:
+    """Tests pour log_warning dans remove_service_unit() si disable échoue."""
+
+    def _make_manager(self, tmp_path):
+        """Crée un manager avec mocks."""
+        logger = MagicMock()
+        executor = MagicMock()
+        executor.reload_systemd.return_value = True
+        executor.disable_unit.return_value = True
+        manager = LinuxServiceUnitManager(logger, executor)
+        manager.SYSTEMD_UNIT_PATH = str(tmp_path)
+        return manager, logger, executor
+
+    def _make_user_manager(self, tmp_path):
+        """Crée un manager utilisateur avec mocks."""
+        logger = MagicMock()
+        executor = MagicMock()
+        executor.reload_systemd.return_value = True
+        executor.disable_unit.return_value = True
+        manager = LinuxUserServiceUnitManager(logger, executor)
+        manager._unit_path = str(tmp_path)
+        return manager, logger, executor
+
+    def test_remove_service_unit_logue_warning_si_disable_echoue(
+        self, tmp_path
+    ):
+        """remove_service_unit() logue un warning si disable échoue."""
+        manager, logger, executor = self._make_manager(tmp_path)
+        executor.disable_unit.return_value = False
+        service_file = tmp_path / "my-service.service"
+        service_file.write_text("[Unit]\n")
+
+        result = manager.remove_service_unit("my-service")
+
+        assert result is True
+        logger.log_warning.assert_called_once()
+        assert "my-service" in logger.log_warning.call_args[0][0]
+
+    def test_remove_service_unit_pas_de_warning_si_disable_reussit(
+        self, tmp_path
+    ):
+        """remove_service_unit() ne logue pas de warning si disable réussit."""
+        manager, logger, executor = self._make_manager(tmp_path)
+        executor.disable_unit.return_value = True
+        service_file = tmp_path / "my-service.service"
+        service_file.write_text("[Unit]\n")
+
+        manager.remove_service_unit("my-service")
+
+        logger.log_warning.assert_not_called()
+
+    def test_user_remove_service_unit_logue_warning_si_disable_echoue(
+        self, tmp_path
+    ):
+        """LinuxUserServiceUnitManager: log_warning si disable échoue."""
+        manager, logger, executor = self._make_user_manager(tmp_path)
+        executor.disable_unit.return_value = False
+        service_file = tmp_path / "user-svc.service"
+        service_file.write_text("[Unit]\n")
+
+        result = manager.remove_service_unit("user-svc")
+
+        assert result is True
+        logger.log_warning.assert_called_once()
+
+    def test_user_remove_service_unit_pas_de_warning_si_disable_reussit(
+        self, tmp_path
+    ):
+        """LinuxUserServiceUnitManager: pas de warning si disable réussit."""
+        manager, logger, executor = self._make_user_manager(tmp_path)
+        executor.disable_unit.return_value = True
+        service_file = tmp_path / "user-svc.service"
+        service_file.write_text("[Unit]\n")
+
+        manager.remove_service_unit("user-svc")
+
+        logger.log_warning.assert_not_called()

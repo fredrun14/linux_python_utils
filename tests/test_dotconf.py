@@ -351,6 +351,55 @@ class TestLinuxIniConfigManager:
         assert result["commands"]["upgrade_type"] == "security"
 
 
+class TestUpdateSectionLogSansValeur:
+    """Tests pour la confidentialité des logs dans update_section()."""
+
+    def test_update_section_logue_cle_sans_valeur(
+        self, manager, temp_ini_file
+    ):
+        """update_section() logue le nom de la clé mais pas sa valeur."""
+        from unittest.mock import MagicMock
+        mock_logger = MagicMock()
+        mgr = LinuxIniConfigManager(mock_logger)
+        section = CommandsSectionFixture(upgrade_type="security")
+
+        mgr.update_section(Path(temp_ini_file), section)
+
+        log_calls = [
+            call[0][0] for call in mock_logger.log_info.call_args_list
+        ]
+        assert any("upgrade_type" in msg for msg in log_calls)
+        assert not any("security" in msg for msg in log_calls)
+
+    def test_update_section_ne_logue_pas_valeur_sensible(
+        self, temp_ini_file
+    ):
+        """update_section() ne logue pas la valeur d'une clé sensible."""
+        from unittest.mock import MagicMock
+        from dataclasses import dataclass
+
+        mock_logger = MagicMock()
+        mgr = LinuxIniConfigManager(mock_logger)
+
+        @dataclass(frozen=True)
+        class CredSection(ValidatedSection):
+            password: str = "MonMotDePasseSecret123"
+
+            @staticmethod
+            def section_name() -> str:
+                return "database"
+
+        section = CredSection()
+        mgr.update_section(Path(temp_ini_file), section)
+
+        log_calls = [
+            call[0][0] for call in mock_logger.log_info.call_args_list
+        ]
+        assert not any(
+            "MonMotDePasseSecret123" in msg for msg in log_calls
+        )
+
+
 class TestValidatedSectionEdgeCases:
     """Tests pour les cas limites de ValidatedSection."""
 

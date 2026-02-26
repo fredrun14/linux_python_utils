@@ -737,3 +737,50 @@ class TestMountUnitManagerErrorPaths:
         ):
             result = manager.remove_mount_unit("/mnt/test")
         assert result is False
+
+
+class TestRemoveMountLogWarning:
+    """Tests pour log_warning dans remove_mount_unit() si disable échoue."""
+
+    def _make_manager(self, tmp_path):
+        """Crée un manager avec mocks."""
+        from unittest.mock import MagicMock
+        from linux_python_utils.systemd import LinuxMountUnitManager
+        logger = MagicMock()
+        executor = MagicMock()
+        executor.reload_systemd.return_value = True
+        executor.disable_unit.return_value = True
+        manager = LinuxMountUnitManager(logger, executor)
+        manager.SYSTEMD_UNIT_PATH = str(tmp_path)
+        return manager, logger, executor
+
+    def test_remove_mount_unit_logue_warning_si_disable_echoue(
+        self, tmp_path
+    ):
+        """remove_mount_unit() logue un warning si disable échoue."""
+        manager, logger, executor = self._make_manager(tmp_path)
+        executor.disable_unit.return_value = False
+        mount_file = tmp_path / "mnt-test.mount"
+        mount_file.write_text("[Unit]\n")
+        automount_file = tmp_path / "mnt-test.automount"
+        automount_file.write_text("[Unit]\n")
+
+        result = manager.remove_mount_unit("/mnt/test")
+
+        logger.log_warning.assert_called_once()
+        assert "mnt/test" in logger.log_warning.call_args[0][0]
+
+    def test_remove_mount_unit_pas_de_warning_si_disable_reussit(
+        self, tmp_path
+    ):
+        """remove_mount_unit() ne logue pas de warning si disable réussit."""
+        manager, logger, executor = self._make_manager(tmp_path)
+        executor.disable_unit.return_value = True
+        mount_file = tmp_path / "mnt-test.mount"
+        mount_file.write_text("[Unit]\n")
+        automount_file = tmp_path / "mnt-test.automount"
+        automount_file.write_text("[Unit]\n")
+
+        manager.remove_mount_unit("/mnt/test")
+
+        logger.log_warning.assert_not_called()

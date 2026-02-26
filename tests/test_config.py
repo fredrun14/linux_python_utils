@@ -3,6 +3,7 @@
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -194,3 +195,65 @@ class TestConfigurationManager:
         manager = ConfigurationManager(search_paths=search_paths)
 
         assert manager.get("test.found") is True
+
+
+class TestConfigurationManagerLogger:
+    """Tests pour le logger optionnel de ConfigurationManager."""
+
+    def test_load_config_logue_warning_si_fichier_introuvable(
+        self, tmp_path
+    ):
+        """ConfigurationManager logue un warning si le fichier est introuvable."""
+        logger = MagicMock()
+        chemin_inexistant = tmp_path / "inexistant.json"
+
+        manager = ConfigurationManager(
+            config_path=chemin_inexistant,
+            logger=logger
+        )
+
+        logger.log_warning.assert_called_once()
+        assert "inexistant.json" in logger.log_warning.call_args[0][0]
+
+    def test_load_config_logue_warning_si_erreur_chargement(
+        self, tmp_path
+    ):
+        """ConfigurationManager logue un warning si le chargement échoue."""
+        from unittest.mock import patch
+        logger = MagicMock()
+        config_file = tmp_path / "config.json"
+        config_file.write_text('{"key": "value"}')
+        mock_loader = MagicMock()
+        mock_loader.load.side_effect = ValueError("JSON invalide")
+
+        manager = ConfigurationManager(
+            config_path=config_file,
+            config_loader=mock_loader,
+            logger=logger
+        )
+
+        logger.log_warning.assert_called_once()
+
+    def test_load_config_sans_logger_pas_d_erreur(self, tmp_path):
+        """ConfigurationManager sans logger ne lève pas d'exception."""
+        chemin_inexistant = tmp_path / "inexistant.json"
+
+        manager = ConfigurationManager(config_path=chemin_inexistant)
+
+        assert manager.config == {}
+
+    def test_load_config_retourne_defaut_si_fichier_manquant_avec_logger(
+        self, tmp_path
+    ):
+        """ConfigurationManager retourne default_config si fichier manquant."""
+        logger = MagicMock()
+        default = {"cle": "valeur_defaut"}
+        chemin_inexistant = tmp_path / "inexistant.json"
+
+        manager = ConfigurationManager(
+            config_path=chemin_inexistant,
+            default_config=default,
+            logger=logger
+        )
+
+        assert manager.get("cle") == "valeur_defaut"

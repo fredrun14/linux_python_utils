@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, TextIO, Union
 
 from linux_python_utils.config.base import ConfigManager
 from linux_python_utils.config.loader import ConfigLoader, FileConfigLoader
+from linux_python_utils.logging.base import Logger
 
 
 class ConfigurationManager(ConfigManager):
@@ -28,7 +29,8 @@ class ConfigurationManager(ConfigManager):
         config_path: Optional[Union[str, Path]] = None,
         default_config: Optional[Dict[str, Any]] = None,
         search_paths: Optional[List[Union[str, Path]]] = None,
-        config_loader: Optional[ConfigLoader] = None
+        config_loader: Optional[ConfigLoader] = None,
+        logger: Optional[Logger] = None,
     ) -> None:
         """
         Initialise le gestionnaire de configuration.
@@ -39,10 +41,13 @@ class ConfigurationManager(ConfigManager):
             search_paths: Liste de chemins de recherche du fichier
             config_loader: Instance de ConfigLoader (optionnel).
                 Si non fourni, utilise FileConfigLoader par défaut.
+            logger: Logger optionnel pour tracer les erreurs de
+                chargement. Si None, les erreurs sont silencieuses.
         """
         self.default_config = default_config or {}
         self.search_paths = search_paths or []
         self._loader = config_loader or FileConfigLoader()
+        self._logger = logger
 
         if config_path is None and self.search_paths:
             config_path = self._find_config_file()
@@ -53,6 +58,24 @@ class ConfigurationManager(ConfigManager):
             self.config_path = None
 
         self.config = self._load_config()
+
+    def _log_warning(self, message: str) -> None:
+        """Logue un avertissement si un logger est configuré.
+
+        Args:
+            message: Message à logguer.
+        """
+        if self._logger:
+            self._logger.log_warning(message)
+
+    def _log_info(self, message: str) -> None:
+        """Logue un message informatif si un logger est configuré.
+
+        Args:
+            message: Message à logguer.
+        """
+        if self._logger:
+            self._logger.log_info(message)
 
     def _find_config_file(self) -> Optional[Path]:
         """Cherche le fichier de config dans les emplacements définis."""
@@ -71,12 +94,19 @@ class ConfigurationManager(ConfigManager):
                 base = self.default_config.copy()
                 return self._deep_merge(base, user_config)
             except Exception as e:
-                print(f"Erreur lors du chargement de {self.config_path}: {e}")
-                print("Utilisation de la configuration par défaut.")
+                self._log_warning(
+                    f"Erreur lors du chargement de "
+                    f"{self.config_path}: {e}"
+                    " — utilisation de la configuration par défaut."
+                )
                 return self.default_config.copy()
         else:
             if self.config_path:
-                print(f"Fichier non trouvé: {self.config_path}")
+                self._log_warning(
+                    f"Fichier de configuration non trouvé : "
+                    f"{self.config_path} — "
+                    "utilisation de la configuration par défaut."
+                )
             return self.default_config.copy()
 
     def _deep_merge(
@@ -200,7 +230,7 @@ class ConfigurationManager(ConfigManager):
         else:
             raise ValueError(f"Extension non supportée: {suffix}")
 
-        print(f"Configuration créée: {path}")
+        self._log_info(f"Configuration créée : {path}")
 
     def _write_toml(
         self,

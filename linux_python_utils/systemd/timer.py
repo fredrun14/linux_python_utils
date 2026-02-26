@@ -1,7 +1,7 @@
 """Implémentation Linux de la gestion des unités timer systemd."""
 
 import json
-import subprocess
+import subprocess  # nosec B404
 
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.systemd.base import TimerUnitManager, TimerConfig
@@ -98,7 +98,12 @@ class LinuxTimerUnitManager(TimerUnitManager):
         """
         validate_unit_name(timer_name)
         # D'abord désactiver le timer
-        self.disable_timer(timer_name)
+        if not self.disable_timer(timer_name):
+            self.logger.log_warning(
+                f"disable_timer échoué pour {timer_name!r} "
+                "(unité peut-être déjà inactive) — "
+                "suppression du fichier unit quand même"
+            )
 
         # Supprimer le fichier
         if not self._remove_unit_file(f"{timer_name}.timer"):
@@ -136,7 +141,7 @@ class LinuxTimerUnitManager(TimerUnitManager):
             RuntimeError: Si l'exécution de systemctl échoue.
         """
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603 B607
                 ["systemctl", "list-timers", "--no-pager",
                  "--output=json"],
                 capture_output=True,
@@ -184,7 +189,7 @@ class LinuxTimerUnitManager(TimerUnitManager):
             RuntimeError: Si l'exécution de systemctl échoue.
         """
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603 B607
                 ["systemctl", "list-timers", "--no-pager",
                  "--plain"],
                 capture_output=True,

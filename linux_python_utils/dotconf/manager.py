@@ -144,7 +144,9 @@ class LinuxIniConfigManager(IniConfigManager):
             if current_value != new_value:
                 parser[section_name][key] = new_value
                 updated = True
-                self.logger.log_info(f"Modification : {key} = {new_value}")
+                self.logger.log_info(
+                    f"Modification : {key} mis à jour"
+                )
 
         if updated:
             with open(path, "w", encoding="utf-8") as f:

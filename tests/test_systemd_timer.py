@@ -607,3 +607,82 @@ class TestLinuxUserTimerUnitManagerSuccessPaths:
         manager = LinuxUserTimerUnitManager(MagicMock(), MagicMock())
         with pytest.raises(RuntimeError, match="Erreur systemctl"):
             manager.list_timers()
+
+
+class TestRemoveTimerLogWarning:
+    """Tests pour log_warning dans remove_timer_unit() si disable échoue."""
+
+    def _make_manager(self, tmp_path):
+        """Crée un manager avec mocks."""
+        logger = MagicMock()
+        executor = MagicMock()
+        executor.reload_systemd.return_value = True
+        executor.disable_unit.return_value = True
+        manager = LinuxTimerUnitManager(logger, executor)
+        manager.SYSTEMD_UNIT_PATH = str(tmp_path)
+        return manager, logger, executor
+
+    def _make_user_manager(self, tmp_path):
+        """Crée un manager utilisateur avec mocks."""
+        logger = MagicMock()
+        executor = MagicMock()
+        executor.reload_systemd.return_value = True
+        executor.disable_unit.return_value = True
+        manager = LinuxUserTimerUnitManager(logger, executor)
+        manager._unit_path = str(tmp_path)
+        return manager, logger, executor
+
+    def test_remove_timer_unit_logue_warning_si_disable_echoue(
+        self, tmp_path
+    ):
+        """remove_timer_unit() logue un warning si disable échoue."""
+        manager, logger, executor = self._make_manager(tmp_path)
+        executor.disable_unit.return_value = False
+        timer_file = tmp_path / "backup.timer"
+        timer_file.write_text("[Unit]\n")
+
+        result = manager.remove_timer_unit("backup")
+
+        assert result is True
+        logger.log_warning.assert_called_once()
+        assert "backup" in logger.log_warning.call_args[0][0]
+
+    def test_remove_timer_unit_pas_de_warning_si_disable_reussit(
+        self, tmp_path
+    ):
+        """remove_timer_unit() ne logue pas de warning si disable réussit."""
+        manager, logger, executor = self._make_manager(tmp_path)
+        executor.disable_unit.return_value = True
+        timer_file = tmp_path / "backup.timer"
+        timer_file.write_text("[Unit]\n")
+
+        manager.remove_timer_unit("backup")
+
+        logger.log_warning.assert_not_called()
+
+    def test_user_remove_timer_unit_logue_warning_si_disable_echoue(
+        self, tmp_path
+    ):
+        """LinuxUserTimerUnitManager: log_warning si disable échoue."""
+        manager, logger, executor = self._make_user_manager(tmp_path)
+        executor.disable_unit.return_value = False
+        timer_file = tmp_path / "backup.timer"
+        timer_file.write_text("[Unit]\n")
+
+        result = manager.remove_timer_unit("backup")
+
+        assert result is True
+        logger.log_warning.assert_called_once()
+
+    def test_user_remove_timer_unit_pas_de_warning_si_disable_reussit(
+        self, tmp_path
+    ):
+        """LinuxUserTimerUnitManager: pas de warning si disable réussit."""
+        manager, logger, executor = self._make_user_manager(tmp_path)
+        executor.disable_unit.return_value = True
+        timer_file = tmp_path / "backup.timer"
+        timer_file.write_text("[Unit]\n")
+
+        manager.remove_timer_unit("backup")
+
+        logger.log_warning.assert_not_called()
