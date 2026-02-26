@@ -49,4 +49,4 @@ Interfaces via ABCs, implémentations concrètes Linux.
 - **TOCTOU-safe** : `os.open(O_NOFOLLOW)` + `os.fchmod(0o644)` dans les classes de base
 - **Validation noms** : regex + anti-traversal dans `systemd/validators.py`
 - **UTF-8 explicite** partout (docstrings français)
-- **API publique** : tout exporté depuis `linux_python_utils/__init__.py`
+- **API publique** : tout exporté depuis `src/linux_python_utils/__init__.py`

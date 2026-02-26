@@ -38,7 +38,7 @@ test-cov:
 
 # Linting
 lint:
-	pycodestyle linux_python_utils/
+	pycodestyle src/linux_python_utils/
 
 # Nettoyage
 clean:

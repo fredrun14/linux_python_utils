@@ -47,8 +47,10 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["linux_python_utils*"]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.pycodestyle]
 max-line-length = 79
