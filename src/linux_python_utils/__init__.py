@@ -16,6 +16,7 @@ Modules disponibles:
 - network: Gestion des peripheriques reseau (scanners, inventaire,
   DHCP, DNS, rapports)
 - credentials: Gestion des secrets (env, .env, keyring systeme)
+- cli: Framework CLI Command Pattern (CliCommand, CliApplication)
 """
 
 __version__ = "1.0.0"
@@ -123,6 +124,7 @@ from linux_python_utils.credentials import (
     CredentialChain,
     CredentialManager,
 )
+from linux_python_utils.cli import CliCommand, CliApplication
 from linux_python_utils.network import (
     # Modeles
     NetworkDevice,
@@ -293,4 +295,7 @@ __all__ = [
     "validate_mac",
     "validate_cidr",
     "validate_hostname",
+    # CLI - Framework Command Pattern
+    "CliCommand",
+    "CliApplication",
 ]
