@@ -159,6 +159,42 @@ class LinuxIniConfigManager(IniConfigManager):
 
         return updated
 
+    def is_section_configured(
+        self,
+        path: Path,
+        section: IniSection,
+    ) -> bool:
+        """Vérifie si une section est déjà configurée avec les valeurs attendues.
+
+        Compare uniquement les clés définies dans section.to_dict() avec
+        les valeurs présentes dans le fichier. Les clés supplémentaires
+        du fichier sont ignorées.
+
+        Args:
+            path: Chemin du fichier INI à vérifier.
+            section: Section contenant les valeurs cibles.
+
+        Returns:
+            True si toutes les clés de la section ont déjà les valeurs
+            attendues, False si le fichier est absent, si la section
+            manque, ou si au moins une valeur diffère.
+        """
+        if not path.exists():
+            return False
+
+        parser = configparser.ConfigParser()
+        parser.read(str(path), encoding="utf-8")
+
+        section_name = section.section_name()
+        if not parser.has_section(section_name):
+            return False
+
+        current = dict(parser[section_name])
+        expected = section.to_dict()
+        return all(
+            current.get(key) == value for key, value in expected.items()
+        )
+
     def section_to_ini(self, section: IniSection) -> str:
         """Génère le contenu INI d'une section.
 

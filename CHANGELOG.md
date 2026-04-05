@@ -1,5 +1,54 @@
 # Changelog
 
+## [1.4.0] - 2026-04-05
+
+### Nouvelles fonctionnalités
+
+#### Module `cli` — Framework CLI Command Pattern
+
+- **`CliCommand` (ABC)** — Interface abstraite pour les sous-commandes CLI. Méthodes abstraites : `name` (property), `register(subparsers)`, `execute(args)`.
+- **`CliApplication`** — Orchestrateur CLI basé sur le Command Pattern. Prend une liste de `CliCommand`, construit le parser argparse, et dispatche vers la commande sélectionnée via `run()`.
+
+```python
+class SyncCommand(CliCommand):
+    @property
+    def name(self) -> str:
+        return "sync"
+
+    def register(self, subparsers: Any) -> None:
+        subparsers.add_parser(self.name, help="Synchronise les données")
+
+    def execute(self, args: argparse.Namespace) -> None:
+        print("sync exécuté")
+
+app = CliApplication(
+    prog="mon-outil",
+    description="Mon outil CLI",
+    commands=[SyncCommand()],
+)
+app.run()
+```
+
+#### Module `logging` — `ConsoleLogger`
+
+- **`ConsoleLogger`** — Implémentation légère de `Logger` écrivant sur stdout/stderr sans créer de fichier. Les `log_info()` vont sur stdout, `log_warning()` et `log_error()` sur stderr. Idéal pour les dry-run, scripts légers et tests.
+
+```python
+from linux_python_utils import ConsoleLogger
+
+logger = ConsoleLogger()
+logger.log_info("Démarrage...")      # → stdout
+logger.log_warning("Absent")        # → stderr : WARNING: Absent
+logger.log_error("Échec")           # → stderr : ERROR: Échec
+```
+
+### Corrections
+
+- **`__init__.py`** : `ConsoleLogger`, `SecurityLogger`, `SecurityEvent`, `SecurityEventType` ajoutés aux exports publics du package.
+- **`__init__.py`** : `PathCheckerPermission` et `PathCheckerWorldWritable` étaient dans `__all__` mais pas importés (bug NameError) — corrigé.
+
+---
+
 ## [1.3.0] - 2026-02-21
 
 ### Nouvelles fonctionnalités

@@ -19,9 +19,16 @@ Modules disponibles:
 - cli: Framework CLI Command Pattern (CliCommand, CliApplication)
 """
 
-__version__ = "1.0.0"
+__version__ = "1.4.0"
 
-from linux_python_utils.logging import Logger, FileLogger
+from linux_python_utils.logging import (
+    Logger,
+    ConsoleLogger,
+    FileLogger,
+    SecurityEvent,
+    SecurityEventType,
+    SecurityLogger,
+)
 from linux_python_utils.config import (
     ConfigManager,
     ConfigLoader,
@@ -104,6 +111,8 @@ from linux_python_utils.commands import (
 from linux_python_utils.validation import (
     Validator,
     PathChecker,
+    PathCheckerPermission,
+    PathCheckerWorldWritable,
 )
 from linux_python_utils.credentials import (
     # ABCs
@@ -163,7 +172,11 @@ from linux_python_utils.network import (
 __all__ = [
     # Logging
     "Logger",
+    "ConsoleLogger",
     "FileLogger",
+    "SecurityEvent",
+    "SecurityEventType",
+    "SecurityLogger",
     # Config
     "ConfigManager",
     "ConfigLoader",

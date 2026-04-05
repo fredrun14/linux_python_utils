@@ -146,3 +146,26 @@ class IniConfigManager(ABC):
             ValueError: Si la validation échoue.
         """
         pass
+
+    @abstractmethod
+    def is_section_configured(
+        self,
+        path: Path,
+        section: IniSection,
+    ) -> bool:
+        """Vérifie si une section est déjà configurée avec les valeurs attendues.
+
+        Compare uniquement les clés définies dans section.to_dict() avec
+        les valeurs présentes dans le fichier. Les clés supplémentaires
+        du fichier sont ignorées.
+
+        Args:
+            path: Chemin du fichier INI à vérifier.
+            section: Section contenant les valeurs cibles.
+
+        Returns:
+            True si toutes les clés de la section ont déjà les valeurs
+            attendues, False si le fichier est absent, si la section
+            manque, ou si au moins une valeur diffère.
+        """
+        pass

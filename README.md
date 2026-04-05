@@ -29,6 +29,7 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
   - [Module errors](#module-errors)
   - [Module credentials](#module-credentials)
   - [Module network](#module-network)
+  - [Module cli](#module-cli)
 - [Documentation API](#-documentation-api)
 - [Architecture des Classes](#-architecture-des-classes)
 - [Structure du Projet](#-structure-du-projet)
@@ -39,7 +40,7 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 
 ## ✨ Fonctionnalités
 
-- **📝 Logging robuste** — Logger fichier/console avec encodage UTF-8, flush immédiat et journalisation structurée JSON des événements de sécurité (`SecurityLogger`, `SecurityEvent`)
+- **📝 Logging robuste** — `FileLogger` (fichier + console, UTF-8), `ConsoleLogger` (stdout/stderr sans fichier), `SecurityLogger` (JSON structuré pour audit trail)
 - **⚙️ Configuration flexible** — Support TOML/JSON avec fusion profonde et profils
 - **📁 Gestion de fichiers** — CRUD fichiers et sauvegardes préservant les métadonnées
 - **🔧 Systemd complet** — Gestion services, timers et unités de montage (système et utilisateur)
@@ -50,6 +51,10 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 - **📜 Scripts bash** — Génération de scripts bash avec support des notifications
 - **🔔 Notifications** — Configuration des notifications desktop (KDE Plasma)
 - **✅ Validation** — Validation de chemins (existence, permissions, world-writable) et données avec support optionnel Pydantic
+- **🚨 Gestion d'erreurs** — Hiérarchie d'exceptions applicatives + chaîne de handlers (Chain of Responsibility)
+- **🔑 Secrets** — `CredentialChain` : env → `.env` → keyring système (KWallet, KeePassXC, GNOME Keyring)
+- **🌐 Réseau** — Scan ARP/nmap, inventaire JSON, DHCP, DNS, rapports (table, CSV, JSON, diff)
+- **🖱️ Framework CLI** — `CliCommand` (ABC) + `CliApplication` (Command Pattern + argparse)
 - **🏗️ Architecture SOLID** — ABCs, injection de dépendances, testabilité maximale
 - **🔒 Sécurisé** — Validation des entrées, protection TOCTOU, permissions explicites
 - **🛡️ Événements de sécurité** — `SecurityLogger` avec 10 types d'événements typés (`SecurityEventType`) en JSON structuré pour audit trail
@@ -81,11 +86,10 @@ source venv/bin/activate
 # 3. Installer en mode développement
 pip install -e .
 
-# 4. (Optionnel) Installer les dépendances de dev
-pip install -e ".[dev]"
-
-# 5. (Optionnel) Installer avec support validation Pydantic
-pip install -e ".[validation]"
+# 4. (Optionnel) Installer les extras
+pip install -e ".[validation]"   # validation Pydantic
+pip install -e ".[credentials]"  # python-dotenv + keyring
+pip install -e ".[dev]"          # tous les outils de développement
 ```
 
 ### Installation via pip
@@ -93,6 +97,51 @@ pip install -e ".[validation]"
 ```bash
 # Depuis GitHub
 pip install git+https://github.com/user/linux-python-utils.git
+
+# Avec extras
+pip install "git+https://github.com/user/linux-python-utils.git[credentials]"
+pip install "git+https://github.com/user/linux-python-utils.git[validation,credentials]"
+```
+
+### Installation sans accès Git (copie directe)
+
+```bash
+# Sur la machine source : copier le répertoire du projet
+scp -r linux-python-utils/ user@autrepc:~/
+
+# Sur l'autre machine
+cd linux-python-utils
+python -m venv venv
+source venv/bin/activate
+pip install -e .
+```
+
+### Installation sur Fedora
+
+Fedora protège le Python système — `sudo pip install` est à éviter. Trois approches propres :
+
+**Par projet** (recommandé si la bibliothèque est utilisée dans un projet précis) :
+```bash
+cd mon-projet/
+python -m venv .venv
+source .venv/bin/activate
+pip install git+https://github.com/user/linux-python-utils.git
+```
+
+**Niveau utilisateur** (disponible dans tous tes scripts sans activation de venv) :
+```bash
+pip install --user git+https://github.com/user/linux-python-utils.git
+# Installé dans ~/.local/lib/python3.x/site-packages/
+```
+
+**venv dédié** (si la bibliothèque est partagée entre plusieurs scripts perso) :
+```bash
+python -m venv ~/.local/venvs/linux-python-utils
+~/.local/venvs/linux-python-utils/bin/pip install git+https://github.com/user/linux-python-utils.git
+```
+Puis dans chaque script :
+```python
+#!/usr/bin/env ~/.local/venvs/linux-python-utils/bin/python
 ```
 
 ### Vérification de l'Installation
@@ -106,23 +155,25 @@ print(linux_python_utils.__version__)  # 1.0.0
 
 ### Module `logging`
 
-Système de logging robuste avec support fichier et console, et journalisation structurée des événements de sécurité.
+Système de logging robuste avec trois implémentations : fichier, console légère, et journalisation structurée des événements de sécurité.
 
 ```python
-from linux_python_utils import FileLogger
+from linux_python_utils import FileLogger, ConsoleLogger
 
-# Usage simple
+# Logger fichier (UTF-8, flush immédiat)
 logger = FileLogger("/var/log/myapp.log")
 logger.log_info("Application démarrée")
 logger.log_warning("Attention: ressource limitée")
 logger.log_error("Erreur critique")
 
-# Avec sortie console
+# Avec sortie console simultanée
 logger = FileLogger("/var/log/myapp.log", console_output=True)
 
-# Avec configuration
-config = {"logging": {"level": "DEBUG"}}
-logger = FileLogger("/var/log/myapp.log", config=config)
+# Logger console uniquement (pas de fichier — dry-run, tests, scripts légers)
+console = ConsoleLogger()
+console.log_info("Démarrage...")      # → stdout
+console.log_warning("Absent")        # → stderr : WARNING: Absent
+console.log_error("Échec")           # → stderr : ERROR: Échec
 ```
 
 #### `SecurityLogger` — Audit trail structuré JSON
@@ -768,6 +819,153 @@ config = loader.load("config.toml", schema=AppConfig)
 print(config.name)  # Instance AppConfig validée
 ```
 
+### Module `errors`
+
+Gestion centralisée des erreurs via une hiérarchie d'exceptions et une chaîne de handlers (pattern Chain of Responsibility).
+
+```python
+from linux_python_utils.errors import (
+    ApplicationError,
+    ConfigurationError,
+    ErrorHandlerChain,
+    ConsoleErrorHandler,
+    LoggerErrorHandler,
+    ErrorContext,
+)
+from linux_python_utils import FileLogger
+
+# Construire une chaîne de handlers
+logger = FileLogger("/var/log/myapp.log")
+chain = ErrorHandlerChain()
+chain.add_handler(ConsoleErrorHandler())      # affiche sur stderr
+chain.add_handler(LoggerErrorHandler(logger)) # logue dans le fichier
+
+# Lever et capturer une erreur applicative
+try:
+    raise ConfigurationError("Clé 'timeout' manquante dans config.toml")
+except ApplicationError as e:
+    chain.handle(e)           # propagé aux deux handlers
+    # ou :
+    chain.handle_and_exit(e)  # propagé puis sys.exit(1)
+
+# Hiérarchie des exceptions (toutes héritent de ApplicationError)
+# ConfigurationError, FileConfigurationError
+# SystemRequirementError, MissingDependencyError
+# ValidationError, InstallationError
+# AppPermissionError, RollbackError, IntegrityError
+```
+
+### Module `credentials`
+
+Gestion des secrets via une chaîne de priorité : variables d'environnement → fichier `.env` → keyring système.
+
+```python
+from linux_python_utils import CredentialManager, CredentialNotFoundError
+from pathlib import Path
+
+# Chaîne complète : env → .env → keyring
+manager = CredentialManager.from_dotenv(
+    service="monapp",
+    dotenv_path=Path("config/.env"),
+)
+
+# Lire un secret
+try:
+    password = manager.get("DB_PASSWORD")
+except CredentialNotFoundError:
+    print("Secret introuvable dans les trois sources")
+
+# Stocker dans le keyring
+manager.store("DB_PASSWORD", "nouveau-mot-de-passe")
+```
+
+Compatibilité keyring : KWallet (KDE Plasma 6), KeePassXC (Secret Service activé), GNOME Keyring.
+
+Dépendances optionnelles :
+```bash
+pip install python-dotenv  # pour DotEnvCredentialProvider
+pip install keyring        # pour KeyringCredentialProvider
+```
+
+### Module `network`
+
+Scan, inventaire et gestion des périphériques d'un réseau local.
+
+```python
+from linux_python_utils import (
+    LinuxArpScanner,
+    JsonDeviceRepository,
+    ConsoleTableReporter,
+    NetworkConfig,
+)
+from pathlib import Path
+
+config = NetworkConfig(interface="eth0", subnet="192.168.1.0/24")
+
+# Scanner le réseau
+scanner = LinuxArpScanner(config)
+devices = scanner.scan()
+
+# Persister l'inventaire
+repo = JsonDeviceRepository(Path("/var/lib/myapp/devices.json"))
+repo.save_all(devices)
+
+# Afficher un tableau
+reporter = ConsoleTableReporter()
+reporter.report(devices)
+```
+
+Scanners disponibles : `LinuxArpScanner` (arp-scan), `LinuxNmapScanner` (nmap).
+
+Reporters disponibles : `ConsoleTableReporter`, `CsvReporter`, `JsonReporter`, `DiffReporter`.
+
+DNS/DHCP : `LinuxHostsFileManager`, `LinuxDnsmasqConfigGenerator`, `LinuxDhcpReservationManager`.
+
+Validateurs : `validate_ipv4`, `validate_mac`, `validate_cidr`, `validate_hostname`.
+
+### Module `cli`
+
+Framework CLI minimal basé sur le Command Pattern. Permet de structurer une application argparse en sous-commandes SOLID.
+
+```python
+import argparse
+from typing import Any
+from linux_python_utils import CliCommand, CliApplication
+
+class SyncCommand(CliCommand):
+    @property
+    def name(self) -> str:
+        return "sync"
+
+    def register(self, subparsers: Any) -> None:
+        p = subparsers.add_parser(self.name, help="Synchronise les données")
+        p.add_argument("--dry-run", action="store_true")
+
+    def execute(self, args: argparse.Namespace) -> None:
+        if args.dry_run:
+            print("[dry-run] sync simulé")
+        else:
+            print("sync exécuté")
+
+class ListCommand(CliCommand):
+    @property
+    def name(self) -> str:
+        return "list"
+
+    def register(self, subparsers: Any) -> None:
+        subparsers.add_parser(self.name, help="Liste les éléments")
+
+    def execute(self, args: argparse.Namespace) -> None:
+        print("list exécuté")
+
+app = CliApplication(
+    prog="mon-outil",
+    description="Mon outil CLI",
+    commands=[SyncCommand(), ListCommand()],
+)
+app.run()  # parse sys.argv et dispatche
+```
+
 ### Exemple Complet
 
 Script de sauvegarde utilisant tous les modules :
@@ -837,7 +1035,11 @@ logger.log_info("Backup automatique configuré")
 
 | ABC (Interface) | Implémentation | Description |
 |-----------------|----------------|-------------|
-| `Logger` | `FileLogger` | Logging fichier/console |
+| `Logger` | `FileLogger` | Logging fichier/console (UTF-8, flush immédiat) |
+| `Logger` | `ConsoleLogger` | Logging stdout/stderr sans fichier (dry-run, tests) |
+| — | `SecurityLogger` | Journalisation structurée JSON des événements de sécurité |
+| — | `SecurityEvent` | Dataclass représentant un événement de sécurité |
+| — | `SecurityEventType` | Enum des 10 types d'événements de sécurité |
 
 #### Module `config`
 
@@ -915,6 +1117,57 @@ logger.log_info("Backup automatique configuré")
 | `Validator` | `PathCheckerPermission` | Répertoires parents accessibles en écriture |
 | `Validator` | `PathCheckerWorldWritable` | Fichier non world-writable (sécurité root) |
 
+#### Module `errors`
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `ErrorHandler` | `ConsoleErrorHandler` | Affiche les erreurs sur stderr |
+| `ErrorHandler` | `LoggerErrorHandler` | Logue les erreurs via un `Logger` |
+| — | `ErrorHandlerChain` | Diffuse l'erreur à tous les handlers enregistrés |
+| — | `ErrorContext` | Contexte structuré attaché à une erreur |
+| `ApplicationError` | `ConfigurationError` | Erreur de configuration |
+| `ApplicationError` | `FileConfigurationError` | Erreur de fichier de configuration |
+| `ApplicationError` | `SystemRequirementError` | Prérequis système absent |
+| `ApplicationError` | `MissingDependencyError` | Dépendance Python manquante |
+| `ApplicationError` | `ValidationError` | Échec de validation |
+| `ApplicationError` | `InstallationError` | Erreur d'installation |
+| `ApplicationError` | `AppPermissionError` | Permission refusée |
+| `ApplicationError` | `RollbackError` | Échec du rollback |
+| `ApplicationError` | `IntegrityError` | Violation d'intégrité |
+
+#### Module `credentials`
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `CredentialProvider` | `EnvCredentialProvider` | Secrets depuis variables d'environnement |
+| `CredentialProvider` | `DotEnvCredentialProvider` | Secrets depuis fichier `.env` |
+| `CredentialProvider` | `KeyringCredentialProvider` | Secrets depuis keyring système |
+| `CredentialStore` | — | Interface d'écriture de secrets |
+| — | `CredentialChain` | Chaîne de priorité entre providers |
+| — | `CredentialManager` | Façade (lecture + écriture) |
+
+#### Module `network`
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `NetworkScanner` | `LinuxArpScanner` | Scan réseau via arp-scan |
+| `NetworkScanner` | `LinuxNmapScanner` | Scan réseau via nmap |
+| `DeviceRepository` | `JsonDeviceRepository` | Persistance JSON de l'inventaire |
+| `DhcpReservationManager` | `LinuxDhcpReservationManager` | Réservations DHCP |
+| `DnsManager` | `LinuxHostsFileManager` | Gestion `/etc/hosts` |
+| `DnsManager` | `LinuxDnsmasqConfigGenerator` | Génération config dnsmasq |
+| `DeviceReporter` | `ConsoleTableReporter` | Tableau ASCII |
+| `DeviceReporter` | `CsvReporter` | Export CSV |
+| `DeviceReporter` | `JsonReporter` | Export JSON |
+| `DeviceReporter` | `DiffReporter` | Diff entre deux inventaires |
+
+#### Module `cli`
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `CliCommand` | — (à implémenter) | Interface pour une sous-commande CLI |
+| — | `CliApplication` | Orchestrateur CLI (Command Pattern + argparse) |
+
 ### Dataclasses
 
 | Classe | Description |
@@ -945,18 +1198,25 @@ logger.log_info("Backup automatique configuré")
 │  │ commands │ │ dotconf  │ │ scripts  │ │notificat.│ │validation│        │
 │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘        │
 │       │            │            │            │            │               │
-│       ▼            ▼            ▼            ▼            ▼               │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                     │
+│  │  errors  │ │credentials│ │ network │ │   cli    │                     │
+│  └────┬─────┘ └────┬──────┘ └────┬────┘ └────┬─────┘                     │
+│       │            │            │            │                            │
+│       ▼            ▼            ▼            ▼                            │
 │  ┌─────────────────────────────────────────────────────────────────┐      │
 │  │              Abstract Base Classes (ABCs)                        │      │
 │  │  Logger, ConfigLoader, FileManager, Validator, CommandExecutor   │      │
-│  │  IniConfigManager, ScriptInstaller, IntegrityChecker ...        │      │
+│  │  IniConfigManager, ScriptInstaller, IntegrityChecker,           │      │
+│  │  ErrorHandler, CredentialProvider, NetworkScanner, CliCommand   │      │
 │  └──────────────────────────┬──────────────────────────────────────┘      │
 │                             │                                             │
 │                             ▼                                             │
 │  ┌─────────────────────────────────────────────────────────────────┐      │
 │  │              Implémentations Linux concrètes                    │      │
-│  │  FileLogger, LinuxFileManager, LinuxCommandExecutor,            │      │
-│  │  LinuxIniConfigManager, PathChecker, SHA256IntegrityChecker ... │      │
+│  │  FileLogger, ConsoleLogger, LinuxFileManager,                   │      │
+│  │  LinuxCommandExecutor, LinuxIniConfigManager,                   │      │
+│  │  PathChecker, SHA256IntegrityChecker, CredentialChain,          │      │
+│  │  LinuxArpScanner, CliApplication ...                            │      │
 │  └─────────────────────────────────────────────────────────────────┘      │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1032,12 +1292,14 @@ mount_mgr = LinuxMountUnitManager(MockLogger(), MockExecutor(MockLogger()))
 
 ```
 linux-python-utils/
-├── linux_python_utils/
+├── src/linux_python_utils/
 │   ├── __init__.py              # Exports publics
 │   ├── logging/
 │   │   ├── __init__.py
 │   │   ├── base.py              # ABC Logger
-│   │   └── file_logger.py       # FileLogger
+│   │   ├── console_logger.py    # ConsoleLogger (stdout/stderr, sans fichier)
+│   │   ├── file_logger.py       # FileLogger
+│   │   └── security_logger.py   # SecurityLogger, SecurityEvent, SecurityEventType
 │   ├── config/
 │   │   ├── __init__.py
 │   │   ├── base.py              # ABC ConfigManager
@@ -1088,30 +1350,65 @@ linux-python-utils/
 │   ├── notification/
 │   │   ├── __init__.py
 │   │   └── config.py            # NotificationConfig (dataclass)
-│   └── validation/
+│   ├── validation/
+│   │   ├── __init__.py
+│   │   ├── base.py                        # ABC Validator
+│   │   ├── path_checker_Exist.py          # PathChecker
+│   │   ├── path_checker_permission.py     # PathCheckerPermission
+│   │   └── path_checker_world_writable.py # PathCheckerWorldWritable
+│   ├── errors/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABC ErrorHandler + ErrorHandlerChain
+│   │   ├── exceptions.py        # Hiérarchie ApplicationError
+│   │   ├── console_handler.py   # ConsoleErrorHandler
+│   │   ├── logger_handler.py    # LoggerErrorHandler
+│   │   └── context.py           # ErrorContext
+│   ├── credentials/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABCs CredentialProvider, CredentialStore
+│   │   ├── chain.py             # CredentialChain
+│   │   ├── manager.py           # CredentialManager (façade)
+│   │   ├── models.py            # Credential, CredentialKey
+│   │   ├── exceptions.py        # CredentialError et sous-classes
+│   │   └── providers/
+│   │       ├── __init__.py
+│   │       ├── env.py           # EnvCredentialProvider
+│   │       ├── dotenv.py        # DotEnvCredentialProvider
+│   │       └── keyring.py       # KeyringCredentialProvider
+│   ├── network/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABCs NetworkScanner, DeviceRepository, etc.
+│   │   ├── models.py            # NetworkDevice
+│   │   ├── config.py            # NetworkConfig, DhcpRange, DnsConfig
+│   │   ├── scanner.py           # LinuxArpScanner, LinuxNmapScanner
+│   │   ├── repository.py        # JsonDeviceRepository
+│   │   ├── dhcp.py              # LinuxDhcpReservationManager
+│   │   ├── dns.py               # LinuxHostsFileManager, LinuxDnsmasqConfigGenerator
+│   │   ├── reporter.py          # ConsoleTableReporter, CsvReporter, etc.
+│   │   ├── router.py            # AsusRouterClient, AsusRouterScanner, etc.
+│   │   └── validators.py        # validate_ipv4, validate_mac, etc.
+│   └── cli/
 │       ├── __init__.py
-│       ├── base.py                        # ABC Validator
-│       ├── path_checker_Exist.py          # PathChecker
-│       ├── path_checker_permission.py     # PathCheckerPermission
-│       └── path_checker_world_writable.py # PathCheckerWorldWritable
+│       └── base.py              # CliCommand (ABC), CliApplication
 ├── tests/
 │   ├── __init__.py
-│   ├── test_logging.py              # 8 tests
-│   ├── test_config.py               # 13 tests
-│   ├── test_config_validation.py    # 11 tests
-│   ├── test_integrity.py            # 11 tests
-│   ├── test_systemd_mount.py        # 36 tests
-│   ├── test_systemd_timer.py        # 23 tests
-│   ├── test_systemd_service.py      # 41 tests
-│   ├── test_systemd_executor.py     # 9 tests
-│   ├── test_systemd_validators.py   # 25 tests
-│   ├── test_systemd_scheduled_task.py # 12 tests
-│   ├── test_systemd_config_loaders.py # 30 tests
-│   ├── test_dotconf.py              # 20 tests
-│   ├── test_commands.py             # 34 tests
-│   ├── test_scripts.py             # 19 tests
-│   ├── test_notification.py         # 13 tests
-│   └── test_validation.py           # 5 tests
+│   ├── test_logging.py
+│   ├── test_config.py
+│   ├── test_config_validation.py
+│   ├── test_integrity.py
+│   ├── test_filesystem.py
+│   ├── test_systemd_mount.py
+│   ├── test_systemd_timer.py
+│   ├── test_systemd_service.py
+│   ├── test_systemd_executor.py
+│   ├── test_systemd_validators.py
+│   ├── test_systemd_scheduled_task.py
+│   ├── test_systemd_config_loaders.py
+│   ├── test_dotconf.py
+│   ├── test_commands.py
+│   ├── test_scripts.py
+│   ├── test_notification.py
+│   └── test_validation.py
 ├── examples/
 │   └── nfs-mounts.toml              # Exemple de configuration
 ├── pyproject.toml

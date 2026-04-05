@@ -275,3 +275,34 @@ class TestSecurityLogger:
         logger.log_info("Test sans get")
         content = (tmp_path / "test.log").read_text(encoding="utf-8")
         assert "Test sans get" in content
+
+
+class TestConsoleLogger:
+    """Tests pour ConsoleLogger."""
+
+    def test_est_instance_de_logger(self) -> None:
+        """ConsoleLogger implémente l'interface Logger."""
+        from linux_python_utils.logging import ConsoleLogger, Logger
+        assert isinstance(ConsoleLogger(), Logger)
+
+    def test_log_info_ecrit_sur_stdout(self, capsys: pytest.CaptureFixture) -> None:
+        """log_info écrit sur stdout."""
+        from linux_python_utils.logging import ConsoleLogger
+        ConsoleLogger().log_info("message info")
+        assert "message info" in capsys.readouterr().out
+
+    def test_log_warning_ecrit_sur_stderr(self, capsys: pytest.CaptureFixture) -> None:
+        """log_warning écrit sur stderr avec préfixe WARNING."""
+        from linux_python_utils.logging import ConsoleLogger
+        ConsoleLogger().log_warning("alerte")
+        captured = capsys.readouterr()
+        assert "WARNING" in captured.err
+        assert "alerte" in captured.err
+
+    def test_log_error_ecrit_sur_stderr(self, capsys: pytest.CaptureFixture) -> None:
+        """log_error écrit sur stderr avec préfixe ERROR."""
+        from linux_python_utils.logging import ConsoleLogger
+        ConsoleLogger().log_error("erreur critique")
+        captured = capsys.readouterr()
+        assert "ERROR" in captured.err
+        assert "erreur critique" in captured.err

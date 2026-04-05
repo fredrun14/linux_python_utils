@@ -430,3 +430,66 @@ class TestValidatedSectionEdgeCases:
             assert section.public == "val"
         finally:
             SectionWithPrivate.clear_validators()
+
+
+class TestIsSectionConfigured:
+    """Tests pour LinuxIniConfigManager.is_section_configured()."""
+
+    def test_retourne_false_si_fichier_absent(
+        self, manager: LinuxIniConfigManager, tmp_path: Path
+    ) -> None:
+        """Retourne False si le fichier n'existe pas."""
+        section = CommandsSectionFixture()
+
+        result = manager.is_section_configured(tmp_path / "absent.conf", section)
+
+        assert result is False
+
+    def test_retourne_false_si_section_absente(
+        self, manager: LinuxIniConfigManager, tmp_path: Path
+    ) -> None:
+        """Retourne False si la section est absente du fichier."""
+        import configparser
+        conf = tmp_path / "test.conf"
+        parser = configparser.ConfigParser()
+        parser["autre_section"] = {"key": "value"}
+        with open(conf, "w") as f:
+            parser.write(f)
+
+        result = manager.is_section_configured(conf, CommandsSectionFixture())
+
+        assert result is False
+
+    def test_retourne_true_si_valeurs_identiques(
+        self, manager: LinuxIniConfigManager, tmp_path: Path
+    ) -> None:
+        """Retourne True si toutes les valeurs attendues sont présentes."""
+        import configparser
+        section = CommandsSectionFixture()
+        conf = tmp_path / "test.conf"
+        parser = configparser.ConfigParser()
+        parser[section.section_name()] = section.to_dict()
+        with open(conf, "w") as f:
+            parser.write(f)
+
+        result = manager.is_section_configured(conf, section)
+
+        assert result is True
+
+    def test_retourne_false_si_valeur_differente(
+        self, manager: LinuxIniConfigManager, tmp_path: Path
+    ) -> None:
+        """Retourne False si au moins une valeur diffère."""
+        import configparser
+        section = CommandsSectionFixture()
+        conf = tmp_path / "test.conf"
+        values = section.to_dict()
+        values["apply_updates"] = "no"
+        parser = configparser.ConfigParser()
+        parser[section.section_name()] = values
+        with open(conf, "w") as f:
+            parser.write(f)
+
+        result = manager.is_section_configured(conf, section)
+
+        assert result is False
