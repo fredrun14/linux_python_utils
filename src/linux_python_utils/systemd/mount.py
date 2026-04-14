@@ -48,8 +48,11 @@ class LinuxMountUnitManager(MountUnitManager):
             True si le répertoire existe ou a été créé, False sinon
         """
         try:
-            Path(path).mkdir(parents=True, exist_ok=True)
-            self.logger.log_info(f"Point de montage créé: {path}")
+            mount_path = Path(path)
+            already_exists = mount_path.exists()
+            mount_path.mkdir(parents=True, exist_ok=True)
+            if not already_exists:
+                self.logger.log_info(f"Point de montage créé: {path}")
             return True
         except PermissionError:
             self.logger.log_error(
