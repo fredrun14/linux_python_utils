@@ -5,6 +5,7 @@ de configuration au format INI (.conf) avec :
 - Validation externe des valeurs (depuis TOML, dictionnaire, etc.)
 - Dataclasses immuables pour la représentation des sections
 - Gestion robuste des opérations lecture/écriture
+- Édition ligne-à-ligne préservant commentaires et formatage
 
 Classes principales:
     - IniSection: Interface abstraite pour une section INI
@@ -12,6 +13,7 @@ Classes principales:
     - IniConfigManager: Interface abstraite pour la gestion de fichiers
     - ValidatedSection: Dataclass de base avec validation externe
     - LinuxIniConfigManager: Implémentation du gestionnaire de fichiers
+    - SectionAwareEditor: Éditeur ligne-à-ligne préservant les commentaires
 
 Fonctions utilitaires:
     - parse_validator: Convertit un validateur brut en fonction/liste
@@ -55,6 +57,7 @@ from linux_python_utils.dotconf.base import (
     IniConfigManager,
     IniSection,
 )
+from linux_python_utils.dotconf.line_editor import SectionAwareEditor
 from linux_python_utils.dotconf.manager import LinuxIniConfigManager
 from linux_python_utils.dotconf.section import (
     ValidatedSection,
@@ -70,6 +73,7 @@ __all__ = [
     # Implémentations
     "ValidatedSection",
     "LinuxIniConfigManager",
+    "SectionAwareEditor",
     # Fonctions utilitaires
     "parse_validator",
     "build_validators",
