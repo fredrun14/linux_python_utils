@@ -1034,10 +1034,17 @@ Validateurs : `validate_ipv4`, `validate_mac`, `validate_cidr`, `validate_hostna
 
 Framework CLI minimal basé sur le Command Pattern. Permet de structurer une application argparse en sous-commandes SOLID.
 
+Inclut également un support dry-run réutilisable : `add_dry_run_argument` enregistre `--dry-run` / `-n` de façon standardisée, et `DryRunContext` affiche les actions simulées sans écrire sur le disque.
+
 ```python
 import argparse
 from typing import Any
-from linux_python_utils import CliCommand, CliApplication
+from linux_python_utils.cli import (
+    CliCommand,
+    CliApplication,
+    DryRunContext,
+    add_dry_run_argument,
+)
 
 class SyncCommand(CliCommand):
     @property
@@ -1046,11 +1053,12 @@ class SyncCommand(CliCommand):
 
     def register(self, subparsers: Any) -> None:
         p = subparsers.add_parser(self.name, help="Synchronise les données")
-        p.add_argument("--dry-run", action="store_true")
+        add_dry_run_argument(p)  # ajoute --dry-run / -n
 
     def execute(self, args: argparse.Namespace) -> None:
-        if args.dry_run:
-            print("[dry-run] sync simulé")
+        ctx = DryRunContext(dry_run=args.dry_run)
+        if ctx.dry_run:
+            ctx.would_write("/etc/app/config", "key=value")
         else:
             print("sync exécuté")
 
@@ -1290,6 +1298,8 @@ logger.log_info("Backup automatique configuré")
 |-----------------|----------------|-------------|
 | `CliCommand` | — (à implémenter) | Interface pour une sous-commande CLI |
 | — | `CliApplication` | Orchestrateur CLI (Command Pattern + argparse) |
+| — | `DryRunContext` | Contexte d'exécution simulée (affichage sans écriture disque) |
+| — | `add_dry_run_argument` | Enregistre `--dry-run` / `-n` dans un ArgumentParser |
 
 ### Dataclasses
 
