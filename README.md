@@ -15,40 +15,24 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 - [Fonctionnalités](#-fonctionnalités)
 - [Prérequis](#-prérequis)
 - [Installation](#-installation)
-- [Utilisation](#-utilisation)
-  - [Module logging](#module-logging)
-  - [Module config](#module-config)
-  - [Module filesystem](#module-filesystem)
-  - [Module systemd](#module-systemd)
-  - [Module integrity](#module-integrity)
-  - [Module dotconf](#module-dotconf)
-  - [Module commands](#module-commands)
-  - [Module scripts](#module-scripts)
-  - [Module identity](#module-identity)
-  - [Module notification](#module-notification)
-  - [Module validation](#module-validation)
-  - [Module errors](#module-errors)
-  - [Module credentials](#module-credentials)
-  - [Module network](#module-network)
-  - [Module cli](#module-cli)
-- [Documentation API](#-documentation-api)
-- [Architecture des Classes](#-architecture-des-classes)
-  - [Vue d'Ensemble](#vue-densemble)
-  - [logging](#architecture-logging)
-  - [config](#architecture-config)
-  - [filesystem](#architecture-filesystem)
-  - [commands](#architecture-commands)
-  - [credentials](#architecture-credentials)
-  - [errors](#architecture-errors)
-  - [integrity](#architecture-integrity)
-  - [dotconf](#architecture-dotconf)
-  - [validation](#architecture-validation)
-  - [scripts](#architecture-scripts)
-  - [identity](#architecture-identity)
-  - [network](#architecture-network)
-  - [cli](#architecture-cli)
-  - [systemd](#architecture-systemd)
+- [Architecture Globale](#-architecture-globale)
 - [Structure du Projet](#-structure-du-projet)
+- [Module logging](#-module-logging)
+- [Module errors](#-module-errors)
+- [Module config](#-module-config)
+- [Module commands](#-module-commands)
+- [Module filesystem](#-module-filesystem)
+- [Module systemd](#-module-systemd)
+- [Module scripts](#-module-scripts)
+- [Module network](#-module-network)
+- [Module identity](#-module-identity)
+- [Module cli](#-module-cli)
+- [Module dotconf](#-module-dotconf)
+- [Module integrity](#-module-integrity)
+- [Module credentials](#-module-credentials)
+- [Module validation](#-module-validation)
+- [Module notification](#-module-notification)
+- [Exemple Complet](#-exemple-complet)
 - [Tests](#-tests)
 - [Troubleshooting](#-troubleshooting)
 - [Contribution](#-contribution)
@@ -169,11 +153,251 @@ import linux_python_utils
 print(linux_python_utils.__version__)  # 1.6.0
 ```
 
-## 💻 Utilisation
+## 🏗️ Architecture Globale
 
-### Module `logging`
+### Vue d'Ensemble
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                              linux-python-utils  v1.5                            │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│  MODULES                                                                         │
+│                                                                                  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │
+│  │ logging  │ │  config  │ │filesystem│ │ systemd  │ │integrity │ │ dotconf  │ │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │
+│  │ commands │ │ scripts  │ │validation│ │  errors  │ │credential│ │ network  │ │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐                                         │
+│  │ identity │ │   cli    │ │notificat.│                                         │
+│  └──────────┘ └──────────┘ └──────────┘                                         │
+│                                                                                  │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│  ABCs (contrats publics)                                                         │
+│                                                                                  │
+│  Logger · ConfigLoader · ConfigManager · ConfigFileLoader[T]                     │
+│  FileManager · FileBackup · CommandExecutor · CommandFormatter                   │
+│  ChecksumCalculator · IniSection · IniConfig · IniConfigManager                 │
+│  Validator · ErrorHandler · CredentialProvider · CredentialStore                 │
+│  NetworkScanner · DeviceRepository · DhcpReservationManager                     │
+│  DnsManager · DeviceReporter · ScriptInstaller · ScriptChecker                  │
+│  CliCommand · GroupManagerBase · UserManagerBase                                 │
+│  UnitManager · ServiceUnitManager · TimerUnitManager · MountUnitManager          │
+│  UserUnitManager · UserServiceUnitManager · UserTimerUnitManager                 │
+│  ScheduledTaskInstaller                                                          │
+│                                                                                  │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│  Implémentations Linux concrètes                                                 │
+│                                                                                  │
+│  FileLogger · ConsoleLogger · SecurityLogger                                     │
+│  ConfigurationManager · FileConfigLoader                                         │
+│  LinuxFileManager · LinuxFileBackup                                              │
+│  LinuxCommandExecutor · CommandBuilder · AnsiCommandFormatter                    │
+│  HashLibChecksumCalculator · SHA256IntegrityChecker · IniSectionIntegrityChecker │
+│  ValidatedSection · LinuxIniConfigManager · SectionAwareEditor                   │
+│  PathCheckerPermission · PathCheckerWorldWritable                                │
+│  ConsoleErrorHandler · LoggerErrorHandler · ErrorHandlerChain                    │
+│  EnvCredentialProvider · DotEnvCredentialProvider · KeyringCredentialProvider    │
+│  CredentialChain · CredentialManager                                             │
+│  LinuxArpScanner · LinuxNmapScanner · JsonDeviceRepository                       │
+│  LinuxDhcpReservationManager · LinuxHostsFileManager · LinuxDnsmasqConfigGen.    │
+│  ConsoleTableReporter · CsvReporter · JsonReporter · DiffReporter                │
+│  BashScriptInstaller · LinuxCliInstaller · LinuxScriptChecker                    │
+│  LinuxGroupManager · LinuxUserManager                                            │
+│  CliApplication · DryRunContext                                                  │
+│  SystemdExecutor · LinuxServiceUnitManager · LinuxTimerUnitManager               │
+│  LinuxMountUnitManager · LinuxUserServiceUnitManager · LinuxUserTimerUnitManager │
+│  SystemdScheduledTaskInstaller                                                   │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Principes SOLID Appliqués
+
+| Principe | Application |
+|----------|-------------|
+| **S** - Single Responsibility | `SystemdExecutor` (commandes) séparé de `UnitManager` (fichiers unit) |
+| **O** - Open/Closed | ABCs stables, nouvelles implémentations sans modification |
+| **L** - Liskov Substitution | Toutes les implémentations respectent leurs contrats ABC |
+| **I** - Interface Segregation | `MountUnitManager`, `TimerUnitManager`, `ServiceUnitManager` séparés |
+| **D** - Dependency Inversion | Injection de `Logger` et `SystemdExecutor` dans les managers |
+
+### Injection de Dépendances
+
+```python
+# Toutes les classes acceptent des abstractions en injection
+class LinuxMountUnitManager(MountUnitManager):
+    def __init__(
+        self,
+        logger: Logger,           # ABC injectée
+        executor: SystemdExecutor  # Executor injecté
+    ): ...
+
+# Facilite les tests avec des mocks
+class MockLogger(Logger):
+    def log_info(self, message): pass
+    def log_warning(self, message): pass
+    def log_error(self, message): pass
+
+class MockExecutor(SystemdExecutor):
+    def reload_systemd(self): return True
+    def enable_unit(self, name): return True
+    # ...
+
+mount_mgr = LinuxMountUnitManager(MockLogger(), MockExecutor(MockLogger()))
+```
+
+## 🗂️ Structure du Projet
+
+```
+linux-python-utils/
+├── src/linux_python_utils/
+│   ├── __init__.py              # Exports publics
+│   ├── logging/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABC Logger
+│   │   ├── console_logger.py    # ConsoleLogger (stdout/stderr, sans fichier)
+│   │   ├── file_logger.py       # FileLogger
+│   │   └── security_logger.py   # SecurityLogger, SecurityEvent, SecurityEventType
+│   ├── config/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABC ConfigManager
+│   │   ├── loader.py            # ABC ConfigLoader + FileConfigLoader
+│   │   └── manager.py           # ConfigurationManager
+│   ├── filesystem/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABCs FileManager, FileBackup
+│   │   ├── linux.py             # LinuxFileManager
+│   │   └── backup.py            # LinuxFileBackup
+│   ├── systemd/
+│   │   ├── __init__.py          # Exports module systemd
+│   │   ├── base.py              # ABCs + dataclasses (configs)
+│   │   ├── executor.py          # SystemdExecutor, UserSystemdExecutor
+│   │   ├── validators.py        # validate_unit_name(), validate_service_name()
+│   │   ├── mount.py             # LinuxMountUnitManager
+│   │   ├── timer.py             # LinuxTimerUnitManager
+│   │   ├── service.py           # LinuxServiceUnitManager
+│   │   ├── user_timer.py        # LinuxUserTimerUnitManager
+│   │   ├── user_service.py      # LinuxUserServiceUnitManager
+│   │   ├── scheduled_task.py    # SystemdScheduledTaskInstaller
+│   │   └── config_loaders/      # Chargeurs de configuration (TOML/JSON)
+│   │       ├── __init__.py
+│   │       ├── base.py          # ConfigFileLoader[T] (ABC)
+│   │       ├── service_loader.py # ServiceConfigLoader
+│   │       ├── timer_loader.py  # TimerConfigLoader
+│   │       ├── mount_loader.py  # MountConfigLoader
+│   │       └── script_loader.py # BashScriptConfigLoader
+│   ├── integrity/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABCs + calculate_checksum
+│   │   └── sha256.py            # SHA256IntegrityChecker
+│   ├── dotconf/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABCs IniSection, IniConfig, IniConfigManager
+│   │   ├── section.py           # ValidatedSection + parse_validator, build_validators
+│   │   ├── manager.py           # LinuxIniConfigManager
+│   │   └── line_editor.py       # SectionAwareEditor (édition préservant commentaires)
+│   ├── commands/
+│   │   ├── __init__.py
+│   │   ├── base.py              # CommandResult + ABC CommandExecutor
+│   │   ├── builder.py           # CommandBuilder (API fluent)
+│   │   ├── formatter.py         # CommandFormatter ABC + Plain + Ansi
+│   │   └── runner.py            # LinuxCommandExecutor (subprocess)
+│   ├── scripts/
+│   │   ├── __init__.py
+│   │   ├── config.py            # BashScriptConfig + PythonCliConfig
+│   │   ├── installer.py         # ScriptInstaller, BashScriptInstaller, CliInstaller, LinuxCliInstaller
+│   │   ├── paths.py             # ScriptPaths — chemins FHS via platformdirs
+│   │   ├── checker.py           # ScriptChecker (ABC) + LinuxScriptChecker
+│   │   └── report.py            # InstallReport + MissingDependency
+│   ├── identity/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABCs GroupManagerBase, UserManagerBase
+│   │   ├── group.py             # LinuxGroupManager (groupadd/groupmod)
+│   │   └── user.py              # LinuxUserManager (useradd/usermod)
+│   ├── notification/
+│   │   ├── __init__.py
+│   │   └── config.py            # NotificationConfig (dataclass)
+│   ├── validation/
+│   │   ├── __init__.py
+│   │   ├── base.py                        # ABC Validator
+│   │   ├── path_checker_Exist.py          # PathChecker
+│   │   ├── path_checker_permission.py     # PathCheckerPermission
+│   │   └── path_checker_world_writable.py # PathCheckerWorldWritable
+│   ├── errors/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABC ErrorHandler + ErrorHandlerChain
+│   │   ├── exceptions.py        # Hiérarchie ApplicationError
+│   │   ├── console_handler.py   # ConsoleErrorHandler
+│   │   ├── logger_handler.py    # LoggerErrorHandler
+│   │   └── context.py           # ErrorContext
+│   ├── credentials/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABCs CredentialProvider, CredentialStore
+│   │   ├── chain.py             # CredentialChain
+│   │   ├── manager.py           # CredentialManager (façade)
+│   │   ├── models.py            # Credential, CredentialKey
+│   │   ├── exceptions.py        # CredentialError et sous-classes
+│   │   └── providers/
+│   │       ├── __init__.py
+│   │       ├── env.py           # EnvCredentialProvider
+│   │       ├── dotenv.py        # DotEnvCredentialProvider
+│   │       └── keyring.py       # KeyringCredentialProvider
+│   ├── network/
+│   │   ├── __init__.py
+│   │   ├── base.py              # ABCs NetworkScanner, DeviceRepository, etc.
+│   │   ├── models.py            # NetworkDevice
+│   │   ├── config.py            # NetworkConfig, DhcpRange, DnsConfig
+│   │   ├── scanner.py           # LinuxArpScanner, LinuxNmapScanner
+│   │   ├── repository.py        # JsonDeviceRepository
+│   │   ├── dhcp.py              # LinuxDhcpReservationManager
+│   │   ├── dns.py               # LinuxHostsFileManager, LinuxDnsmasqConfigGenerator
+│   │   ├── reporter.py          # ConsoleTableReporter, CsvReporter, etc.
+│   │   ├── router.py            # AsusRouterClient, AsusRouterScanner, etc.
+│   │   └── validators.py        # validate_ipv4, validate_mac, etc.
+│   └── cli/
+│       ├── __init__.py
+│       ├── base.py              # CliCommand (ABC), CliApplication
+│       └── dry_run.py           # DryRunContext, add_dry_run_argument
+├── tests/
+│   ├── __init__.py
+│   ├── test_logging.py
+│   ├── test_config.py
+│   ├── test_config_validation.py
+│   ├── test_integrity.py
+│   ├── test_filesystem.py
+│   ├── test_systemd_mount.py
+│   ├── test_systemd_timer.py
+│   ├── test_systemd_service.py
+│   ├── test_systemd_executor.py
+│   ├── test_systemd_validators.py
+│   ├── test_systemd_scheduled_task.py
+│   ├── test_systemd_config_loaders.py
+│   ├── test_dotconf.py
+│   ├── test_dotconf_line_editor.py
+│   ├── test_commands.py
+│   ├── test_scripts.py
+│   ├── test_notification.py
+│   ├── test_validation.py
+│   ├── test_identity_group.py
+│   ├── test_identity_user.py
+│   ├── test_cli.py
+│   └── test_cli_dry_run.py
+├── examples/
+│   └── nfs-mounts.toml              # Exemple de configuration
+├── pyproject.toml
+├── Makefile
+├── CLAUDE.md
+└── README.md
+```
+
+---
+
+## 📝 Module `logging`
 
 Système de logging robuste avec trois implémentations : fichier, console légère, et journalisation structurée des événements de sécurité.
+
+### Utilisation
 
 ```python
 from linux_python_utils import FileLogger, ConsoleLogger
@@ -247,12 +471,164 @@ Types d'événements disponibles (`SecurityEventType`) :
 | `RATE_LIMIT_HIT` | `rate_limit.hit` | warning |
 | `SUSPICIOUS_ACTIVITY` | `suspicious.activity` | error |
 
-### Module `config`
+### Documentation API
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `Logger` | `FileLogger` | Logging fichier/console (UTF-8, flush immédiat) |
+| `Logger` | `ConsoleLogger` | Logging stdout/stderr sans fichier (dry-run, tests) |
+| — | `SecurityLogger` | Journalisation structurée JSON des événements de sécurité |
+| — | `SecurityEvent` | Dataclass représentant un événement de sécurité |
+| — | `SecurityEventType` | Enum des 10 types d'événements de sécurité |
+
+### Architecture des Classes
+
+```
+          ┌────────────────────────────────────────────┐
+          │                Logger (ABC)                 │
+          │  + log_info(message: str)    [abstract]     │
+          │  + log_warning(message: str) [abstract]     │
+          │  + log_error(message: str)   [abstract]     │
+          │  + log_success(message: str) [→ log_info]   │
+          └────────────────────┬───────────────────────┘
+                               │ hérite
+               ┌───────────────┴───────────────┐
+               ▼                               ▼
+  ┌────────────────────────┐   ┌───────────────────────────┐
+  │     ConsoleLogger      │   │        FileLogger         │
+  │                        │   │  - log_file: str          │
+  │  log_info  → stdout    │   │  - config: dict | None    │
+  │  log_warn  → stderr    │   │  - console_output: bool   │
+  │  log_error → stderr    │   │  (UTF-8, flush immédiat)  │
+  └────────────────────────┘   └───────────────────────────┘
+
+  SecurityLogger  (composition — injecte Logger)
+  ┌────────────────────────────────────────────────┐
+  │  SecurityLogger                                │
+  │  - _logger: Logger                             │
+  │  + log_event(event_type, resource, details,    │
+  │              severity, user_id) → JSON         │
+  ├────────────────────────────────────────────────┤
+  │  SecurityEventType (StrEnum)                   │
+  │  AUTH_SUCCESS · AUTH_FAILURE · AUTH_LOCKOUT    │
+  │  ACCESS_DENIED · ACCESS_ELEVATED               │
+  │  DATA_EXPORT · DATA_MODIFICATION               │
+  │  CONFIG_CHANGE · RATE_LIMIT_HIT                │
+  │  SUSPICIOUS_ACTIVITY                           │
+  ├────────────────────────────────────────────────┤
+  │  SecurityEvent (frozen dataclass)              │
+  │  - event_type / resource / details             │
+  │  - severity / user_id / timestamp (UTC ISO)    │
+  └────────────────────────────────────────────────┘
+```
+
+---
+
+## 🚨 Module `errors`
+
+Gestion centralisée des erreurs via une hiérarchie d'exceptions et une chaîne de handlers (pattern Chain of Responsibility).
+
+### Utilisation
+
+```python
+from linux_python_utils.errors import (
+    ApplicationError,
+    ConfigurationError,
+    ErrorHandlerChain,
+    ConsoleErrorHandler,
+    LoggerErrorHandler,
+    ErrorContext,
+)
+from linux_python_utils import FileLogger
+
+# Construire une chaîne de handlers
+logger = FileLogger("/var/log/myapp.log")
+chain = ErrorHandlerChain()
+chain.add_handler(ConsoleErrorHandler())      # affiche sur stderr
+chain.add_handler(LoggerErrorHandler(logger)) # logue dans le fichier
+
+# Lever et capturer une erreur applicative
+try:
+    raise ConfigurationError("Clé 'timeout' manquante dans config.toml")
+except ApplicationError as e:
+    chain.handle(e)           # propagé aux deux handlers
+    # ou :
+    chain.handle_and_exit(e)  # propagé puis sys.exit(1)
+
+# Hiérarchie des exceptions (toutes héritent de ApplicationError)
+# ConfigurationError, FileConfigurationError
+# SystemRequirementError, MissingDependencyError
+# ValidationError, InstallationError
+# AppPermissionError, RollbackError, IntegrityError
+```
+
+### Documentation API
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `ErrorHandler` | `ConsoleErrorHandler` | Affiche les erreurs sur stderr |
+| `ErrorHandler` | `LoggerErrorHandler` | Logue les erreurs via un `Logger` |
+| — | `ErrorHandlerChain` | Diffuse l'erreur à tous les handlers enregistrés |
+| — | `ErrorContext` | Contexte structuré attaché à une erreur |
+| `ApplicationError` | `ConfigurationError` | Erreur de configuration |
+| `ApplicationError` | `FileConfigurationError` | Erreur de fichier de configuration |
+| `ApplicationError` | `SystemRequirementError` | Prérequis système absent |
+| `ApplicationError` | `MissingDependencyError` | Dépendance Python manquante |
+| `ApplicationError` | `ValidationError` | Échec de validation |
+| `ApplicationError` | `InstallationError` | Erreur d'installation |
+| `ApplicationError` | `AppPermissionError` | Permission refusée |
+| `ApplicationError` | `RollbackError` | Échec du rollback |
+| `ApplicationError` | `IntegrityError` | Violation d'intégrité |
+
+### Architecture des Classes
+
+```
+  ┌────────────────────────────────────┐
+  │         ErrorHandler (ABC)         │
+  │  + handle(error: Exception)        │
+  │    [abstract]                      │
+  └──────────────┬─────────────────────┘
+                 │ hérite
+       ┌─────────┴─────────┐
+       ▼                   ▼
+┌──────────────┐   ┌───────────────┐
+│ ConsoleError │   │ LoggerError   │
+│   Handler    │   │   Handler     │
+│  → stderr    │   │  - logger     │
+└──────────────┘   └───────────────┘
+
+  ┌────────────────────────────────────┐
+  │         ErrorHandlerChain          │  ← pas un ABC : orchestrateur
+  │  - handlers: list[ErrorHandler]    │
+  │  + add_handler(h)                  │
+  │  + handle(error) → tous handlers   │
+  │  + handle_and_exit(error, code)    │
+  └────────────────────────────────────┘
+
+  Hiérarchie d'exceptions (errors/exceptions.py)
+  Exception
+  └── LinuxUtilsError
+      ├── ConfigurationError
+      ├── FilesystemError
+      ├── CommandExecutionError
+      ├── CredentialError
+      │   ├── CredentialNotFoundError
+      │   ├── CredentialProviderUnavailableError
+      │   └── CredentialStoreError
+      └── SystemdError
+```
+
+---
+
+## ⚙️ Module `config`
 
 Chargement et gestion de configuration TOML et JSON.
+
+### Utilisation
+
 #### Classe `FileConfigLoader`
 
- ```python
+```python
 from linux_python_utils import FileConfigLoader
 
 # Chargement TOML ou JSON (détection automatique)
@@ -311,9 +687,184 @@ source = "~"
 destination = "/media/nas/backup/home"
 ```
 
-### Module `filesystem`
+### Documentation API
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `ConfigManager` | `ConfigurationManager` | Gestion de configuration |
+| `ConfigLoader` | `FileConfigLoader` | Chargement TOML/JSON |
+
+### Architecture des Classes
+
+```
+  ┌──────────────────────────────────┐   ┌────────────────────────────────┐
+  │        ConfigLoader (ABC)        │   │       ConfigManager (ABC)      │
+  │  + load(path) [abstract]         │   │  + get(key)         [abstract] │
+  └────────────┬─────────────────────┘   │  + get_section(key) [abstract] │
+               │                         │  + get_profile(key) [abstract] │
+               ▼                         │  + list_profiles()  [abstract] │
+  ┌────────────────────────────────┐     │  + create_default_config()     │
+  │       FileConfigLoader         │     └────────────────┬───────────────┘
+  │  Supporte TOML + JSON          │                      │ hérite
+  │  Validation Pydantic optionnelle│                     ▼
+  └────────────────────────────────┘     ┌────────────────────────────────┐
+                                         │     ConfigurationManager       │
+  ┌────────────────────────────────┐     │  - _loader: ConfigLoader       │
+  │    ConfigFileLoader[T] (ABC)   │     │  - default_config: dict        │
+  │  Generic typé T (dataclass)    │     │  - search_paths: list[Path]    │
+  │  - _config: dict               │     │  - config: dict                │
+  │  + config (property)           │     │  + get(key, default)           │
+  │  + _get_section(key)           │     │  + get_section(key)            │
+  │  + _get_nested_value(key)      │     │  + get_profile(name)           │
+  │  + load() [abstract]           │     │  + list_profiles()             │
+  └──────────┬─────────────────────┘     │  + create_default_config()     │
+             │ hérite                    │  + _deep_merge(base, override) │
+  ┌──────────┴──────────┬──────────────┐ └────────────────────────────────┘
+  ▼                     ▼              ▼
+ServiceConfig   TimerConfig   MountConfig      ← loaders dans systemd/
+Loader          Loader        Loader
+BashScriptConfigLoader
+```
+
+---
+
+## 🖥️ Module `commands`
+
+Construction fluent et exécution de commandes système. Les commandes root et utilisateur sont distinguées visuellement dans les logs et la console.
+
+### Utilisation
+
+```python
+from linux_python_utils import (
+    FileLogger,
+    CommandBuilder,
+    LinuxCommandExecutor,
+    AnsiCommandFormatter,
+)
+
+# Construire une commande avec l'API fluent
+cmd = (
+    CommandBuilder("rsync")
+    .with_options(["-av", "--delete"])
+    .with_option("--compress-level", "3")
+    .with_flag("--stats")
+    .with_args(["/src/", "/dest/"])
+    .build()
+)
+# Résultat : ["rsync", "-av", "--delete",
+#             "--compress-level=3", "--stats",
+#             "/src/", "/dest/"]
+
+# Exécuter — logs fichier avec préfixe [ROOT] ou [user]
+logger = FileLogger("/var/log/commands.log")
+executor = LinuxCommandExecutor(logger=logger)
+result = executor.run(cmd)
+
+print(result.success)           # True/False
+print(result.return_code)       # 0
+print(result.stdout)            # Sortie standard
+print(result.duration)          # Durée en secondes
+print(result.executed_as_root)  # True si lancé en root
+
+# Console colorée (jaune gras=root, vert=user) + logs fichier
+executor = LinuxCommandExecutor(
+    logger=logger,
+    console_formatter=AnsiCommandFormatter(),
+)
+# → fichier log : "[ROOT] Exécution : rsync -av ..."
+# → console     : idem en jaune-or gras si root, vert si user
+
+# Streaming temps réel vers le logger
+result = executor.run_streaming(cmd)
+
+# Mode dry-run (simulation sans exécution)
+dry_executor = LinuxCommandExecutor(
+    logger=logger, dry_run=True
+)
+result = dry_executor.run(cmd)  # Log "[user] [dry-run] ..." seulement
+
+# Options conditionnelles
+cmd = (
+    CommandBuilder("rsync")
+    .with_options(["-av"])
+    .with_option_if("--bwlimit", "1000", condition=True)
+    .with_option_if("--exclude", None)  # Ignoré (None)
+    .with_args(["/src/", "/dest/"])
+    .build()
+)
+```
+
+### Documentation API
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `CommandExecutor` | `LinuxCommandExecutor` | Exécution subprocess |
+| — | `CommandBuilder` | Construction fluent de commandes |
+| `CommandFormatter` | `PlainCommandFormatter` | Formatage texte brut (logs fichier) |
+| `CommandFormatter` | `AnsiCommandFormatter` | Formatage ANSI coloré (console) |
+
+**Dataclass `CommandResult`** (frozen) :
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `command` | `list[str]` | Commande exécutée |
+| `return_code` | `int` | Code de retour |
+| `stdout` | `str` | Sortie standard |
+| `stderr` | `str` | Sortie d'erreur |
+| `success` | `bool` | True si return_code == 0 |
+| `duration` | `float` | Durée en secondes |
+| `executed_as_root` | `bool` | True si lancé en root |
+
+### Architecture des Classes
+
+```
+  ┌──────────────────────────────────────────────────────────┐
+  │                  CommandResult (frozen dataclass)        │
+  │  command: list[str]  │  return_code: int  │  stdout: str │
+  │  stderr: str  │  success: bool  │  duration: float       │
+  │  executed_as_root: bool                                  │
+  └──────────────────────────────────────────────────────────┘
+
+  ┌───────────────────────────────┐
+  │      CommandBuilder           │
+  │  - _program: str              │
+  │  + with_options(dict)         │  ← Builder Pattern (fluent API)
+  │  + with_flag(flag, cond)      │
+  │  + with_option(key, value)    │
+  │  + with_option_if(k, v, cond) │
+  │  + with_args(args)            │
+  │  + build() → list[str]        │
+  └───────────────────────────────┘
+
+  ┌───────────────────────────────┐    ┌─────────────────────────────────┐
+  │    CommandFormatter (ABC)     │    │      CommandExecutor (ABC)      │
+  │  + format_start()  [abstract] │    │  + run(cmd, env, cwd, timeout)  │
+  │  + format_dry_run()[abstract] │    │    [abstract] → CommandResult   │
+  │  + format_line()   [abstract] │    │  + run_streaming(cmd, ...)      │
+  └──────────────┬────────────────┘    │    [abstract]                   │
+                 │ hérite              └──────────────┬──────────────────┘
+     ┌───────────┴───────────┐                        │ hérite
+     ▼                       ▼                        ▼
+PlainCommand         AnsiCommand         ┌─────────────────────────────────┐
+Formatter            Formatter           │      LinuxCommandExecutor       │
+(texte brut)         (ANSI couleurs,     │  - logger: Logger               │
+                      TTY-aware)         │  - _dry_run: bool               │
+                                         │  - _is_root: bool               │
+                                         │  - _console_formatter           │
+                                         │  + run(cmd) → CommandResult     │
+                                         │  + run_streaming(cmd)           │
+                                         │  + _build_env()                 │
+                                         │  + _make_dry_run_result()       │
+                                         └─────────────────────────────────┘
+```
+
+---
+
+## 📁 Module `filesystem`
 
 Opérations sur les fichiers et sauvegardes.
+
+### Utilisation
 
 ```python
 from linux_python_utils import FileLogger, LinuxFileManager, LinuxFileBackup
@@ -337,11 +888,42 @@ backup.backup("/etc/myapp.conf", "/etc/myapp.conf.bak")
 backup.restore("/etc/myapp.conf", "/etc/myapp.conf.bak")
 ```
 
-### Module `systemd`
+### Documentation API
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `FileManager` | `LinuxFileManager` | CRUD fichiers |
+| `FileBackup` | `LinuxFileBackup` | Sauvegarde/restauration |
+
+### Architecture des Classes
+
+```
+  ┌─────────────────────────────────┐    ┌──────────────────────────────────┐
+  │       FileManager (ABC)         │    │        FileBackup (ABC)          │
+  │  + create_file()  [abstract]    │    │  + backup(src, dst)  [abstract]  │
+  │  + file_exists()  [abstract]    │    │  + restore(bak, dst) [abstract]  │
+  └────────────────┬────────────────┘    └─────────────────┬────────────────┘
+                   │ hérite                                 │ hérite
+                   ▼                                        ▼
+  ┌─────────────────────────────────┐    ┌──────────────────────────────────┐
+  │      LinuxFileManager           │    │       LinuxFileBackup            │
+  │  - logger: Logger               │    │  - logger: Logger                │
+  │  + create_file(path, content)   │    │  + backup(src, dst)              │
+  │  + file_exists(path)            │    │    (shutil.copy2 — préserve      │
+  │  + read_file(path)              │    │     métadonnées)                 │
+  │  (TOCTOU-safe: O_NOFOLLOW)      │    │  + restore(bak, dst)             │
+  └─────────────────────────────────┘    └──────────────────────────────────┘
+```
+
+---
+
+## 🔧 Module `systemd`
 
 Gestion complète des unités systemd : services, timers et montages, en mode système (root) ou utilisateur.
 
-#### Architecture
+### Utilisation
+
+#### Architecture de haut niveau
 
 ```
 ┌─────────────────────┐          ┌─────────────────────┐
@@ -525,7 +1107,7 @@ service_mgr.install_service_unit_with_name("sync", config)
 service_mgr.enable_service("sync")
 ```
 
-### Module `systemd.config_loaders`
+#### Module `systemd.config_loaders`
 
 Chargeurs de configuration pour créer des dataclasses systemd depuis TOML ou JSON.
 Le format est automatiquement détecté par l'extension du fichier.
@@ -582,190 +1164,77 @@ message_success = "Succès!"
 message_failure = "Échec!"
 ```
 
-### Module `integrity`
+### Documentation API
 
-Vérification d'intégrité par checksums, et ABC pour la vérification de sections INI.
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| — | `SystemdExecutor` | Exécuteur systemctl (système) |
+| — | `UserSystemdExecutor` | Exécuteur systemctl --user |
+| `MountUnitManager` | `LinuxMountUnitManager` | Unités .mount/.automount |
+| `TimerUnitManager` | `LinuxTimerUnitManager` | Unités .timer (système) |
+| `ServiceUnitManager` | `LinuxServiceUnitManager` | Unités .service (système) |
+| `UserTimerUnitManager` | `LinuxUserTimerUnitManager` | Unités .timer (utilisateur) |
+| `UserServiceUnitManager` | `LinuxUserServiceUnitManager` | Unités .service (utilisateur) |
+| `ScheduledTaskInstaller` | `SystemdScheduledTaskInstaller` | Installation tâche planifiée complète |
 
-```python
-from linux_python_utils import FileLogger, SHA256IntegrityChecker, calculate_checksum
+**`systemd.config_loaders`** :
 
-# Fonction utilitaire rapide
-checksum = calculate_checksum("/path/to/file")  # SHA256 par défaut
-checksum_md5 = calculate_checksum("/path/to/file", algorithm="md5")
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `ConfigFileLoader[T]` | — | Classe de base générique (TOML/JSON) |
+| — | `ServiceConfigLoader` | Config → ServiceConfig |
+| — | `TimerConfigLoader` | Config → TimerConfig |
+| — | `MountConfigLoader` | Config → MountConfig |
+| — | `BashScriptConfigLoader` | Config → BashScriptConfig |
 
-# Vérificateur avec logging
-logger = FileLogger("/var/log/backup.log")
-checker = SHA256IntegrityChecker(logger)
+**Dataclasses** :
 
-# Vérifier un fichier unique
-if checker.verify_file("/source/file.txt", "/dest/file.txt"):
-    print("Fichier identique")
+| Classe | Description |
+|--------|-------------|
+| `MountConfig` | Configuration d'une unité .mount |
+| `AutomountConfig` | Configuration d'une unité .automount |
+| `TimerConfig` | Configuration d'une unité .timer |
+| `ServiceConfig` | Configuration d'une unité .service |
 
-# Vérifier un répertoire complet (après rsync)
-if checker.verify("/home/user/Documents", "/media/backup"):
-    print("Sauvegarde vérifiée")
-else:
-    print("Erreur d'intégrité!")
+### Architecture des Classes
 
-# Obtenir le checksum avec logging
-checksum = checker.get_checksum("/path/to/file")
+```
+                    ┌─────────────────────────────────────────────┐
+                    │              SystemdExecutor                 │
+                    │  - _run_systemctl(args)                     │
+                    │  - reload_systemd()                         │
+                    │  - enable_unit() / disable_unit()           │
+                    │  - start_unit() / stop_unit()               │
+                    │  - get_status() / is_active()               │
+                    └─────────────────────┬───────────────────────┘
+                                          │ hérite
+                                          ▼
+                    ┌─────────────────────────────────────────────┐
+                    │            UserSystemdExecutor              │
+                    │  surcharge _run_systemctl pour --user       │
+                    └─────────────────────┬───────────────────────┘
+                                          │
+                                          │ injection
+        ┌─────────────────────────────────┼─────────────────────────────────┐
+        │                                 │                                 │
+        ▼                                 ▼                                 ▼
+┌───────────────────┐           ┌───────────────────┐           ┌───────────────────┐
+│    UnitManager    │           │  UserUnitManager  │           │  (autres futurs)  │
+│ /etc/systemd/sys  │           │ ~/.config/systemd │           │                   │
+├───────────────────┤           ├───────────────────┤           └───────────────────┘
+│ LinuxMountUnitMgr │           │ LinuxUserTimerMgr │
+│ LinuxTimerUnitMgr │           │ LinuxUserServiceMgr│
+│ LinuxServiceUnitMgr│          └───────────────────┘
+└───────────────────┘
 ```
 
-#### `IniSectionIntegrityChecker` — ABC pour fichiers INI
+---
 
-Contrat abstrait pour implémenter la vérification d'intégrité d'une section INI après écriture.
-
-```python
-from pathlib import Path
-from linux_python_utils.integrity import IniSectionIntegrityChecker
-
-class MyIniChecker(IniSectionIntegrityChecker):
-    def verify(self, file_path: Path, section: object) -> bool:
-        """Vérifie que file_path contient les valeurs attendues de section."""
-        # ... lecture du fichier et comparaison
-        return True
-
-checker = MyIniChecker()
-if not checker.verify(Path("/etc/myapp.conf"), my_section):
-    raise RuntimeError("Intégrité compromise!")
-```
-
-### Module `dotconf`
-
-Gestion de fichiers de configuration INI (.conf) avec validation externe.
-
-```python
-from dataclasses import dataclass
-from pathlib import Path
-from linux_python_utils import (
-    FileLogger,
-    ValidatedSection,
-    LinuxIniConfigManager,
-)
-
-# Définir une section avec validation
-@dataclass(frozen=True)
-class CommandsSection(ValidatedSection):
-    upgrade_type: str = "default"
-    download_updates: str = "yes"
-
-    @staticmethod
-    def section_name() -> str:
-        return "commands"
-
-# Injecter les validateurs depuis le TOML
-CommandsSection.set_validators({
-    "upgrade_type": ["default", "security"],
-    "download_updates": ["yes", "no"],
-})
-
-# Créer et écrire une section
-section = CommandsSection(
-    upgrade_type="security", download_updates="yes"
-)
-
-logger = FileLogger("/var/log/config.log")
-manager = LinuxIniConfigManager(logger)
-
-# Écrire une section dans un fichier
-manager.write_section(Path("/etc/myapp.conf"), section)
-
-# Lire un fichier INI complet
-config = manager.read(Path("/etc/myapp.conf"))
-print(config["commands"]["upgrade_type"])  # "security"
-
-# Mise à jour conditionnelle (n'écrit que si changé)
-updated = manager.update_section(
-    Path("/etc/myapp.conf"), section
-)
-print(f"Modifié: {updated}")
-```
-
-#### `SectionAwareEditor` — Édition ligne-à-ligne préservant les commentaires
-
-Permet de modifier une clé dans un fichier INI sans toucher les commentaires ni la mise en forme existante.
-
-```python
-from linux_python_utils import SectionAwareEditor
-
-editor = SectionAwareEditor(Path("/etc/myapp.conf"))
-
-# Modifier une valeur dans une section existante
-editor.set_value("commands", "upgrade_type", "security")
-
-# Vérifier qu'une clé est présente
-if editor.has_key("commands", "download_updates"):
-    print("Clé présente")
-```
-
-### Module `commands`
-
-Construction fluent et exécution de commandes système. Les commandes root
-et utilisateur sont distinguées visuellement dans les logs et la console.
-
-```python
-from linux_python_utils import (
-    FileLogger,
-    CommandBuilder,
-    LinuxCommandExecutor,
-    AnsiCommandFormatter,
-)
-
-# Construire une commande avec l'API fluent
-cmd = (
-    CommandBuilder("rsync")
-    .with_options(["-av", "--delete"])
-    .with_option("--compress-level", "3")
-    .with_flag("--stats")
-    .with_args(["/src/", "/dest/"])
-    .build()
-)
-# Résultat : ["rsync", "-av", "--delete",
-#             "--compress-level=3", "--stats",
-#             "/src/", "/dest/"]
-
-# Exécuter — logs fichier avec préfixe [ROOT] ou [user]
-logger = FileLogger("/var/log/commands.log")
-executor = LinuxCommandExecutor(logger=logger)
-result = executor.run(cmd)
-
-print(result.success)           # True/False
-print(result.return_code)       # 0
-print(result.stdout)            # Sortie standard
-print(result.duration)          # Durée en secondes
-print(result.executed_as_root)  # True si lancé en root
-
-# Console colorée (jaune gras=root, vert=user) + logs fichier
-executor = LinuxCommandExecutor(
-    logger=logger,
-    console_formatter=AnsiCommandFormatter(),
-)
-# → fichier log : "[ROOT] Exécution : rsync -av ..."
-# → console     : idem en jaune-or gras si root, vert si user
-
-# Streaming temps réel vers le logger
-result = executor.run_streaming(cmd)
-
-# Mode dry-run (simulation sans exécution)
-dry_executor = LinuxCommandExecutor(
-    logger=logger, dry_run=True
-)
-result = dry_executor.run(cmd)  # Log "[user] [dry-run] ..." seulement
-
-# Options conditionnelles
-cmd = (
-    CommandBuilder("rsync")
-    .with_options(["-av"])
-    .with_option_if("--bwlimit", "1000", condition=True)
-    .with_option_if("--exclude", None)  # Ignoré (None)
-    .with_args(["/src/", "/dest/"])
-    .build()
-)
-```
-
-### Module `scripts`
+## 📜 Module `scripts`
 
 Génération de scripts bash et déploiement de scripts Python CLI sur le système de fichiers (FHS, scope système ou utilisateur, rapport d'installation).
+
+### Utilisation
 
 #### Scripts bash
 
@@ -833,410 +1302,7 @@ print(report.install_path)   # Chemin d'installation
 print(report.missing_deps)   # Dépendances manquantes éventuelles
 ```
 
-### Module `identity`
-
-Gestion idempotente des groupes et utilisateurs Unix. Les opérations sont sans effet si l'état souhaité est déjà en place.
-
-```python
-from linux_python_utils import (
-    FileLogger,
-    LinuxCommandExecutor,
-    LinuxGroupManager,
-    LinuxUserManager,
-)
-
-logger = FileLogger("/var/log/identity.log")
-executor = LinuxCommandExecutor(logger)
-
-# Groupes — crée ou corrige le GID
-group_mgr = LinuxGroupManager(executor, logger)
-group_mgr.ensure_group("appuser", gid=1500)
-# → groupadd si absent, groupmod --gid si GID incorrect, skip sinon
-
-# Utilisateurs — crée ou corrige l'UID
-user_mgr = LinuxUserManager(executor, logger)
-user_mgr.ensure_user(
-    name="appuser",
-    uid=1500,
-    shell="/sbin/nologin",
-    comment="Application service account",
-    create_home=False,
-)
-# → useradd si absent, usermod --uid si UID incorrect, skip sinon
-
-# Groupes secondaires — ajoute uniquement les manquants
-user_mgr.ensure_user_groups(
-    username="appuser",
-    groups=["docker", "systemd-journal"],
-)
-# → usermod --append --groups docker,systemd-journal (uniquement les absents)
-```
-
-### Module `notification`
-
-Configuration des notifications desktop (KDE Plasma).
-
-```python
-from linux_python_utils import NotificationConfig
-
-# Configuration de notification
-notif = NotificationConfig(
-    enabled=True,
-    title="Sauvegarde",
-    message_success="Sauvegarde terminée avec succès",
-    message_failure="Échec de la sauvegarde"
-)
-
-# Générer les appels bash pour notify-send
-bash_calls = notif.to_bash_calls()
-bash_function = notif.to_bash_function()
-```
-
-### Module `validation`
-
-Validation de chemins et données avec support optionnel Pydantic.
-
-Trois validateurs de chemins couvrent des besoins distincts :
-
-| Classe | Vérifie | Usage typique |
-|--------|---------|---------------|
-| `PathChecker` | Répertoires parents existent | Log files, config files |
-| `PathCheckerPermission` | Répertoires parents accessibles en écriture | Backup, sauvegardes |
-| `PathCheckerWorldWritable` | Fichiers non modifiables par tous | Scripts exécutés en root |
-
-```python
-from linux_python_utils import PathChecker, PathCheckerPermission, PathCheckerWorldWritable
-
-# Vérifie que les répertoires parents existent
-checker = PathChecker([
-    "/var/log/myapp.log",
-    "/etc/myapp/config.toml",
-])
-checker.validate()  # Lève ValueError si répertoire absent
-
-# Vérifie les droits d'écriture sur les répertoires parents
-perm_checker = PathCheckerPermission([
-    "/var/log/myapp.log",
-    "/tmp/backup.tar.gz",
-])
-perm_checker.validate()  # Lève PermissionError si non accessible
-
-# Vérifie qu'un fichier de config n'est pas world-writable
-# (sécurité essentielle pour les scripts exécutés en root)
-ww_checker = PathCheckerWorldWritable("/etc/myapp/config.toml")
-ww_checker.validate()  # Lève PermissionError si bit S_IWOTH positionné
-
-# Validation de configuration avec Pydantic (optionnel)
-# pip install linux-python-utils[validation]
-from pydantic import BaseModel
-from linux_python_utils import FileConfigLoader
-
-class AppConfig(BaseModel):
-    name: str
-    debug: bool = False
-    port: int = 8080
-
-loader = FileConfigLoader()
-config = loader.load("config.toml", schema=AppConfig)
-print(config.name)  # Instance AppConfig validée
-```
-
-### Module `errors`
-
-Gestion centralisée des erreurs via une hiérarchie d'exceptions et une chaîne de handlers (pattern Chain of Responsibility).
-
-```python
-from linux_python_utils.errors import (
-    ApplicationError,
-    ConfigurationError,
-    ErrorHandlerChain,
-    ConsoleErrorHandler,
-    LoggerErrorHandler,
-    ErrorContext,
-)
-from linux_python_utils import FileLogger
-
-# Construire une chaîne de handlers
-logger = FileLogger("/var/log/myapp.log")
-chain = ErrorHandlerChain()
-chain.add_handler(ConsoleErrorHandler())      # affiche sur stderr
-chain.add_handler(LoggerErrorHandler(logger)) # logue dans le fichier
-
-# Lever et capturer une erreur applicative
-try:
-    raise ConfigurationError("Clé 'timeout' manquante dans config.toml")
-except ApplicationError as e:
-    chain.handle(e)           # propagé aux deux handlers
-    # ou :
-    chain.handle_and_exit(e)  # propagé puis sys.exit(1)
-
-# Hiérarchie des exceptions (toutes héritent de ApplicationError)
-# ConfigurationError, FileConfigurationError
-# SystemRequirementError, MissingDependencyError
-# ValidationError, InstallationError
-# AppPermissionError, RollbackError, IntegrityError
-```
-
-### Module `credentials`
-
-Gestion des secrets via une chaîne de priorité : variables d'environnement → fichier `.env` → keyring système.
-
-```python
-from linux_python_utils import CredentialManager, CredentialNotFoundError
-from pathlib import Path
-
-# Chaîne complète : env → .env → keyring
-manager = CredentialManager.from_dotenv(
-    service="monapp",
-    dotenv_path=Path("config/.env"),
-)
-
-# Lire un secret
-try:
-    password = manager.get("DB_PASSWORD")
-except CredentialNotFoundError:
-    print("Secret introuvable dans les trois sources")
-
-# Stocker dans le keyring
-manager.store("DB_PASSWORD", "nouveau-mot-de-passe")
-```
-
-Compatibilité keyring : KWallet (KDE Plasma 6), KeePassXC (Secret Service activé), GNOME Keyring.
-
-Dépendances optionnelles :
-```bash
-pip install python-dotenv  # pour DotEnvCredentialProvider
-pip install keyring        # pour KeyringCredentialProvider
-```
-
-### Module `network`
-
-Scan, inventaire et gestion des périphériques d'un réseau local.
-
-```python
-from linux_python_utils import (
-    LinuxArpScanner,
-    JsonDeviceRepository,
-    ConsoleTableReporter,
-    NetworkConfig,
-)
-from pathlib import Path
-
-config = NetworkConfig(interface="eth0", subnet="192.168.1.0/24")
-
-# Scanner le réseau
-scanner = LinuxArpScanner(config)
-devices = scanner.scan()
-
-# Persister l'inventaire
-repo = JsonDeviceRepository(Path("/var/lib/myapp/devices.json"))
-repo.save_all(devices)
-
-# Afficher un tableau
-reporter = ConsoleTableReporter()
-reporter.report(devices)
-```
-
-Scanners disponibles : `LinuxArpScanner` (arp-scan), `LinuxNmapScanner` (nmap).
-
-Reporters disponibles : `ConsoleTableReporter`, `CsvReporter`, `JsonReporter`, `DiffReporter`.
-
-DNS/DHCP : `LinuxHostsFileManager`, `LinuxDnsmasqConfigGenerator`, `LinuxDhcpReservationManager`.
-
-Validateurs : `validate_ipv4`, `validate_mac`, `validate_cidr`, `validate_hostname`.
-
-### Module `cli`
-
-Framework CLI minimal basé sur le Command Pattern. Permet de structurer une application argparse en sous-commandes SOLID.
-
-Inclut également un support dry-run réutilisable : `add_dry_run_argument` enregistre `--dry-run` / `-n` de façon standardisée, et `DryRunContext` affiche les actions simulées sans écrire sur le disque.
-
-```python
-import argparse
-from typing import Any
-from linux_python_utils.cli import (
-    CliCommand,
-    CliApplication,
-    DryRunContext,
-    add_dry_run_argument,
-)
-
-class SyncCommand(CliCommand):
-    @property
-    def name(self) -> str:
-        return "sync"
-
-    def register(self, subparsers: Any) -> None:
-        p = subparsers.add_parser(self.name, help="Synchronise les données")
-        add_dry_run_argument(p)  # ajoute --dry-run / -n
-
-    def execute(self, args: argparse.Namespace) -> None:
-        ctx = DryRunContext(dry_run=args.dry_run)
-        if ctx.dry_run:
-            ctx.would_write("/etc/app/config", "key=value")
-        else:
-            print("sync exécuté")
-
-class ListCommand(CliCommand):
-    @property
-    def name(self) -> str:
-        return "list"
-
-    def register(self, subparsers: Any) -> None:
-        subparsers.add_parser(self.name, help="Liste les éléments")
-
-    def execute(self, args: argparse.Namespace) -> None:
-        print("list exécuté")
-
-app = CliApplication(
-    prog="mon-outil",
-    description="Mon outil CLI",
-    commands=[SyncCommand(), ListCommand()],
-)
-app.run()  # parse sys.argv et dispatche
-```
-
-### Exemple Complet
-
-Script de sauvegarde utilisant tous les modules :
-
-```python
-#!/usr/bin/env python3
-from linux_python_utils import (
-    FileLogger,
-    ConfigurationManager,
-    LinuxFileBackup,
-    SHA256IntegrityChecker,
-    UserSystemdExecutor,
-    LinuxUserTimerUnitManager,
-    LinuxUserServiceUnitManager,
-    TimerConfig,
-    ServiceConfig
-)
-
-# Configuration
-DEFAULT_CONFIG = {
-    "logging": {"level": "INFO"},
-    "profiles": {
-        "documents": {
-            "source": "~/Documents",
-            "destination": "/media/backup/docs"
-        }
-    }
-}
-
-config = ConfigurationManager(
-    config_path="~/.config/backup/config.toml",
-    default_config=DEFAULT_CONFIG
-)
-
-# Initialisation
-logger = FileLogger("~/.local/log/backup.log", config=config, console_output=True)
-executor = UserSystemdExecutor(logger)
-
-# Créer le service de backup
-service_mgr = LinuxUserServiceUnitManager(logger, executor)
-service_config = ServiceConfig(
-    description="Sauvegarde documents",
-    exec_start="/home/user/scripts/backup.sh",
-    type="oneshot"
-)
-service_mgr.install_service_unit_with_name("backup", service_config)
-
-# Créer le timer (tous les jours à 6h)
-timer_mgr = LinuxUserTimerUnitManager(logger, executor)
-timer_config = TimerConfig(
-    description="Timer backup quotidien",
-    unit="backup.service",
-    on_calendar="*-*-* 06:00:00",
-    persistent=True
-)
-timer_mgr.install_timer_unit(timer_config)
-timer_mgr.enable_timer("backup")
-
-logger.log_info("Backup automatique configuré")
-```
-
-## 📖 Documentation API
-
-### Classes et Interfaces Exportées
-
-#### Module `logging`
-
-| ABC (Interface) | Implémentation | Description |
-|-----------------|----------------|-------------|
-| `Logger` | `FileLogger` | Logging fichier/console (UTF-8, flush immédiat) |
-| `Logger` | `ConsoleLogger` | Logging stdout/stderr sans fichier (dry-run, tests) |
-| — | `SecurityLogger` | Journalisation structurée JSON des événements de sécurité |
-| — | `SecurityEvent` | Dataclass représentant un événement de sécurité |
-| — | `SecurityEventType` | Enum des 10 types d'événements de sécurité |
-
-#### Module `config`
-
-| ABC (Interface) | Implémentation | Description |
-|-----------------|----------------|-------------|
-| `ConfigManager` | `ConfigurationManager` | Gestion de configuration |
-| `ConfigLoader` | `FileConfigLoader` | Chargement TOML/JSON |
-
-#### Module `filesystem`
-
-| ABC (Interface) | Implémentation | Description |
-|-----------------|----------------|-------------|
-| `FileManager` | `LinuxFileManager` | CRUD fichiers |
-| `FileBackup` | `LinuxFileBackup` | Sauvegarde/restauration |
-
-#### Module `systemd`
-
-| ABC (Interface) | Implémentation | Description |
-|-----------------|----------------|-------------|
-| — | `SystemdExecutor` | Exécuteur systemctl (système) |
-| — | `UserSystemdExecutor` | Exécuteur systemctl --user |
-| `MountUnitManager` | `LinuxMountUnitManager` | Unités .mount/.automount |
-| `TimerUnitManager` | `LinuxTimerUnitManager` | Unités .timer (système) |
-| `ServiceUnitManager` | `LinuxServiceUnitManager` | Unités .service (système) |
-| `UserTimerUnitManager` | `LinuxUserTimerUnitManager` | Unités .timer (utilisateur) |
-| `UserServiceUnitManager` | `LinuxUserServiceUnitManager` | Unités .service (utilisateur) |
-| `ScheduledTaskInstaller` | `SystemdScheduledTaskInstaller` | Installation tâche planifiée complète |
-
-#### Module `systemd.config_loaders`
-
-| ABC (Interface) | Implémentation | Description |
-|-----------------|----------------|-------------|
-| `ConfigFileLoader[T]` | — | Classe de base générique (TOML/JSON) |
-| — | `ServiceConfigLoader` | Config → ServiceConfig |
-| — | `TimerConfigLoader` | Config → TimerConfig |
-| — | `MountConfigLoader` | Config → MountConfig |
-| — | `BashScriptConfigLoader` | Config → BashScriptConfig |
-
-#### Module `integrity`
-
-| ABC (Interface) | Implémentation | Description |
-|-----------------|----------------|-------------|
-| `IntegrityChecker` | `SHA256IntegrityChecker` | Vérification checksums fichiers/répertoires |
-| `ChecksumCalculator` | `HashLibChecksumCalculator` | Calcul checksums |
-| `IniSectionIntegrityChecker` | — (ABC à implémenter) | Vérification post-écriture de sections INI |
-
-#### Module `dotconf`
-
-| ABC (Interface) | Implémentation | Description |
-|-----------------|----------------|-------------|
-| `IniSection` | `ValidatedSection` | Section INI avec validation externe |
-| `IniConfig` | — | Fichier INI complet |
-| `IniConfigManager` | `LinuxIniConfigManager` | Gestion lecture/écriture INI |
-| — | `SectionAwareEditor` | Édition ligne-à-ligne préservant les commentaires |
-| — | `parse_validator` | Convertit un validateur brut en callable/liste |
-| — | `build_validators` | Construit un dictionnaire de validateurs |
-
-#### Module `commands`
-
-| ABC (Interface) | Implémentation | Description |
-|-----------------|----------------|-------------|
-| `CommandExecutor` | `LinuxCommandExecutor` | Exécution subprocess |
-| — | `CommandBuilder` | Construction fluent de commandes |
-| `CommandFormatter` | `PlainCommandFormatter` | Formatage texte brut (logs fichier) |
-| `CommandFormatter` | `AnsiCommandFormatter` | Formatage ANSI coloré (console) |
-
-#### Module `scripts`
+### Documentation API
 
 | ABC (Interface) | Implémentation | Description |
 |-----------------|----------------|-------------|
@@ -1248,493 +1314,16 @@ logger.log_info("Backup automatique configuré")
 | — | `InstallReport` | Rapport complet du déploiement |
 | — | `MissingDependency` | Dépendance manquante avec commande de remédiation |
 
-#### Module `identity`
-
-| ABC (Interface) | Implémentation | Description |
-|-----------------|----------------|-------------|
-| `GroupManagerBase` | `LinuxGroupManager` | Création/correction idempotente de groupes Unix |
-| `UserManagerBase` | `LinuxUserManager` | Création/correction idempotente d'utilisateurs Unix |
-
-#### Module `validation`
-
-| ABC (Interface) | Implémentation | Description |
-|-----------------|----------------|-------------|
-| `Validator` | `PathChecker` | Répertoires parents existent |
-| `Validator` | `PathCheckerPermission` | Répertoires parents accessibles en écriture |
-| `Validator` | `PathCheckerWorldWritable` | Fichier non world-writable (sécurité root) |
-
-#### Module `errors`
-
-| ABC (Interface) | Implémentation | Description |
-|-----------------|----------------|-------------|
-| `ErrorHandler` | `ConsoleErrorHandler` | Affiche les erreurs sur stderr |
-| `ErrorHandler` | `LoggerErrorHandler` | Logue les erreurs via un `Logger` |
-| — | `ErrorHandlerChain` | Diffuse l'erreur à tous les handlers enregistrés |
-| — | `ErrorContext` | Contexte structuré attaché à une erreur |
-| `ApplicationError` | `ConfigurationError` | Erreur de configuration |
-| `ApplicationError` | `FileConfigurationError` | Erreur de fichier de configuration |
-| `ApplicationError` | `SystemRequirementError` | Prérequis système absent |
-| `ApplicationError` | `MissingDependencyError` | Dépendance Python manquante |
-| `ApplicationError` | `ValidationError` | Échec de validation |
-| `ApplicationError` | `InstallationError` | Erreur d'installation |
-| `ApplicationError` | `AppPermissionError` | Permission refusée |
-| `ApplicationError` | `RollbackError` | Échec du rollback |
-| `ApplicationError` | `IntegrityError` | Violation d'intégrité |
-
-#### Module `credentials`
-
-| ABC (Interface) | Implémentation | Description |
-|-----------------|----------------|-------------|
-| `CredentialProvider` | `EnvCredentialProvider` | Secrets depuis variables d'environnement |
-| `CredentialProvider` | `DotEnvCredentialProvider` | Secrets depuis fichier `.env` |
-| `CredentialProvider` | `KeyringCredentialProvider` | Secrets depuis keyring système |
-| `CredentialStore` | — | Interface d'écriture de secrets |
-| — | `CredentialChain` | Chaîne de priorité entre providers |
-| — | `CredentialManager` | Façade (lecture + écriture) |
-
-#### Module `network`
-
-| ABC (Interface) | Implémentation | Description |
-|-----------------|----------------|-------------|
-| `NetworkScanner` | `LinuxArpScanner` | Scan réseau via arp-scan |
-| `NetworkScanner` | `LinuxNmapScanner` | Scan réseau via nmap |
-| `DeviceRepository` | `JsonDeviceRepository` | Persistance JSON de l'inventaire |
-| `DhcpReservationManager` | `LinuxDhcpReservationManager` | Réservations DHCP |
-| `DnsManager` | `LinuxHostsFileManager` | Gestion `/etc/hosts` |
-| `DnsManager` | `LinuxDnsmasqConfigGenerator` | Génération config dnsmasq |
-| `DeviceReporter` | `ConsoleTableReporter` | Tableau ASCII |
-| `DeviceReporter` | `CsvReporter` | Export CSV |
-| `DeviceReporter` | `JsonReporter` | Export JSON |
-| `DeviceReporter` | `DiffReporter` | Diff entre deux inventaires |
-
-#### Module `cli`
-
-| ABC (Interface) | Implémentation | Description |
-|-----------------|----------------|-------------|
-| `CliCommand` | — (à implémenter) | Interface pour une sous-commande CLI |
-| — | `CliApplication` | Orchestrateur CLI (Command Pattern + argparse) |
-| — | `DryRunContext` | Contexte d'exécution simulée (affichage sans écriture disque) |
-| — | `add_dry_run_argument` | Enregistre `--dry-run` / `-n` dans un ArgumentParser |
-
-### Dataclasses
+**Dataclasses** :
 
 | Classe | Description |
 |--------|-------------|
-| `MountConfig` | Configuration d'une unité .mount |
-| `AutomountConfig` | Configuration d'une unité .automount |
-| `TimerConfig` | Configuration d'une unité .timer |
-| `ServiceConfig` | Configuration d'une unité .service |
 | `BashScriptConfig` | Configuration d'un script bash |
 | `PythonCliConfig` | Configuration de déploiement d'un script Python CLI |
 | `InstallReport` | Rapport de déploiement (succès, chemin, dépendances manquantes) |
 | `MissingDependency` | Dépendance manquante avec commande de remédiation |
-| `NotificationConfig` | Configuration des notifications desktop |
-| `CommandResult` | Résultat d'exécution de commande (inclut `executed_as_root`) |
-| `ValidatedSection` | Section INI avec validation externe |
 
-## 🏗️ Architecture des Classes
-
-### Vue d'Ensemble
-
-```
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│                              linux-python-utils  v1.5                            │
-├──────────────────────────────────────────────────────────────────────────────────┤
-│  MODULES                                                                         │
-│                                                                                  │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │
-│  │ logging  │ │  config  │ │filesystem│ │ systemd  │ │integrity │ │ dotconf  │ │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │
-│  │ commands │ │ scripts  │ │validation│ │  errors  │ │credential│ │ network  │ │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                                         │
-│  │ identity │ │   cli    │ │notificat.│                                         │
-│  └──────────┘ └──────────┘ └──────────┘                                         │
-│                                                                                  │
-├──────────────────────────────────────────────────────────────────────────────────┤
-│  ABCs (contrats publics)                                                         │
-│                                                                                  │
-│  Logger · ConfigLoader · ConfigManager · ConfigFileLoader[T]                     │
-│  FileManager · FileBackup · CommandExecutor · CommandFormatter                   │
-│  ChecksumCalculator · IniSection · IniConfig · IniConfigManager                 │
-│  Validator · ErrorHandler · CredentialProvider · CredentialStore                 │
-│  NetworkScanner · DeviceRepository · DhcpReservationManager                     │
-│  DnsManager · DeviceReporter · ScriptInstaller · ScriptChecker                  │
-│  CliCommand · GroupManagerBase · UserManagerBase                                 │
-│  UnitManager · ServiceUnitManager · TimerUnitManager · MountUnitManager          │
-│  UserUnitManager · UserServiceUnitManager · UserTimerUnitManager                 │
-│  ScheduledTaskInstaller                                                          │
-│                                                                                  │
-├──────────────────────────────────────────────────────────────────────────────────┤
-│  Implémentations Linux concrètes                                                 │
-│                                                                                  │
-│  FileLogger · ConsoleLogger · SecurityLogger                                     │
-│  ConfigurationManager · FileConfigLoader                                         │
-│  LinuxFileManager · LinuxFileBackup                                              │
-│  LinuxCommandExecutor · CommandBuilder · AnsiCommandFormatter                    │
-│  HashLibChecksumCalculator · SHA256IntegrityChecker · IniSectionIntegrityChecker │
-│  ValidatedSection · LinuxIniConfigManager · SectionAwareEditor                   │
-│  PathCheckerPermission · PathCheckerWorldWritable                                │
-│  ConsoleErrorHandler · LoggerErrorHandler · ErrorHandlerChain                    │
-│  EnvCredentialProvider · DotEnvCredentialProvider · KeyringCredentialProvider    │
-│  CredentialChain · CredentialManager                                             │
-│  LinuxArpScanner · LinuxNmapScanner · JsonDeviceRepository                       │
-│  LinuxDhcpReservationManager · LinuxHostsFileManager · LinuxDnsmasqConfigGen.    │
-│  ConsoleTableReporter · CsvReporter · JsonReporter · DiffReporter                │
-│  BashScriptInstaller · LinuxCliInstaller · LinuxScriptChecker                    │
-│  LinuxGroupManager · LinuxUserManager                                            │
-│  CliApplication · DryRunContext                                                  │
-│  SystemdExecutor · LinuxServiceUnitManager · LinuxTimerUnitManager               │
-│  LinuxMountUnitManager · LinuxUserServiceUnitManager · LinuxUserTimerUnitManager │
-│  SystemdScheduledTaskInstaller                                                   │
-└──────────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Architecture Systemd
-
-```
-                    ┌─────────────────────────────────────────────┐
-                    │              SystemdExecutor                 │
-                    │  - _run_systemctl(args)                     │
-                    │  - reload_systemd()                         │
-                    │  - enable_unit() / disable_unit()           │
-                    │  - start_unit() / stop_unit()               │
-                    │  - get_status() / is_active()               │
-                    └─────────────────────┬───────────────────────┘
-                                          │ hérite
-                                          ▼
-                    ┌─────────────────────────────────────────────┐
-                    │            UserSystemdExecutor              │
-                    │  surcharge _run_systemctl pour --user       │
-                    └─────────────────────┬───────────────────────┘
-                                          │
-                                          │ injection
-        ┌─────────────────────────────────┼─────────────────────────────────┐
-        │                                 │                                 │
-        ▼                                 ▼                                 ▼
-┌───────────────────┐           ┌───────────────────┐           ┌───────────────────┐
-│    UnitManager    │           │  UserUnitManager  │           │  (autres futurs)  │
-│ /etc/systemd/sys  │           │ ~/.config/systemd │           │                   │
-├───────────────────┤           ├───────────────────┤           └───────────────────┘
-│ LinuxMountUnitMgr │           │ LinuxUserTimerMgr │
-│ LinuxTimerUnitMgr │           │ LinuxUserServiceMgr│
-│ LinuxServiceUnitMgr│          └───────────────────┘
-└───────────────────┘
-```
-
-### Architecture logging
-
-```
-          ┌────────────────────────────────────────────┐
-          │                Logger (ABC)                 │
-          │  + log_info(message: str)    [abstract]     │
-          │  + log_warning(message: str) [abstract]     │
-          │  + log_error(message: str)   [abstract]     │
-          │  + log_success(message: str) [→ log_info]   │
-          └────────────────────┬───────────────────────┘
-                               │ hérite
-               ┌───────────────┴───────────────┐
-               ▼                               ▼
-  ┌────────────────────────┐   ┌───────────────────────────┐
-  │     ConsoleLogger      │   │        FileLogger         │
-  │                        │   │  - log_file: str          │
-  │  log_info  → stdout    │   │  - config: dict | None    │
-  │  log_warn  → stderr    │   │  - console_output: bool   │
-  │  log_error → stderr    │   │  (UTF-8, flush immédiat)  │
-  └────────────────────────┘   └───────────────────────────┘
-
-  SecurityLogger  (composition — injecte Logger)
-  ┌────────────────────────────────────────────────┐
-  │  SecurityLogger                                │
-  │  - _logger: Logger                             │
-  │  + log_event(event_type, resource, details,    │
-  │              severity, user_id) → JSON         │
-  ├────────────────────────────────────────────────┤
-  │  SecurityEventType (StrEnum)                   │
-  │  AUTH_SUCCESS · AUTH_FAILURE · AUTH_LOCKOUT    │
-  │  ACCESS_DENIED · ACCESS_ELEVATED               │
-  │  DATA_EXPORT · DATA_MODIFICATION               │
-  │  CONFIG_CHANGE · RATE_LIMIT_HIT                │
-  │  SUSPICIOUS_ACTIVITY                           │
-  ├────────────────────────────────────────────────┤
-  │  SecurityEvent (frozen dataclass)              │
-  │  - event_type / resource / details             │
-  │  - severity / user_id / timestamp (UTC ISO)    │
-  └────────────────────────────────────────────────┘
-```
-
-### Architecture config
-
-```
-  ┌──────────────────────────────────┐   ┌────────────────────────────────┐
-  │        ConfigLoader (ABC)        │   │       ConfigManager (ABC)      │
-  │  + load(path) [abstract]         │   │  + get(key)         [abstract] │
-  └────────────┬─────────────────────┘   │  + get_section(key) [abstract] │
-               │                         │  + get_profile(key) [abstract] │
-               ▼                         │  + list_profiles()  [abstract] │
-  ┌────────────────────────────────┐     │  + create_default_config()     │
-  │       FileConfigLoader         │     └────────────────┬───────────────┘
-  │  Supporte TOML + JSON          │                      │ hérite
-  │  Validation Pydantic optionnelle│                     ▼
-  └────────────────────────────────┘     ┌────────────────────────────────┐
-                                         │     ConfigurationManager       │
-  ┌────────────────────────────────┐     │  - _loader: ConfigLoader       │
-  │    ConfigFileLoader[T] (ABC)   │     │  - default_config: dict        │
-  │  Generic typé T (dataclass)    │     │  - search_paths: list[Path]    │
-  │  - _config: dict               │     │  - config: dict                │
-  │  + config (property)           │     │  + get(key, default)           │
-  │  + _get_section(key)           │     │  + get_section(key)            │
-  │  + _get_nested_value(key)      │     │  + get_profile(name)           │
-  │  + load() [abstract]           │     │  + list_profiles()             │
-  └──────────┬─────────────────────┘     │  + create_default_config()     │
-             │ hérite                    │  + _deep_merge(base, override) │
-  ┌──────────┴──────────┬──────────────┐ └────────────────────────────────┘
-  ▼                     ▼              ▼
-ServiceConfig   TimerConfig   MountConfig      ← loaders dans systemd/
-Loader          Loader        Loader
-BashScriptConfigLoader
-```
-
-### Architecture filesystem
-
-```
-  ┌─────────────────────────────────┐    ┌──────────────────────────────────┐
-  │       FileManager (ABC)         │    │        FileBackup (ABC)          │
-  │  + create_file()  [abstract]    │    │  + backup(src, dst)  [abstract]  │
-  │  + file_exists()  [abstract]    │    │  + restore(bak, dst) [abstract]  │
-  └────────────────┬────────────────┘    └─────────────────┬────────────────┘
-                   │ hérite                                 │ hérite
-                   ▼                                        ▼
-  ┌─────────────────────────────────┐    ┌──────────────────────────────────┐
-  │      LinuxFileManager           │    │       LinuxFileBackup            │
-  │  - logger: Logger               │    │  - logger: Logger                │
-  │  + create_file(path, content)   │    │  + backup(src, dst)              │
-  │  + file_exists(path)            │    │    (shutil.copy2 — préserve      │
-  │  + read_file(path)              │    │     métadonnées)                 │
-  │  (TOCTOU-safe: O_NOFOLLOW)      │    │  + restore(bak, dst)             │
-  └─────────────────────────────────┘    └──────────────────────────────────┘
-```
-
-### Architecture commands
-
-```
-  ┌──────────────────────────────────────────────────────────┐
-  │                  CommandResult (frozen dataclass)        │
-  │  command: list[str]  │  return_code: int  │  stdout: str │
-  │  stderr: str  │  success: bool  │  duration: float       │
-  │  executed_as_root: bool                                  │
-  └──────────────────────────────────────────────────────────┘
-
-  ┌───────────────────────────────┐
-  │      CommandBuilder           │
-  │  - _program: str              │
-  │  + with_options(dict)         │  ← Builder Pattern (fluent API)
-  │  + with_flag(flag, cond)      │
-  │  + with_option(key, value)    │
-  │  + with_option_if(k, v, cond) │
-  │  + with_args(args)            │
-  │  + build() → list[str]        │
-  └───────────────────────────────┘
-
-  ┌───────────────────────────────┐    ┌─────────────────────────────────┐
-  │    CommandFormatter (ABC)     │    │      CommandExecutor (ABC)      │
-  │  + format_start()  [abstract] │    │  + run(cmd, env, cwd, timeout)  │
-  │  + format_dry_run()[abstract] │    │    [abstract] → CommandResult   │
-  │  + format_line()   [abstract] │    │  + run_streaming(cmd, ...)      │
-  └──────────────┬────────────────┘    │    [abstract]                   │
-                 │ hérite              └──────────────┬──────────────────┘
-     ┌───────────┴───────────┐                        │ hérite
-     ▼                       ▼                        ▼
-PlainCommand         AnsiCommand         ┌─────────────────────────────────┐
-Formatter            Formatter           │      LinuxCommandExecutor       │
-(texte brut)         (ANSI couleurs,     │  - logger: Logger               │
-                      TTY-aware)         │  - _dry_run: bool               │
-                                         │  - _is_root: bool               │
-                                         │  - _console_formatter           │
-                                         │  + run(cmd) → CommandResult     │
-                                         │  + run_streaming(cmd)           │
-                                         │  + _build_env()                 │
-                                         │  + _make_dry_run_result()       │
-                                         └─────────────────────────────────┘
-```
-
-### Architecture credentials
-
-```
-  ┌──────────────────────────────────────┐
-  │       CredentialProvider (ABC)       │  ← lecture seule (ISP)
-  │  + get(service, key) → str | None    │
-  │  + is_available() → bool [abstract]  │
-  │  + source_name: str   [property]     │
-  └──────────────┬───────────────────────┘
-                 │ hérite
-     ┌───────────┼───────────────────────────────────┐
-     ▼           ▼                    ▼               ▼
-┌──────────┐ ┌───────────────┐ ┌──────────────┐ ┌──────────────────────┐
-│   Env    │ │    DotEnv     │ │   Keyring    │ │   CredentialChain    │
-│Credential│ │  Credential   │ │  Credential  │ │  (Chain of Resp.)    │
-│ Provider │ │   Provider    │ │   Provider   │ │  - _providers: list  │
-│ (environ)│ │  (.env file)  │ │ (KWallet...) │ │  + get(svc, key)     │
-└──────────┘ └───────────────┘ └──────┬───────┘ │  + default()classm. │
-                                       │         │    env→dotenv→keyring│
-  CredentialStore (ABC)                │ aussi   └──────────────────────┘
-  ┌─────────────────────────────┐      │ hérite
-  │  étend CredentialProvider   │      │
-  │  + set(svc, key, value)     │◄─────┘
-  │  + delete(svc, key)         │
-  └─────────────────────────────┘
-
-  ┌─────────────────────────────────────────┐
-  │           CredentialManager             │  ← Facade
-  │  - _service: str                        │
-  │  - _chain: CredentialChain              │
-  │  - _store: CredentialStore | None       │
-  │  + get(key) → str | None                │
-  │  + require(key) → str                   │
-  │  + store(key, value)                    │
-  │  + delete(key)                          │
-  │  + from_dotenv(svc, path) [classmethod] │
-  └─────────────────────────────────────────┘
-
-  CredentialKey (frozen dc): service + key
-  Credential   (frozen dc): service + key + value + source
-```
-
-### Architecture errors
-
-```
-  ┌────────────────────────────────────┐
-  │         ErrorHandler (ABC)         │
-  │  + handle(error: Exception)        │
-  │    [abstract]                      │
-  └──────────────┬─────────────────────┘
-                 │ hérite
-       ┌─────────┴─────────┐
-       ▼                   ▼
-┌──────────────┐   ┌───────────────┐
-│ ConsoleError │   │ LoggerError   │
-│   Handler    │   │   Handler     │
-│  → stderr    │   │  - logger     │
-└──────────────┘   └───────────────┘
-
-  ┌────────────────────────────────────┐
-  │         ErrorHandlerChain          │  ← pas un ABC : orchestrateur
-  │  - handlers: list[ErrorHandler]    │
-  │  + add_handler(h)                  │
-  │  + handle(error) → tous handlers   │
-  │  + handle_and_exit(error, code)    │
-  └────────────────────────────────────┘
-
-  Hiérarchie d'exceptions (errors/exceptions.py)
-  Exception
-  └── LinuxUtilsError
-      ├── ConfigurationError
-      ├── FilesystemError
-      ├── CommandExecutionError
-      ├── CredentialError
-      │   ├── CredentialNotFoundError
-      │   ├── CredentialProviderUnavailableError
-      │   └── CredentialStoreError
-      └── SystemdError
-```
-
-### Architecture integrity
-
-```
-  ┌────────────────────────────────────────────┐
-  │         ChecksumCalculator (ABC)           │
-  │  + calculate(file_path, algorithm='sha256')│
-  │    → str (hex)  [abstract]                 │
-  └───────────────────┬────────────────────────┘
-                      │ hérite
-                      ▼
-  ┌────────────────────────────────────────────┐
-  │       HashLibChecksumCalculator            │
-  │  (hashlib — sha256, sha512, md5...)        │
-  └────────────────────────────────────────────┘
-
-  ┌──────────────────────────────────────────────────┐
-  │            SHA256IntegrityChecker                │
-  │  - _calculator: ChecksumCalculator               │
-  │  + check_file(path, expected) → bool             │
-  │  + check_directory(path, manifest) → dict        │
-  │  + generate_manifest(path) → dict                │
-  └──────────────────────────────────────────────────┘
-
-  ┌──────────────────────────────────────────────────┐
-  │            IniSectionIntegrityChecker            │
-  │  + compute_section_hash(section) → str           │
-  │  + verify_section(section, expected) → bool      │
-  └──────────────────────────────────────────────────┘
-```
-
-### Architecture dotconf
-
-```
-  ┌─────────────────────────────────┐   ┌────────────────────────────────────┐
-  │        IniSection (ABC)         │   │          IniConfig (ABC)           │
-  │  + section_name() [static abs.] │   │  + sections() [abstract]           │
-  │  + to_dict() → dict [abstract]  │   │  + to_ini() → str [abstract]       │
-  │  + from_dict(d) [cls abstract]  │   │  + from_file(path) [cls abstract]  │
-  └────────────┬────────────────────┘   └─────────────────────────────────── ┘
-               │ hérite
-               ▼
-  ┌─────────────────────────────────┐
-  │         ValidatedSection        │
-  │  Dataclass avec validation      │
-  │  __post_init__ des champs       │
-  └─────────────────────────────────┘
-
-  ┌──────────────────────────────────────────────────┐
-  │            IniConfigManager (ABC)                │
-  │  + read(path) → IniConfig   [abstract]           │
-  │  + write(config, path)      [abstract]           │
-  └────────────────────┬─────────────────────────────┘
-                       │ hérite
-                       ▼
-  ┌──────────────────────────────────────────────────┐
-  │           LinuxIniConfigManager                  │
-  │  (configparser stdlib)                           │
-  │  + read(path) → IniConfig                        │
-  │  + write(config, path)                           │
-  └──────────────────────────────────────────────────┘
-
-  ┌──────────────────────────────────────────────────┐
-  │             SectionAwareEditor                   │
-  │  Édition ligne-à-ligne préservant les            │
-  │  commentaires et la structure du fichier         │
-  │  + update_key(section, key, value)               │
-  │  + add_section(section)                          │
-  │  + remove_key(section, key)                      │
-  └──────────────────────────────────────────────────┘
-```
-
-### Architecture validation
-
-```
-  ┌──────────────────────────────────────────────────────┐
-  │                   Validator (ABC)                    │
-  │  + validate() [abstract]                             │
-  │    raises: ValueError | PermissionError              │
-  └───────────────────────────┬──────────────────────────┘
-                              │ hérite
-                              ▼
-  ┌──────────────────────────────────────────────────────┐
-  │                    PathChecker                       │
-  │  - path: Path                                        │
-  │  + validate()  [abstract]                            │
-  └──────────┬────────────────────────┬──────────────────┘
-             │ hérite                 │ hérite
-             ▼                        ▼
-  ┌──────────────────────┐  ┌──────────────────────────────┐
-  │  PathCheckerPermission│  │  PathCheckerWorldWritable    │
-  │  - expected: int      │  │  Avertit si world-writable   │
-  │  + validate()         │  │  + validate()                │
-  └──────────────────────┘  └──────────────────────────────┘
-```
-
-### Architecture scripts
+### Architecture des Classes
 
 ```
   ┌─────────────────────────────────────────┐
@@ -1787,44 +1376,62 @@ Formatter            Formatter           │      LinuxCommandExecutor       │
   ScriptPaths   (utilitaires de chemins FHS)
 ```
 
-### Architecture identity
+---
 
-```
-  ┌─────────────────────────────────────────┐
-  │         GroupManagerBase (ABC)          │
-  │  + ensure_group(name, gid) [abstract]   │
-  │    (idempotent : crée ou corrige GID)   │
-  └───────────────────┬─────────────────────┘
-                      │ hérite
-                      ▼
-  ┌─────────────────────────────────────────┐
-  │          LinuxGroupManager              │
-  │  - logger: Logger                       │
-  │  - executor: CommandExecutor            │
-  │  + ensure_group(name, gid)              │
-  │    (groupadd / groupmod)                │
-  └─────────────────────────────────────────┘
+## 🌐 Module `network`
 
-  ┌─────────────────────────────────────────────────┐
-  │           UserManagerBase (ABC)                 │
-  │  + ensure_user(name, uid, shell,                │
-  │      comment, create_home) [abstract]           │
-  │  + ensure_user_groups(name, groups) [abstract]  │
-  └────────────────────┬────────────────────────────┘
-                       │ hérite
-                       ▼
-  ┌─────────────────────────────────────────────────┐
-  │            LinuxUserManager                     │
-  │  - logger: Logger                               │
-  │  - executor: CommandExecutor                    │
-  │  + ensure_user(name, uid, shell, ...)           │
-  │    (useradd / usermod — idempotent)             │
-  │  + ensure_user_groups(name, groups)             │
-  │    (usermod --append --groups ...)              │
-  └─────────────────────────────────────────────────┘
+Scan, inventaire et gestion des périphériques d'un réseau local.
+
+### Utilisation
+
+```python
+from linux_python_utils import (
+    LinuxArpScanner,
+    JsonDeviceRepository,
+    ConsoleTableReporter,
+    NetworkConfig,
+)
+from pathlib import Path
+
+config = NetworkConfig(interface="eth0", subnet="192.168.1.0/24")
+
+# Scanner le réseau
+scanner = LinuxArpScanner(config)
+devices = scanner.scan()
+
+# Persister l'inventaire
+repo = JsonDeviceRepository(Path("/var/lib/myapp/devices.json"))
+repo.save_all(devices)
+
+# Afficher un tableau
+reporter = ConsoleTableReporter()
+reporter.report(devices)
 ```
 
-### Architecture network
+Scanners disponibles : `LinuxArpScanner` (arp-scan), `LinuxNmapScanner` (nmap).
+
+Reporters disponibles : `ConsoleTableReporter`, `CsvReporter`, `JsonReporter`, `DiffReporter`.
+
+DNS/DHCP : `LinuxHostsFileManager`, `LinuxDnsmasqConfigGenerator`, `LinuxDhcpReservationManager`.
+
+Validateurs : `validate_ipv4`, `validate_mac`, `validate_cidr`, `validate_hostname`.
+
+### Documentation API
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `NetworkScanner` | `LinuxArpScanner` | Scan réseau via arp-scan |
+| `NetworkScanner` | `LinuxNmapScanner` | Scan réseau via nmap |
+| `DeviceRepository` | `JsonDeviceRepository` | Persistance JSON de l'inventaire |
+| `DhcpReservationManager` | `LinuxDhcpReservationManager` | Réservations DHCP |
+| `DnsManager` | `LinuxHostsFileManager` | Gestion `/etc/hosts` |
+| `DnsManager` | `LinuxDnsmasqConfigGenerator` | Génération config dnsmasq |
+| `DeviceReporter` | `ConsoleTableReporter` | Tableau ASCII |
+| `DeviceReporter` | `CsvReporter` | Export CSV |
+| `DeviceReporter` | `JsonReporter` | Export JSON |
+| `DeviceReporter` | `DiffReporter` | Diff entre deux inventaires |
+
+### Architecture des Classes
 
 ```
   ┌──────────────────────────────────────┐
@@ -1886,7 +1493,158 @@ Reporter        Reporter  Reporter    Reporter
   AsusRouterClient  ← client HTTP dédié au routeur ASUS
 ```
 
-### Architecture cli
+---
+
+## 👤 Module `identity`
+
+Gestion idempotente des groupes et utilisateurs Unix. Les opérations sont sans effet si l'état souhaité est déjà en place.
+
+### Utilisation
+
+```python
+from linux_python_utils import (
+    FileLogger,
+    LinuxCommandExecutor,
+    LinuxGroupManager,
+    LinuxUserManager,
+)
+
+logger = FileLogger("/var/log/identity.log")
+executor = LinuxCommandExecutor(logger)
+
+# Groupes — crée ou corrige le GID
+group_mgr = LinuxGroupManager(executor, logger)
+group_mgr.ensure_group("appuser", gid=1500)
+# → groupadd si absent, groupmod --gid si GID incorrect, skip sinon
+
+# Utilisateurs — crée ou corrige l'UID
+user_mgr = LinuxUserManager(executor, logger)
+user_mgr.ensure_user(
+    name="appuser",
+    uid=1500,
+    shell="/sbin/nologin",
+    comment="Application service account",
+    create_home=False,
+)
+# → useradd si absent, usermod --uid si UID incorrect, skip sinon
+
+# Groupes secondaires — ajoute uniquement les manquants
+user_mgr.ensure_user_groups(
+    username="appuser",
+    groups=["docker", "systemd-journal"],
+)
+# → usermod --append --groups docker,systemd-journal (uniquement les absents)
+```
+
+### Documentation API
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `GroupManagerBase` | `LinuxGroupManager` | Création/correction idempotente de groupes Unix |
+| `UserManagerBase` | `LinuxUserManager` | Création/correction idempotente d'utilisateurs Unix |
+
+### Architecture des Classes
+
+```
+  ┌─────────────────────────────────────────┐
+  │         GroupManagerBase (ABC)          │
+  │  + ensure_group(name, gid) [abstract]   │
+  │    (idempotent : crée ou corrige GID)   │
+  └───────────────────┬─────────────────────┘
+                      │ hérite
+                      ▼
+  ┌─────────────────────────────────────────┐
+  │          LinuxGroupManager              │
+  │  - logger: Logger                       │
+  │  - executor: CommandExecutor            │
+  │  + ensure_group(name, gid)              │
+  │    (groupadd / groupmod)                │
+  └─────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────┐
+  │           UserManagerBase (ABC)                 │
+  │  + ensure_user(name, uid, shell,                │
+  │      comment, create_home) [abstract]           │
+  │  + ensure_user_groups(name, groups) [abstract]  │
+  └────────────────────┬────────────────────────────┘
+                       │ hérite
+                       ▼
+  ┌─────────────────────────────────────────────────┐
+  │            LinuxUserManager                     │
+  │  - logger: Logger                               │
+  │  - executor: CommandExecutor                    │
+  │  + ensure_user(name, uid, shell, ...)           │
+  │    (useradd / usermod — idempotent)             │
+  │  + ensure_user_groups(name, groups)             │
+  │    (usermod --append --groups ...)              │
+  └─────────────────────────────────────────────────┘
+```
+
+---
+
+## 🖱️ Module `cli`
+
+Framework CLI minimal basé sur le Command Pattern. Permet de structurer une application argparse en sous-commandes SOLID.
+
+Inclut également un support dry-run réutilisable : `add_dry_run_argument` enregistre `--dry-run` / `-n` de façon standardisée, et `DryRunContext` affiche les actions simulées sans écrire sur le disque.
+
+### Utilisation
+
+```python
+import argparse
+from typing import Any
+from linux_python_utils.cli import (
+    CliCommand,
+    CliApplication,
+    DryRunContext,
+    add_dry_run_argument,
+)
+
+class SyncCommand(CliCommand):
+    @property
+    def name(self) -> str:
+        return "sync"
+
+    def register(self, subparsers: Any) -> None:
+        p = subparsers.add_parser(self.name, help="Synchronise les données")
+        add_dry_run_argument(p)  # ajoute --dry-run / -n
+
+    def execute(self, args: argparse.Namespace) -> None:
+        ctx = DryRunContext(dry_run=args.dry_run)
+        if ctx.dry_run:
+            ctx.would_write("/etc/app/config", "key=value")
+        else:
+            print("sync exécuté")
+
+class ListCommand(CliCommand):
+    @property
+    def name(self) -> str:
+        return "list"
+
+    def register(self, subparsers: Any) -> None:
+        subparsers.add_parser(self.name, help="Liste les éléments")
+
+    def execute(self, args: argparse.Namespace) -> None:
+        print("list exécuté")
+
+app = CliApplication(
+    prog="mon-outil",
+    description="Mon outil CLI",
+    commands=[SyncCommand(), ListCommand()],
+)
+app.run()  # parse sys.argv et dispatche
+```
+
+### Documentation API
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `CliCommand` | — (à implémenter) | Interface pour une sous-commande CLI |
+| — | `CliApplication` | Orchestrateur CLI (Command Pattern + argparse) |
+| — | `DryRunContext` | Contexte d'exécution simulée (affichage sans écriture disque) |
+| — | `add_dry_run_argument` | Enregistre `--dry-run` / `-n` dans un ArgumentParser |
+
+### Architecture des Classes
 
 ```
   ┌────────────────────────────────────────────────┐
@@ -1917,184 +1675,494 @@ Reporter        Reporter  Reporter    Reporter
   └── ajoute --dry-run à un ArgumentParser argparse
 ```
 
-### Principes SOLID Appliqués
+---
 
-| Principe | Application |
-|----------|-------------|
-| **S** - Single Responsibility | `SystemdExecutor` (commandes) séparé de `UnitManager` (fichiers unit) |
-| **O** - Open/Closed | ABCs stables, nouvelles implémentations sans modification |
-| **L** - Liskov Substitution | Toutes les implémentations respectent leurs contrats ABC |
-| **I** - Interface Segregation | `MountUnitManager`, `TimerUnitManager`, `ServiceUnitManager` séparés |
-| **D** - Dependency Inversion | Injection de `Logger` et `SystemdExecutor` dans les managers |
+## 📋 Module `dotconf`
 
-### Injection de Dépendances
+Gestion de fichiers de configuration INI (.conf) avec validation externe.
+
+### Utilisation
 
 ```python
-# Toutes les classes acceptent des abstractions en injection
-class LinuxMountUnitManager(MountUnitManager):
-    def __init__(
-        self,
-        logger: Logger,           # ABC injectée
-        executor: SystemdExecutor  # Executor injecté
-    ): ...
+from dataclasses import dataclass
+from pathlib import Path
+from linux_python_utils import (
+    FileLogger,
+    ValidatedSection,
+    LinuxIniConfigManager,
+)
 
-# Facilite les tests avec des mocks
-class MockLogger(Logger):
-    def log_info(self, message): pass
-    def log_warning(self, message): pass
-    def log_error(self, message): pass
+# Définir une section avec validation
+@dataclass(frozen=True)
+class CommandsSection(ValidatedSection):
+    upgrade_type: str = "default"
+    download_updates: str = "yes"
 
-class MockExecutor(SystemdExecutor):
-    def reload_systemd(self): return True
-    def enable_unit(self, name): return True
-    # ...
+    @staticmethod
+    def section_name() -> str:
+        return "commands"
 
-mount_mgr = LinuxMountUnitManager(MockLogger(), MockExecutor(MockLogger()))
+# Injecter les validateurs depuis le TOML
+CommandsSection.set_validators({
+    "upgrade_type": ["default", "security"],
+    "download_updates": ["yes", "no"],
+})
+
+# Créer et écrire une section
+section = CommandsSection(
+    upgrade_type="security", download_updates="yes"
+)
+
+logger = FileLogger("/var/log/config.log")
+manager = LinuxIniConfigManager(logger)
+
+# Écrire une section dans un fichier
+manager.write_section(Path("/etc/myapp.conf"), section)
+
+# Lire un fichier INI complet
+config = manager.read(Path("/etc/myapp.conf"))
+print(config["commands"]["upgrade_type"])  # "security"
+
+# Mise à jour conditionnelle (n'écrit que si changé)
+updated = manager.update_section(
+    Path("/etc/myapp.conf"), section
+)
+print(f"Modifié: {updated}")
 ```
 
-## 🗂️ Structure du Projet
+#### `SectionAwareEditor` — Édition ligne-à-ligne préservant les commentaires
+
+Permet de modifier une clé dans un fichier INI sans toucher les commentaires ni la mise en forme existante.
+
+```python
+from linux_python_utils import SectionAwareEditor
+
+editor = SectionAwareEditor(Path("/etc/myapp.conf"))
+
+# Modifier une valeur dans une section existante
+editor.set_value("commands", "upgrade_type", "security")
+
+# Vérifier qu'une clé est présente
+if editor.has_key("commands", "download_updates"):
+    print("Clé présente")
+```
+
+### Documentation API
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `IniSection` | `ValidatedSection` | Section INI avec validation externe |
+| `IniConfig` | — | Fichier INI complet |
+| `IniConfigManager` | `LinuxIniConfigManager` | Gestion lecture/écriture INI |
+| — | `SectionAwareEditor` | Édition ligne-à-ligne préservant les commentaires |
+| — | `parse_validator` | Convertit un validateur brut en callable/liste |
+| — | `build_validators` | Construit un dictionnaire de validateurs |
+
+**Dataclass** :
+
+| Classe | Description |
+|--------|-------------|
+| `ValidatedSection` | Section INI avec validation externe |
+
+### Architecture des Classes
 
 ```
-linux-python-utils/
-├── src/linux_python_utils/
-│   ├── __init__.py              # Exports publics
-│   ├── logging/
-│   │   ├── __init__.py
-│   │   ├── base.py              # ABC Logger
-│   │   ├── console_logger.py    # ConsoleLogger (stdout/stderr, sans fichier)
-│   │   ├── file_logger.py       # FileLogger
-│   │   └── security_logger.py   # SecurityLogger, SecurityEvent, SecurityEventType
-│   ├── config/
-│   │   ├── __init__.py
-│   │   ├── base.py              # ABC ConfigManager
-│   │   ├── loader.py            # ABC ConfigLoader + FileConfigLoader
-│   │   └── manager.py           # ConfigurationManager
-│   ├── filesystem/
-│   │   ├── __init__.py
-│   │   ├── base.py              # ABCs FileManager, FileBackup
-│   │   ├── linux.py             # LinuxFileManager
-│   │   └── backup.py            # LinuxFileBackup
-│   ├── systemd/
-│   │   ├── __init__.py          # Exports module systemd
-│   │   ├── base.py              # ABCs + dataclasses (configs)
-│   │   ├── executor.py          # SystemdExecutor, UserSystemdExecutor
-│   │   ├── validators.py        # validate_unit_name(), validate_service_name()
-│   │   ├── mount.py             # LinuxMountUnitManager
-│   │   ├── timer.py             # LinuxTimerUnitManager
-│   │   ├── service.py           # LinuxServiceUnitManager
-│   │   ├── user_timer.py        # LinuxUserTimerUnitManager
-│   │   ├── user_service.py      # LinuxUserServiceUnitManager
-│   │   ├── scheduled_task.py    # SystemdScheduledTaskInstaller
-│   │   └── config_loaders/      # Chargeurs de configuration (TOML/JSON)
-│   │       ├── __init__.py
-│   │       ├── base.py          # ConfigFileLoader[T] (ABC)
-│   │       ├── service_loader.py # ServiceConfigLoader
-│   │       ├── timer_loader.py  # TimerConfigLoader
-│   │       ├── mount_loader.py  # MountConfigLoader
-│   │       └── script_loader.py # BashScriptConfigLoader
-│   ├── integrity/
-│   │   ├── __init__.py
-│   │   ├── base.py              # ABCs + calculate_checksum
-│   │   └── sha256.py            # SHA256IntegrityChecker
-│   ├── dotconf/
-│   │   ├── __init__.py
-│   │   ├── base.py              # ABCs IniSection, IniConfig, IniConfigManager
-│   │   ├── section.py           # ValidatedSection + parse_validator, build_validators
-│   │   ├── manager.py           # LinuxIniConfigManager
-│   │   └── line_editor.py       # SectionAwareEditor (édition préservant commentaires)
-│   ├── commands/
-│   │   ├── __init__.py
-│   │   ├── base.py              # CommandResult + ABC CommandExecutor
-│   │   ├── builder.py           # CommandBuilder (API fluent)
-│   │   ├── formatter.py         # CommandFormatter ABC + Plain + Ansi
-│   │   └── runner.py            # LinuxCommandExecutor (subprocess)
-│   ├── scripts/
-│   │   ├── __init__.py
-│   │   ├── config.py            # BashScriptConfig + PythonCliConfig
-│   │   ├── installer.py         # ScriptInstaller, BashScriptInstaller, CliInstaller, LinuxCliInstaller
-│   │   ├── paths.py             # ScriptPaths — chemins FHS via platformdirs
-│   │   ├── checker.py           # ScriptChecker (ABC) + LinuxScriptChecker
-│   │   └── report.py            # InstallReport + MissingDependency
-│   ├── identity/
-│   │   ├── __init__.py
-│   │   ├── base.py              # ABCs GroupManagerBase, UserManagerBase
-│   │   ├── group.py             # LinuxGroupManager (groupadd/groupmod)
-│   │   └── user.py              # LinuxUserManager (useradd/usermod)
-│   ├── notification/
-│   │   ├── __init__.py
-│   │   └── config.py            # NotificationConfig (dataclass)
-│   ├── validation/
-│   │   ├── __init__.py
-│   │   ├── base.py                        # ABC Validator
-│   │   ├── path_checker_Exist.py          # PathChecker
-│   │   ├── path_checker_permission.py     # PathCheckerPermission
-│   │   └── path_checker_world_writable.py # PathCheckerWorldWritable
-│   ├── errors/
-│   │   ├── __init__.py
-│   │   ├── base.py              # ABC ErrorHandler + ErrorHandlerChain
-│   │   ├── exceptions.py        # Hiérarchie ApplicationError
-│   │   ├── console_handler.py   # ConsoleErrorHandler
-│   │   ├── logger_handler.py    # LoggerErrorHandler
-│   │   └── context.py           # ErrorContext
-│   ├── credentials/
-│   │   ├── __init__.py
-│   │   ├── base.py              # ABCs CredentialProvider, CredentialStore
-│   │   ├── chain.py             # CredentialChain
-│   │   ├── manager.py           # CredentialManager (façade)
-│   │   ├── models.py            # Credential, CredentialKey
-│   │   ├── exceptions.py        # CredentialError et sous-classes
-│   │   └── providers/
-│   │       ├── __init__.py
-│   │       ├── env.py           # EnvCredentialProvider
-│   │       ├── dotenv.py        # DotEnvCredentialProvider
-│   │       └── keyring.py       # KeyringCredentialProvider
-│   ├── network/
-│   │   ├── __init__.py
-│   │   ├── base.py              # ABCs NetworkScanner, DeviceRepository, etc.
-│   │   ├── models.py            # NetworkDevice
-│   │   ├── config.py            # NetworkConfig, DhcpRange, DnsConfig
-│   │   ├── scanner.py           # LinuxArpScanner, LinuxNmapScanner
-│   │   ├── repository.py        # JsonDeviceRepository
-│   │   ├── dhcp.py              # LinuxDhcpReservationManager
-│   │   ├── dns.py               # LinuxHostsFileManager, LinuxDnsmasqConfigGenerator
-│   │   ├── reporter.py          # ConsoleTableReporter, CsvReporter, etc.
-│   │   ├── router.py            # AsusRouterClient, AsusRouterScanner, etc.
-│   │   └── validators.py        # validate_ipv4, validate_mac, etc.
-│   └── cli/
-│       ├── __init__.py
-│       ├── base.py              # CliCommand (ABC), CliApplication
-│       └── dry_run.py           # DryRunContext, add_dry_run_argument
-├── tests/
-│   ├── __init__.py
-│   ├── test_logging.py
-│   ├── test_config.py
-│   ├── test_config_validation.py
-│   ├── test_integrity.py
-│   ├── test_filesystem.py
-│   ├── test_systemd_mount.py
-│   ├── test_systemd_timer.py
-│   ├── test_systemd_service.py
-│   ├── test_systemd_executor.py
-│   ├── test_systemd_validators.py
-│   ├── test_systemd_scheduled_task.py
-│   ├── test_systemd_config_loaders.py
-│   ├── test_dotconf.py
-│   ├── test_dotconf_line_editor.py
-│   ├── test_commands.py
-│   ├── test_scripts.py
-│   ├── test_notification.py
-│   ├── test_validation.py
-│   ├── test_identity_group.py
-│   ├── test_identity_user.py
-│   ├── test_cli.py
-│   └── test_cli_dry_run.py
-├── examples/
-│   └── nfs-mounts.toml              # Exemple de configuration
-├── pyproject.toml
-├── Makefile
-├── CLAUDE.md
-└── README.md
+  ┌─────────────────────────────────┐   ┌────────────────────────────────────┐
+  │        IniSection (ABC)         │   │          IniConfig (ABC)           │
+  │  + section_name() [static abs.] │   │  + sections() [abstract]           │
+  │  + to_dict() → dict [abstract]  │   │  + to_ini() → str [abstract]       │
+  │  + from_dict(d) [cls abstract]  │   │  + from_file(path) [cls abstract]  │
+  └────────────┬────────────────────┘   └─────────────────────────────────── ┘
+               │ hérite
+               ▼
+  ┌─────────────────────────────────┐
+  │         ValidatedSection        │
+  │  Dataclass avec validation      │
+  │  __post_init__ des champs       │
+  └─────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────┐
+  │            IniConfigManager (ABC)                │
+  │  + read(path) → IniConfig   [abstract]           │
+  │  + write(config, path)      [abstract]           │
+  └────────────────────┬─────────────────────────────┘
+                       │ hérite
+                       ▼
+  ┌──────────────────────────────────────────────────┐
+  │           LinuxIniConfigManager                  │
+  │  (configparser stdlib)                           │
+  │  + read(path) → IniConfig                        │
+  │  + write(config, path)                           │
+  └──────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────┐
+  │             SectionAwareEditor                   │
+  │  Édition ligne-à-ligne préservant les            │
+  │  commentaires et la structure du fichier         │
+  │  + update_key(section, key, value)               │
+  │  + add_section(section)                          │
+  │  + remove_key(section, key)                      │
+  └──────────────────────────────────────────────────┘
 ```
+
+---
+
+## 🔐 Module `integrity`
+
+Vérification d'intégrité par checksums, et ABC pour la vérification de sections INI.
+
+### Utilisation
+
+```python
+from linux_python_utils import FileLogger, SHA256IntegrityChecker, calculate_checksum
+
+# Fonction utilitaire rapide
+checksum = calculate_checksum("/path/to/file")  # SHA256 par défaut
+checksum_md5 = calculate_checksum("/path/to/file", algorithm="md5")
+
+# Vérificateur avec logging
+logger = FileLogger("/var/log/backup.log")
+checker = SHA256IntegrityChecker(logger)
+
+# Vérifier un fichier unique
+if checker.verify_file("/source/file.txt", "/dest/file.txt"):
+    print("Fichier identique")
+
+# Vérifier un répertoire complet (après rsync)
+if checker.verify("/home/user/Documents", "/media/backup"):
+    print("Sauvegarde vérifiée")
+else:
+    print("Erreur d'intégrité!")
+
+# Obtenir le checksum avec logging
+checksum = checker.get_checksum("/path/to/file")
+```
+
+#### `IniSectionIntegrityChecker` — ABC pour fichiers INI
+
+Contrat abstrait pour implémenter la vérification d'intégrité d'une section INI après écriture.
+
+```python
+from pathlib import Path
+from linux_python_utils.integrity import IniSectionIntegrityChecker
+
+class MyIniChecker(IniSectionIntegrityChecker):
+    def verify(self, file_path: Path, section: object) -> bool:
+        """Vérifie que file_path contient les valeurs attendues de section."""
+        # ... lecture du fichier et comparaison
+        return True
+
+checker = MyIniChecker()
+if not checker.verify(Path("/etc/myapp.conf"), my_section):
+    raise RuntimeError("Intégrité compromise!")
+```
+
+### Documentation API
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `IntegrityChecker` | `SHA256IntegrityChecker` | Vérification checksums fichiers/répertoires |
+| `ChecksumCalculator` | `HashLibChecksumCalculator` | Calcul checksums |
+| `IniSectionIntegrityChecker` | — (ABC à implémenter) | Vérification post-écriture de sections INI |
+
+### Architecture des Classes
+
+```
+  ┌────────────────────────────────────────────┐
+  │         ChecksumCalculator (ABC)           │
+  │  + calculate(file_path, algorithm='sha256')│
+  │    → str (hex)  [abstract]                 │
+  └───────────────────┬────────────────────────┘
+                      │ hérite
+                      ▼
+  ┌────────────────────────────────────────────┐
+  │       HashLibChecksumCalculator            │
+  │  (hashlib — sha256, sha512, md5...)        │
+  └────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────┐
+  │            SHA256IntegrityChecker                │
+  │  - _calculator: ChecksumCalculator               │
+  │  + check_file(path, expected) → bool             │
+  │  + check_directory(path, manifest) → dict        │
+  │  + generate_manifest(path) → dict                │
+  └──────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────┐
+  │            IniSectionIntegrityChecker            │
+  │  + compute_section_hash(section) → str           │
+  │  + verify_section(section, expected) → bool      │
+  └──────────────────────────────────────────────────┘
+```
+
+---
+
+## 🔑 Module `credentials`
+
+Gestion des secrets via une chaîne de priorité : variables d'environnement → fichier `.env` → keyring système.
+
+### Utilisation
+
+```python
+from linux_python_utils import CredentialManager, CredentialNotFoundError
+from pathlib import Path
+
+# Chaîne complète : env → .env → keyring
+manager = CredentialManager.from_dotenv(
+    service="monapp",
+    dotenv_path=Path("config/.env"),
+)
+
+# Lire un secret
+try:
+    password = manager.get("DB_PASSWORD")
+except CredentialNotFoundError:
+    print("Secret introuvable dans les trois sources")
+
+# Stocker dans le keyring
+manager.store("DB_PASSWORD", "nouveau-mot-de-passe")
+```
+
+Compatibilité keyring : KWallet (KDE Plasma 6), KeePassXC (Secret Service activé), GNOME Keyring.
+
+Dépendances optionnelles :
+```bash
+pip install python-dotenv  # pour DotEnvCredentialProvider
+pip install keyring        # pour KeyringCredentialProvider
+```
+
+### Documentation API
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `CredentialProvider` | `EnvCredentialProvider` | Secrets depuis variables d'environnement |
+| `CredentialProvider` | `DotEnvCredentialProvider` | Secrets depuis fichier `.env` |
+| `CredentialProvider` | `KeyringCredentialProvider` | Secrets depuis keyring système |
+| `CredentialStore` | — | Interface d'écriture de secrets |
+| — | `CredentialChain` | Chaîne de priorité entre providers |
+| — | `CredentialManager` | Façade (lecture + écriture) |
+
+### Architecture des Classes
+
+```
+  ┌──────────────────────────────────────┐
+  │       CredentialProvider (ABC)       │  ← lecture seule (ISP)
+  │  + get(service, key) → str | None    │
+  │  + is_available() → bool [abstract]  │
+  │  + source_name: str   [property]     │
+  └──────────────┬───────────────────────┘
+                 │ hérite
+     ┌───────────┼───────────────────────────────────┐
+     ▼           ▼                    ▼               ▼
+┌──────────┐ ┌───────────────┐ ┌──────────────┐ ┌──────────────────────┐
+│   Env    │ │    DotEnv     │ │   Keyring    │ │   CredentialChain    │
+│Credential│ │  Credential   │ │  Credential  │ │  (Chain of Resp.)    │
+│ Provider │ │   Provider    │ │   Provider   │ │  - _providers: list  │
+│ (environ)│ │  (.env file)  │ │ (KWallet...) │ │  + get(svc, key)     │
+└──────────┘ └───────────────┘ └──────┬───────┘ │  + default()classm. │
+                                       │         │    env→dotenv→keyring│
+  CredentialStore (ABC)                │ aussi   └──────────────────────┘
+  ┌─────────────────────────────┐      │ hérite
+  │  étend CredentialProvider   │      │
+  │  + set(svc, key, value)     │◄─────┘
+  │  + delete(svc, key)         │
+  └─────────────────────────────┘
+
+  ┌─────────────────────────────────────────┐
+  │           CredentialManager             │  ← Facade
+  │  - _service: str                        │
+  │  - _chain: CredentialChain              │
+  │  - _store: CredentialStore | None       │
+  │  + get(key) → str | None                │
+  │  + require(key) → str                   │
+  │  + store(key, value)                    │
+  │  + delete(key)                          │
+  │  + from_dotenv(svc, path) [classmethod] │
+  └─────────────────────────────────────────┘
+
+  CredentialKey (frozen dc): service + key
+  Credential   (frozen dc): service + key + value + source
+```
+
+---
+
+## ✅ Module `validation`
+
+Validation de chemins et données avec support optionnel Pydantic.
+
+Trois validateurs de chemins couvrent des besoins distincts :
+
+| Classe | Vérifie | Usage typique |
+|--------|---------|---------------|
+| `PathChecker` | Répertoires parents existent | Log files, config files |
+| `PathCheckerPermission` | Répertoires parents accessibles en écriture | Backup, sauvegardes |
+| `PathCheckerWorldWritable` | Fichiers non modifiables par tous | Scripts exécutés en root |
+
+### Utilisation
+
+```python
+from linux_python_utils import PathChecker, PathCheckerPermission, PathCheckerWorldWritable
+
+# Vérifie que les répertoires parents existent
+checker = PathChecker([
+    "/var/log/myapp.log",
+    "/etc/myapp/config.toml",
+])
+checker.validate()  # Lève ValueError si répertoire absent
+
+# Vérifie les droits d'écriture sur les répertoires parents
+perm_checker = PathCheckerPermission([
+    "/var/log/myapp.log",
+    "/tmp/backup.tar.gz",
+])
+perm_checker.validate()  # Lève PermissionError si non accessible
+
+# Vérifie qu'un fichier de config n'est pas world-writable
+# (sécurité essentielle pour les scripts exécutés en root)
+ww_checker = PathCheckerWorldWritable("/etc/myapp/config.toml")
+ww_checker.validate()  # Lève PermissionError si bit S_IWOTH positionné
+
+# Validation de configuration avec Pydantic (optionnel)
+# pip install linux-python-utils[validation]
+from pydantic import BaseModel
+from linux_python_utils import FileConfigLoader
+
+class AppConfig(BaseModel):
+    name: str
+    debug: bool = False
+    port: int = 8080
+
+loader = FileConfigLoader()
+config = loader.load("config.toml", schema=AppConfig)
+print(config.name)  # Instance AppConfig validée
+```
+
+### Documentation API
+
+| ABC (Interface) | Implémentation | Description |
+|-----------------|----------------|-------------|
+| `Validator` | `PathChecker` | Répertoires parents existent |
+| `Validator` | `PathCheckerPermission` | Répertoires parents accessibles en écriture |
+| `Validator` | `PathCheckerWorldWritable` | Fichier non world-writable (sécurité root) |
+
+### Architecture des Classes
+
+```
+  ┌──────────────────────────────────────────────────────┐
+  │                   Validator (ABC)                    │
+  │  + validate() [abstract]                             │
+  │    raises: ValueError | PermissionError              │
+  └───────────────────────────┬──────────────────────────┘
+                              │ hérite
+                              ▼
+  ┌──────────────────────────────────────────────────────┐
+  │                    PathChecker                       │
+  │  - path: Path                                        │
+  │  + validate()  [abstract]                            │
+  └──────────┬────────────────────────┬──────────────────┘
+             │ hérite                 │ hérite
+             ▼                        ▼
+  ┌──────────────────────┐  ┌──────────────────────────────┐
+  │  PathCheckerPermission│  │  PathCheckerWorldWritable    │
+  │  - expected: int      │  │  Avertit si world-writable   │
+  │  + validate()         │  │  + validate()                │
+  └──────────────────────┘  └──────────────────────────────┘
+```
+
+---
+
+## 🔔 Module `notification`
+
+Configuration des notifications desktop (KDE Plasma).
+
+### Utilisation
+
+```python
+from linux_python_utils import NotificationConfig
+
+# Configuration de notification
+notif = NotificationConfig(
+    enabled=True,
+    title="Sauvegarde",
+    message_success="Sauvegarde terminée avec succès",
+    message_failure="Échec de la sauvegarde"
+)
+
+# Générer les appels bash pour notify-send
+bash_calls = notif.to_bash_calls()
+bash_function = notif.to_bash_function()
+```
+
+### Documentation API
+
+| Classe | Description |
+|--------|-------------|
+| `NotificationConfig` | Dataclass de configuration des notifications desktop (KDE Plasma) |
+
+---
+
+## 🎯 Exemple Complet
+
+Script de sauvegarde utilisant plusieurs modules ensemble :
+
+```python
+#!/usr/bin/env python3
+from linux_python_utils import (
+    FileLogger,
+    ConfigurationManager,
+    LinuxFileBackup,
+    SHA256IntegrityChecker,
+    UserSystemdExecutor,
+    LinuxUserTimerUnitManager,
+    LinuxUserServiceUnitManager,
+    TimerConfig,
+    ServiceConfig
+)
+
+# Configuration
+DEFAULT_CONFIG = {
+    "logging": {"level": "INFO"},
+    "profiles": {
+        "documents": {
+            "source": "~/Documents",
+            "destination": "/media/backup/docs"
+        }
+    }
+}
+
+config = ConfigurationManager(
+    config_path="~/.config/backup/config.toml",
+    default_config=DEFAULT_CONFIG
+)
+
+# Initialisation
+logger = FileLogger("~/.local/log/backup.log", config=config, console_output=True)
+executor = UserSystemdExecutor(logger)
+
+# Créer le service de backup
+service_mgr = LinuxUserServiceUnitManager(logger, executor)
+service_config = ServiceConfig(
+    description="Sauvegarde documents",
+    exec_start="/home/user/scripts/backup.sh",
+    type="oneshot"
+)
+service_mgr.install_service_unit_with_name("backup", service_config)
+
+# Créer le timer (tous les jours à 6h)
+timer_mgr = LinuxUserTimerUnitManager(logger, executor)
+timer_config = TimerConfig(
+    description="Timer backup quotidien",
+    unit="backup.service",
+    on_calendar="*-*-* 06:00:00",
+    persistent=True
+)
+timer_mgr.install_timer_unit(timer_config)
+timer_mgr.enable_timer("backup")
+
+logger.log_info("Backup automatique configuré")
+```
+
+---
 
 ## 🧪 Tests
 
