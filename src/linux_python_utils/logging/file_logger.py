@@ -1,10 +1,36 @@
 """Implémentation concrète du logger avec fichier."""
 
+# stdlib
 import logging
 import os
 from typing import Any, Dict, Optional
 
+# local
+from linux_python_utils.logging.ansi_colors import AnsiColors
 from linux_python_utils.logging.base import Logger
+
+_LEVEL_COLORS = {
+    logging.INFO: AnsiColors.BLUE,
+    logging.WARNING: AnsiColors.ORANGE,
+    logging.ERROR: AnsiColors.RED,
+    logging.CRITICAL: AnsiColors.RED,
+}
+
+
+class _ColoredFormatter(logging.Formatter):
+    """Formateur qui préfixe chaque message d'un code ANSI selon le niveau."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Formate le message avec la couleur du niveau de log.
+
+        Args:
+            record: Enregistrement de log à formater.
+
+        Returns:
+            Message formaté entouré des codes ANSI correspondants.
+        """
+        color = _LEVEL_COLORS.get(record.levelno, AnsiColors.RESET)
+        return f"{color}{super().format(record)}{AnsiColors.RESET}"
 
 
 class FileLogger(Logger):
@@ -16,23 +42,26 @@ class FileLogger(Logger):
     - Encodage UTF-8 explicite
     - Flush immédiat après chaque log
     - Pas de propagation (évite les logs en double)
-    - Support optionnel de la sortie console
+    - Support optionnel de la sortie console colorée
     """
 
     def __init__(
         self,
         log_file: str,
         config: Optional[Dict[str, Any]] = None,
-        console_output: bool = False
+        console_output: bool = False,
+        colored_console: bool = False,
     ) -> None:
-        """
-        Initialise le logger.
+        """Initialise le logger.
 
         Args:
-            log_file: Chemin du fichier de log
-            config: Configuration optionnelle (dict ou ConfigurationManager)
-                    Clés supportées: logging.level, logging.format
-            console_output: Activer la sortie console en plus du fichier
+            log_file: Chemin du fichier de log.
+            config: Configuration optionnelle (dict ou ConfigurationManager).
+                Clés supportées: logging.level, logging.format.
+            console_output: Activer la sortie console en plus du fichier.
+            colored_console: Coloriser la sortie console selon le niveau de log.
+                Sans effet si console_output est False.
+                Le fichier log reste toujours en plain-text.
         """
         self.log_file = log_file
 
@@ -74,11 +103,10 @@ class FileLogger(Logger):
 
         # Éviter les handlers dupliqués
         if not self.logger.handlers:
-            # Handler fichier avec UTF-8 explicite
+            # Handler fichier — toujours plain-text
             file_handler = logging.FileHandler(log_file, encoding='utf-8')
             file_handler.setLevel(log_level)
-            formatter = logging.Formatter(log_format)
-            file_handler.setFormatter(formatter)
+            file_handler.setFormatter(logging.Formatter(log_format))
             self.logger.addHandler(file_handler)
             self.handler = file_handler
 
@@ -86,7 +114,12 @@ class FileLogger(Logger):
             if console_output:
                 console_handler = logging.StreamHandler()
                 console_handler.setLevel(log_level)
-                console_handler.setFormatter(formatter)
+                fmt = (
+                    _ColoredFormatter(log_format)
+                    if colored_console
+                    else logging.Formatter(log_format)
+                )
+                console_handler.setFormatter(fmt)
                 self.logger.addHandler(console_handler)
         else:
             self.handler = self.logger.handlers[0]
@@ -115,8 +148,7 @@ class FileLogger(Logger):
         self._flush()
 
     def log_to_file(self, message: str) -> None:
-        """
-        Écrit directement dans le fichier (sans passer par logging).
+        """Écrit directement dans le fichier (sans passer par logging).
 
         Utile pour les logs bruts sans formatage.
         """

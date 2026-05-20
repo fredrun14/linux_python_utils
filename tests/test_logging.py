@@ -309,6 +309,74 @@ class TestConsoleLogger:
         assert "ERROR" in captured.err
         assert "erreur critique" in captured.err
 
+    def test_log_info_contient_code_bleu(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        """log_info entoure le message du code ANSI bleu."""
+        from linux_python_utils.logging import AnsiColors, ConsoleLogger
+        ConsoleLogger().log_info("info colorée")
+        assert AnsiColors.BLUE in capsys.readouterr().out
+
+    def test_log_warning_contient_code_orange(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        """log_warning entoure le message du code ANSI orange."""
+        from linux_python_utils.logging import AnsiColors, ConsoleLogger
+        ConsoleLogger().log_warning("alerte colorée")
+        assert AnsiColors.ORANGE in capsys.readouterr().err
+
+    def test_log_error_contient_code_rouge(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        """log_error entoure le message du code ANSI rouge."""
+        from linux_python_utils.logging import AnsiColors, ConsoleLogger
+        ConsoleLogger().log_error("erreur colorée")
+        assert AnsiColors.RED in capsys.readouterr().err
+
+    def test_log_success_contient_code_vert(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        """log_success entoure le message du code ANSI vert."""
+        from linux_python_utils.logging import AnsiColors, ConsoleLogger
+        ConsoleLogger().log_success("succès coloré")
+        assert AnsiColors.GREEN in capsys.readouterr().out
+
+
+class TestFileLoggerColored:
+    """Tests pour FileLogger avec colored_console."""
+
+    def test_colored_console_ajoute_code_ansi(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """FileLogger(colored_console=True) colore la sortie console."""
+        from linux_python_utils.logging import AnsiColors, FileLogger
+        log_file = str(tmp_path / "colored.log")
+        logger = FileLogger(log_file, console_output=True, colored_console=True)
+        logger.log_info("message coloré")
+        captured = capsys.readouterr()
+        assert AnsiColors.BLUE in captured.err
+
+    def test_fichier_log_sans_codes_ansi(self, tmp_path: Path) -> None:
+        """Le fichier log ne contient jamais de codes ANSI."""
+        from linux_python_utils.logging import AnsiColors, FileLogger
+        log_file = str(tmp_path / "plain.log")
+        logger = FileLogger(log_file, console_output=True, colored_console=True)
+        logger.log_info("contenu fichier")
+        content = (tmp_path / "plain.log").read_text(encoding="utf-8")
+        assert AnsiColors.BLUE not in content
+        assert "contenu fichier" in content
+
+    def test_colored_console_false_pas_de_codes_ansi(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Par défaut colored_console=False : pas de codes ANSI en console."""
+        from linux_python_utils.logging import AnsiColors, FileLogger
+        log_file = str(tmp_path / "plain_console.log")
+        logger = FileLogger(log_file, console_output=True)
+        logger.log_info("sans couleur")
+        captured = capsys.readouterr()
+        assert AnsiColors.BLUE not in captured.err
+
 
 class TestTeeStream:
     """Tests pour TeeStream."""
