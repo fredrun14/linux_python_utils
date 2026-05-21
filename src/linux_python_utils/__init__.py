@@ -34,7 +34,8 @@ from linux_python_utils.config import (
     ConfigManager,
     ConfigLoader,
     FileConfigLoader,
-    ConfigurationManager
+    ConfigurationManager,
+    XdgAppConfig,
 )
 from linux_python_utils.filesystem import (
     FileManager,
@@ -123,6 +124,7 @@ from linux_python_utils.validation import (
     PathChecker,
     PathCheckerPermission,
     PathCheckerWorldWritable,
+    SystemCommandValidator,
 )
 from linux_python_utils.credentials import (
     # ABCs
@@ -198,6 +200,7 @@ __all__ = [
     "ConfigLoader",
     "FileConfigLoader",
     "ConfigurationManager",
+    "XdgAppConfig",
     # Filesystem
     "FileManager",
     "LinuxFileManager",
@@ -284,6 +287,7 @@ __all__ = [
     "Validator",
     "PathChecker",
     "PathCheckerPermission",
+    "SystemCommandValidator",
     # Credentials - ABCs
     "CredentialProvider",
     "CredentialStore",

@@ -7,11 +7,13 @@ from linux_python_utils.config.loader import (
     ConfigFileLoader,
 )
 from linux_python_utils.config.manager import ConfigurationManager
+from linux_python_utils.config.xdg import XdgAppConfig
 
 __all__ = [
     "ConfigManager",
     "ConfigLoader",
     "FileConfigLoader",
     "ConfigFileLoader",
-    "ConfigurationManager"
+    "ConfigurationManager",
+    "XdgAppConfig",
 ]
