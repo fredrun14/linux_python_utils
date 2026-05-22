@@ -2,7 +2,7 @@
 
 # stdlib
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, PropertyMock
 
 # third-party
 import pytest
@@ -102,3 +102,78 @@ class TestXdgAppConfig:
         result = xdg.init_config_file(_TEMPLATE)
 
         assert result.read_text(encoding="utf-8") == _TEMPLATE
+
+    def test_system_config_dir_contient_etc_et_app_name(
+        self, xdg: XdgAppConfig
+    ) -> None:
+        """system_config_dir vaut /etc/<app_name>/."""
+        assert xdg.system_config_dir == Path("/etc") / _APP
+
+    def test_find_config_file_retourne_user_path_si_present(
+        self, xdg: XdgAppConfig
+    ) -> None:
+        """find_config_file retourne le chemin user si le fichier existe."""
+        xdg.init_config_file(_TEMPLATE)
+
+        result = xdg.find_config_file()
+
+        assert result == xdg.config_dir / "global.toml"
+
+    def test_find_config_file_retourne_system_path_si_user_absent(
+        self, xdg: XdgAppConfig, tmp_path: Path
+    ) -> None:
+        """find_config_file retourne /etc/…/file si ~/.config/… est absent."""
+        system_dir = tmp_path / "sys"
+        system_dir.mkdir()
+        system_file = system_dir / "global.toml"
+        system_file.write_text(_TEMPLATE, encoding="utf-8")
+
+        with patch.object(
+            type(xdg), "system_config_dir", new_callable=PropertyMock,
+            return_value=system_dir
+        ):
+            result = xdg.find_config_file()
+
+        assert result == system_file
+
+    def test_find_config_file_retourne_none_si_les_deux_absents(
+        self, xdg: XdgAppConfig, tmp_path: Path
+    ) -> None:
+        """find_config_file retourne None si aucun fichier n'existe."""
+        absent = tmp_path / "nowhere"
+
+        with patch.object(
+            type(xdg), "system_config_dir", new_callable=PropertyMock,
+            return_value=absent
+        ):
+            result = xdg.find_config_file()
+
+        assert result is None
+
+    def test_find_config_file_user_prioritaire_sur_systeme(
+        self, xdg: XdgAppConfig, tmp_path: Path
+    ) -> None:
+        """find_config_file retourne le chemin user même si /etc/… existe."""
+        xdg.init_config_file(_TEMPLATE)
+        system_dir = tmp_path / "sys"
+        system_dir.mkdir()
+        (system_dir / "global.toml").write_text("other", encoding="utf-8")
+
+        with patch.object(
+            type(xdg), "system_config_dir", new_callable=PropertyMock,
+            return_value=system_dir
+        ):
+            result = xdg.find_config_file()
+
+        assert result == xdg.config_dir / "global.toml"
+
+    def test_find_config_file_filename_personnalise(
+        self, xdg: XdgAppConfig
+    ) -> None:
+        """find_config_file cherche le bon filename personnalisé."""
+        xdg.init_config_file(_TEMPLATE, filename="custom.toml")
+
+        result = xdg.find_config_file("custom.toml")
+
+        assert result is not None
+        assert result.name == "custom.toml"
