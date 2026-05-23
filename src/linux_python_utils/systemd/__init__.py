@@ -106,6 +106,12 @@ from linux_python_utils.systemd.config_loaders import (
     BashScriptConfigLoader,
 )
 
+# Export / restauration génériques (préservation verbatim des sections INI)
+from linux_python_utils.systemd.unit_porter import (
+    SystemdUnitExporter,
+    SystemdUnitRestorer,
+)
+
 # Rétrocompatibilité avec l'ancienne API
 # (LinuxSystemdServiceManager est remplacé par SystemdExecutor)
 LinuxSystemdServiceManager = SystemdExecutor
@@ -145,4 +151,7 @@ __all__ = [
     "BashScriptConfigLoader",
     # Rétrocompatibilité
     "LinuxSystemdServiceManager",
+    # Export / restauration génériques
+    "SystemdUnitExporter",
+    "SystemdUnitRestorer",
 ]

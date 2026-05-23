@@ -76,6 +76,9 @@ from linux_python_utils.systemd import (
     TimerConfigLoader,
     MountConfigLoader,
     BashScriptConfigLoader,
+    # Export / restauration génériques
+    SystemdUnitExporter,
+    SystemdUnitRestorer,
     # Rétrocompatibilité
     LinuxSystemdServiceManager,
 )
@@ -238,6 +241,9 @@ __all__ = [
     "TimerConfigLoader",
     "MountConfigLoader",
     "BashScriptConfigLoader",
+    # Systemd - Export / restauration génériques
+    "SystemdUnitExporter",
+    "SystemdUnitRestorer",
     # Systemd - Rétrocompatibilité
     "LinuxSystemdServiceManager",
     # Integrity
