@@ -209,6 +209,7 @@ print(linux_python_utils.__version__)  # 1.6.0
 │  SystemdExecutor · LinuxServiceUnitManager · LinuxTimerUnitManager               │
 │  LinuxMountUnitManager · LinuxUserServiceUnitManager · LinuxUserTimerUnitManager │
 │  SystemdScheduledTaskInstaller                                                   │
+│  SystemdUnitExporter · SystemdUnitRestorer                                       │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -280,6 +281,7 @@ linux-python-utils/
 │   │   ├── user_timer.py        # LinuxUserTimerUnitManager
 │   │   ├── user_service.py      # LinuxUserServiceUnitManager
 │   │   ├── scheduled_task.py    # SystemdScheduledTaskInstaller
+│   │   ├── unit_porter.py       # SystemdUnitExporter, SystemdUnitRestorer
 │   │   └── config_loaders/      # Chargeurs de configuration (TOML/JSON)
 │   │       ├── __init__.py
 │   │       ├── base.py          # ConfigFileLoader[T] (ABC)
@@ -373,6 +375,7 @@ linux-python-utils/
 │   ├── test_systemd_validators.py
 │   ├── test_systemd_scheduled_task.py
 │   ├── test_systemd_config_loaders.py
+│   ├── test_systemd_unit_porter.py
 │   ├── test_dotconf.py
 │   ├── test_dotconf_line_editor.py
 │   ├── test_commands.py
@@ -916,6 +919,57 @@ Formatter            Formatter           │      LinuxCommandExecutor       │
                                          └─────────────────────────────────┘
 ```
 
+### Gestion des privilèges root — deux patterns
+
+`LinuxCommandExecutor` détecte si le processus courant tourne en root (`os.getuid() == 0`) pour préfixer les logs `[ROOT]` ou `[user]`, mais **ne préfixe jamais `sudo` sur les commandes**. Deux patterns existent selon le cas d'usage :
+
+#### Pattern 1 — Process entier en root (recommandé pour les outils d'administration)
+
+Le programme est lancé avec `sudo` une seule fois. Toutes les commandes héritent des droits root sans manipulation supplémentaire. Une garde `_require_root()` lève `AppPermissionError` immédiatement si le process n'est pas root.
+
+```
+sudo mon-outil sync
+         └── os.getuid() == 0 ✓
+             ├── dnf install ...   (root, pas de sudo)
+             ├── systemctl enable  (root, pas de sudo)
+             └── useradd ...       (root, pas de sudo)
+```
+
+```python
+from linux_python_utils.errors import AppPermissionError
+
+def _require_root(self) -> None:
+    if os.getuid() != 0:
+        raise AppPermissionError(
+            "Cette opération nécessite les droits root."
+        )
+```
+
+C'est le pattern approprié quand **la majorité des commandes requiert root** (outils post-install, provisioning système, gestion de paquets).
+
+#### Pattern 2 — Élévation sélective par commande (sudo explicite)
+
+Le process tourne comme utilisateur normal et élève uniquement les commandes qui le nécessitent, en traitant `sudo` comme le programme principal dans `CommandBuilder`.
+
+```python
+# Exemples dans network/scanner.py
+cmd = CommandBuilder("sudo").with_args(["arp-scan", "--localnet"]).build()
+# → ["sudo", "arp-scan", "--localnet"]
+
+result = executor.run(cmd)
+```
+
+C'est le pattern approprié quand **seules quelques commandes requièrent une élévation** au sein d'un process utilisateur (scanner réseau, lecture de fichiers protégés, etc.). Inconvénient : nécessite que l'utilisateur ait `NOPASSWD` dans sudoers ou accepte de taper son mot de passe en cours d'exécution.
+
+#### Résumé
+
+| Critère | Process en root (`sudo mon-outil`) | Sudo par commande |
+|---|---|---|
+| La plupart des commandes requièrent root | ✅ Naturel | ❌ Verbeux |
+| Quelques commandes seulement | ❌ Surpuissant | ✅ Ciblé |
+| Invite de mot de passe | Une seule fois au lancement | Potentiellement à chaque commande |
+| `LinuxCommandExecutor` | Pas de sudo dans les commandes | `CommandBuilder("sudo").with_args(...)` |
+
 ---
 
 ## 📁 Module `filesystem`
@@ -1165,6 +1219,97 @@ service_mgr.install_service_unit_with_name("sync", config)
 service_mgr.enable_service("sync")
 ```
 
+#### Export / Restauration génériques — `SystemdUnitExporter` et `SystemdUnitRestorer`
+
+Portable une unité systemd entre machines **sans perte de champs INI**. Contrairement
+aux `config_loaders` qui n'exposent qu'un sous-ensemble fixe de clés, ces deux classes
+préservent **toutes** les sections INI verbatim (`[Unit]`, `[Service]`/`[Timer]`/`[Mount]`,
+`[Install]`) ainsi que les clés multi-occurrences (ex : plusieurs `Environment=`).
+
+Le fichier TOML produit suit la convention de nommage `{nom}-{type}.toml`
+(ex : `thermal-monitor.service` → `thermal-monitor-service.toml`).
+
+```python
+from pathlib import Path
+from linux_python_utils import FileLogger
+from linux_python_utils.systemd import (
+    SystemdExecutor,
+    SystemdUnitExporter,
+    SystemdUnitRestorer,
+)
+
+logger = FileLogger("/var/log/porter.log")
+
+# --- Export ---
+exporter = SystemdUnitExporter(logger=logger)
+
+toml_str = exporter.export(
+    Path("/etc/systemd/system/thermal-monitor.service"),
+    enabled=True,                      # état systemctl is-enabled
+    requires_exec="/usr/bin/thermal",  # binaire requis (vérifié à la restauration)
+)
+# toml_str contient [meta], [Unit], [Service], [Install] — aucun champ perdu
+
+Path("thermal-monitor-service.toml").write_text(toml_str)
+
+# Helpers statiques disponibles séparément :
+data = SystemdUnitExporter.parse_ini(Path("mon.service"))
+# → dict section → dict clé → list[valeur]  (clés dupliquées en liste)
+
+toml_str = SystemdUnitExporter.to_toml(data, unit_type="service", enabled=False)
+
+# --- Restauration ---
+executor = SystemdExecutor(logger)          # ou UserSystemdExecutor pour --user
+restorer = SystemdUnitRestorer(executor=executor, logger=logger)
+
+ok, unit_name = restorer.restore(
+    Path("thermal-monitor-service.toml"),
+    Path("/etc/systemd/system"),            # dest_dir explicite
+    dry_run=False,
+)
+# ok=True, unit_name="thermal-monitor.service"
+# → écrit le fichier INI, systemctl enable si enabled=true, daemon-reload
+
+# Restauration d'unités utilisateur (sans root) :
+from linux_python_utils.systemd import UserSystemdExecutor
+user_executor = UserSystemdExecutor(logger)
+user_restorer = SystemdUnitRestorer(executor=user_executor, logger=logger)
+ok, name = user_restorer.restore(
+    Path("mon-service.toml"),
+    Path("~/.config/systemd/user").expanduser(),
+)
+
+# Sans executor injecté : fallback subprocess direct, avec flag --user si besoin
+restorer_bare = SystemdUnitRestorer(logger=logger)
+ok, name = restorer_bare.restore(
+    Path("mon-service.toml"),
+    Path("~/.config/systemd/user").expanduser(),
+    user=True,   # ajoute --user aux commandes systemctl subprocess
+)
+```
+
+**Format TOML produit :**
+
+```toml
+[meta]
+unit_type = "service"
+enabled = true
+requires_exec = "/usr/bin/thermal"
+
+[Unit]
+Description = "Thermal monitor"
+After = "network.target"
+
+[Service]
+Type = "simple"
+ExecStart = "/usr/bin/thermal --daemon"
+Environment = ["FOO=bar", "BAZ=qux"]   # multi-occurrence → tableau TOML
+Restart = "on-failure"
+
+[Install]
+WantedBy = "multi-user.target"
+```
+
 #### Module `systemd.config_loaders`
 
 Chargeurs de configuration pour créer des dataclasses systemd depuis TOML ou JSON.
@@ -1234,6 +1379,8 @@ message_failure = "Échec!"
 | `UserTimerUnitManager` | `LinuxUserTimerUnitManager` | Unités .timer (utilisateur) |
 | `UserServiceUnitManager` | `LinuxUserServiceUnitManager` | Unités .service (utilisateur) |
 | `ScheduledTaskInstaller` | `SystemdScheduledTaskInstaller` | Installation tâche planifiée complète |
+| — | `SystemdUnitExporter` | Export INI → TOML générique (toutes sections verbatim) |
+| — | `SystemdUnitRestorer` | Restauration TOML → INI, enable, daemon-reload |
 
 **`systemd.config_loaders`** :
 
@@ -1284,6 +1431,26 @@ message_failure = "Échec!"
 │ LinuxTimerUnitMgr │           │ LinuxUserServiceMgr│
 │ LinuxServiceUnitMgr│          └───────────────────┘
 └───────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────┐
+  │  Export / Restauration génériques (unit_porter.py)           │
+  │                                                              │
+  │  SystemdUnitExporter                                         │
+  │  - logger: Logger (optionnel — défaut : ConsoleLogger)       │
+  │  + export(unit_path, enabled, requires_exec) → str | None   │
+  │  + parse_ini(path) → dict[section → dict[clé → list[str]]]  │  ← @staticmethod
+  │  + to_toml(data, unit_type, enabled, requires_exec) → str   │  ← @staticmethod
+  │                                                              │
+  │  SystemdUnitRestorer                                         │
+  │  - executor: SystemdExecutor | None                          │
+  │  - logger: Logger (optionnel — défaut : ConsoleLogger)       │
+  │  + restore(toml_path, dest_dir, dry_run, user)              │
+  │    → tuple[bool, str]  (succès, nom_unit)                   │
+  │  + to_ini(data, unit_type) → str                            │  ← @staticmethod
+  │                                                              │
+  │  Convention de nommage TOML :                                │
+  │  thermal-monitor.service → thermal-monitor-service.toml      │
+  └──────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -2261,6 +2428,7 @@ make all
 | `test_systemd_validators.py` | 25 | validate_unit_name(), validate_service_name() |
 | `test_systemd_scheduled_task.py` | 12 | SystemdScheduledTaskInstaller |
 | `test_systemd_config_loaders.py` | 30 | Tous les loaders (TOML/JSON) |
+| `test_systemd_unit_porter.py` | 45 | SystemdUnitExporter, SystemdUnitRestorer (parse_ini, to_toml, export, to_ini, restore) |
 | `test_dotconf.py` | 20 | Sections INI, validation, lecture/écriture |
 | `test_dotconf_line_editor.py` | — | SectionAwareEditor, édition préservant commentaires |
 | `test_commands.py` | 74 | CommandBuilder, formatters, exécution, streaming, dry-run, root/user |
@@ -2271,7 +2439,7 @@ make all
 | `test_identity_user.py` | — | LinuxUserManager, ensure_user, ensure_user_groups |
 | `test_cli.py` | 15 | CliCommand (ABC, register, execute, sous-classes partielles), CliApplication (dispatch, flags, args, edge cases) |
 | `test_cli_dry_run.py` | 9 | DryRunContext (would_write/create/modify), add_dry_run_argument (--dry-run, -n) |
-| **Total** | **498+** | |
+| **Total** | **543+** | |
 
 ### Tests Paramétrés
 
