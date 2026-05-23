@@ -48,6 +48,7 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 - **🔐 Vérification d'intégrité** — Checksums SHA256/SHA512/MD5 pour fichiers et répertoires
 - **🖥️ Exécution de commandes** — Construction fluent et exécution avec streaming temps réel
 - **📋 Fichiers INI (.conf)** — Lecture, écriture et validation de fichiers de configuration INI ; `SectionAwareEditor` pour l'édition ligne-à-ligne préservant les commentaires
+- **📝 Application déclarative de config** — `TomlSpecLoader` + `ConfigApplier` : décrire les blocs à appliquer dans un TOML `[target]`, les appliquer sur n'importe quel `.conf` (ajout, décommentage, idempotence garantie)
 - **📜 Scripts bash et CLI** — Génération de scripts bash + déploiement de scripts Python CLI (FHS, uv, scope système/utilisateur, rapport d'installation)
 - **👤 Gestion d'identités Unix** — Création idempotente de groupes (`groupadd`/`groupmod`) et utilisateurs (`useradd`/`usermod`) avec vérification GID/UID
 - **🔔 Notifications** — Configuration des notifications desktop (KDE Plasma)
@@ -196,6 +197,7 @@ print(linux_python_utils.__version__)  # 1.6.0
 │  LinuxCommandExecutor · CommandBuilder · AnsiCommandFormatter                    │
 │  HashLibChecksumCalculator · SHA256IntegrityChecker · IniSectionIntegrityChecker │
 │  ValidatedSection · LinuxIniConfigManager · SectionAwareEditor                   │
+│  ConfigBlock · ConfigSpec · TomlSpecLoader · ConfigApplier                       │
 │  PathCheckerPermission · PathCheckerWorldWritable                                │
 │  ConsoleErrorHandler · LoggerErrorHandler · ErrorHandlerChain                    │
 │  EnvCredentialProvider · DotEnvCredentialProvider · KeyringCredentialProvider    │
@@ -298,7 +300,10 @@ linux-python-utils/
 │   │   ├── base.py              # ABCs IniSection, IniConfig, IniConfigManager
 │   │   ├── section.py           # ValidatedSection + parse_validator, build_validators
 │   │   ├── manager.py           # LinuxIniConfigManager
-│   │   └── line_editor.py       # SectionAwareEditor (édition préservant commentaires)
+│   │   ├── line_editor.py       # SectionAwareEditor (édition préservant commentaires)
+│   │   ├── spec.py              # ConfigBlock, ConfigSpec (modèles de données purs)
+│   │   ├── toml_spec_loader.py  # TomlSpecLoader (TOML → ConfigSpec, résolution ~/$VAR)
+│   │   └── applier.py           # ConfigApplier (applique ConfigSpec via SectionAwareEditor)
 │   ├── commands/
 │   │   ├── __init__.py
 │   │   ├── base.py              # CommandResult + ABC CommandExecutor
@@ -378,6 +383,9 @@ linux-python-utils/
 │   ├── test_systemd_unit_porter.py
 │   ├── test_dotconf.py
 │   ├── test_dotconf_line_editor.py
+│   ├── test_dotconf_spec.py
+│   ├── test_dotconf_toml_spec_loader.py
+│   ├── test_dotconf_applier.py
 │   ├── test_commands.py
 │   ├── test_scripts.py
 │   ├── test_notification.py
@@ -1904,7 +1912,7 @@ app.run()  # parse sys.argv et dispatche
 
 ## 📋 Module `dotconf`
 
-Gestion de fichiers de configuration INI (.conf) avec validation externe.
+Gestion de fichiers de configuration INI (.conf) avec validation externe, et application déclarative de blocs de configuration depuis un fichier TOML.
 
 ### Utilisation
 
@@ -1957,20 +1965,93 @@ print(f"Modifié: {updated}")
 
 #### `SectionAwareEditor` — Édition ligne-à-ligne préservant les commentaires
 
-Permet de modifier une clé dans un fichier INI sans toucher les commentaires ni la mise en forme existante.
+Permet d'insérer ou décommenter des blocs dans un fichier `.conf` sans toucher aux commentaires ni à la mise en forme existante.
 
 ```python
 from linux_python_utils import SectionAwareEditor
 
 editor = SectionAwareEditor(Path("/etc/myapp.conf"))
 
-# Modifier une valeur dans une section existante
-editor.set_value("commands", "upgrade_type", "security")
+# Vérifier qu'un bloc est déjà actif
+if editor.is_block_present("fastestmirror = True", section="main"):
+    print("Déjà présent")
 
-# Vérifier qu'une clé est présente
-if editor.has_key("commands", "download_updates"):
-    print("Clé présente")
+# Vérifier qu'un bloc est commenté (ex: "# fastestmirror = True")
+if editor.is_block_commented("fastestmirror = True", section="main"):
+    print("Commenté, sera décommenté")
+
+# Insérer ou décommenter un bloc (avec commentaire optionnel avant)
+editor.ensure_block(
+    "fastestmirror = True",
+    section="main",
+    comment="# Activer le miroir le plus rapide",
+)
+
+# Lister les sections [section] présentes dans le fichier
+sections = editor.list_sections()  # ['main', 'plugins']
 ```
+
+#### `TomlSpecLoader` + `ConfigApplier` — Application déclarative depuis TOML
+
+Décrit les blocs à appliquer dans un fichier TOML `[target]`, puis les applique de façon idempotente sur n'importe quel `.conf`.
+
+**Format TOML attendu :**
+
+```toml
+[target]
+file_path = "~/.config/yt-dlp/config"
+
+[[target.content]]
+comment = "# Meilleure qualité disponible"
+content = '-f "bestvideo*+bestaudio/best"'
+
+[[target.content]]
+content = "--no-playlist"
+
+# Pour un fichier INI avec sections (ex: /etc/dnf/dnf.conf)
+[[target.content]]
+section = "main"
+comment = "# Miroir le plus rapide"
+content = "fastestmirror = True"
+```
+
+**Utilisation :**
+
+```python
+from pathlib import Path
+from linux_python_utils import TomlSpecLoader, ConfigApplier
+
+# Charger la spec TOML → ConfigSpec
+loader = TomlSpecLoader()
+spec = loader.load(Path("my-app.toml"))
+# spec.file_path → Path résolu (~, $VAR, ${VAR} développés)
+# spec.blocks    → list[ConfigBlock]
+
+# Appliquer sur le fichier cible (crée le fichier si absent)
+applier = ConfigApplier()
+actions = applier.apply(spec)
+for action in actions:
+    print(action)
+# Created: /home/user/.config/yt-dlp/config (2 blocks)
+# Appended: fastestmirror = True
+# Uncommented: key = value
+
+# Avec logger injectable
+from linux_python_utils import FileLogger
+logger = FileLogger("/var/log/myapp.log")
+applier = ConfigApplier(logger=logger)
+actions = applier.apply(spec)  # chaque action est aussi loggée
+
+# Idempotent : un second appel sur un fichier déjà conforme renvoie []
+assert applier.apply(spec) == []
+```
+
+**Comportements clés :**
+- Crée le fichier (et les répertoires parents) s'il est absent, chmod 644
+- Ajoute les blocs manquants en fin de fichier (ou dans la `[section]` INI cible)
+- Décommente les lignes commentées (`# key = value` → `key = value`)
+- Ne touche pas aux blocs déjà présents (idempotent)
+- Retourne une liste d'actions décrivant ce qui a été modifié (vide si aucun changement)
 
 ### Documentation API
 
@@ -1982,12 +2063,18 @@ if editor.has_key("commands", "download_updates"):
 | — | `SectionAwareEditor` | Édition ligne-à-ligne préservant les commentaires |
 | — | `parse_validator` | Convertit un validateur brut en callable/liste |
 | — | `build_validators` | Construit un dictionnaire de validateurs |
+| — | `ConfigBlock` | Bloc de configuration (content, comment, section) |
+| — | `ConfigSpec` | Spec complète (file_path + liste de ConfigBlock) |
+| — | `TomlSpecLoader` | Charge un TOML `[target]` → `ConfigSpec` |
+| — | `ConfigApplier` | Applique un `ConfigSpec` sur un fichier `.conf` |
 
-**Dataclass** :
+**Dataclasses** :
 
-| Classe | Description |
-|--------|-------------|
-| `ValidatedSection` | Section INI avec validation externe |
+| Classe | Champs | Description |
+|--------|--------|-------------|
+| `ValidatedSection` | — | Section INI avec validation externe |
+| `ConfigBlock` | `content`, `comment=""`, `section=None` | Bloc à appliquer dans le fichier cible |
+| `ConfigSpec` | `file_path`, `blocks=[]` | Spec complète (chemin résolu + liste de blocs) |
 
 ### Architecture des Classes
 
@@ -2024,10 +2111,38 @@ if editor.has_key("commands", "download_updates"):
   │             SectionAwareEditor                   │
   │  Édition ligne-à-ligne préservant les            │
   │  commentaires et la structure du fichier         │
-  │  + update_key(section, key, value)               │
-  │  + add_section(section)                          │
-  │  + remove_key(section, key)                      │
+  │  + is_block_present(content, section) → bool     │
+  │  + is_block_commented(content, section) → bool   │
+  │  + ensure_block(content, section, comment)       │
+  │  + list_sections() → list[str]                   │
   └──────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────┐
+  │         ConfigBlock              │
+  │  @dataclass                      │
+  │  content: str                    │
+  │  comment: str = ""               │
+  │  section: str | None = None      │
+  └──────────────────────────────────┘
+
+  ┌──────────────────────────────────┐
+  │         ConfigSpec               │
+  │  @dataclass                      │
+  │  file_path: Path                 │
+  │  blocks: list[ConfigBlock] = []  │
+  └──────────────────────────────────┘
+
+  ┌──────────────────────────────────┐      ┌────────────────────────────┐
+  │        TomlSpecLoader            │      │       ConfigApplier         │
+  │  __init__(loader=FileConfigLoader│      │  __init__(logger=None)      │
+  │  load(spec_path) → ConfigSpec    │      │  apply(spec) → list[str]   │
+  │  _resolve_path(raw) → Path       │      │  (crée / ajoute / décomm.) │
+  └──────────────────────────────────┘      └────────────────────────────┘
+                                                         │ utilise
+                                                         ▼
+                                            ┌────────────────────────────┐
+                                            │     SectionAwareEditor     │
+                                            └────────────────────────────┘
 ```
 
 ---
@@ -2431,6 +2546,9 @@ make all
 | `test_systemd_unit_porter.py` | 45 | SystemdUnitExporter, SystemdUnitRestorer (parse_ini, to_toml, export, to_ini, restore) |
 | `test_dotconf.py` | 20 | Sections INI, validation, lecture/écriture |
 | `test_dotconf_line_editor.py` | — | SectionAwareEditor, édition préservant commentaires |
+| `test_dotconf_spec.py` | 11 | ConfigBlock, ConfigSpec — dataclasses, champs par défaut, indépendance instances |
+| `test_dotconf_toml_spec_loader.py` | 9 | TomlSpecLoader : chargement TOML, résolution `~`/`$VAR`, erreurs |
+| `test_dotconf_applier.py` | 16 | ConfigApplier : création, ajout, décommentage, section INI, chmod, idempotence, logger |
 | `test_commands.py` | 74 | CommandBuilder, formatters, exécution, streaming, dry-run, root/user |
 | `test_scripts.py` | 19 | BashScriptConfig, installation scripts |
 | `test_notification.py` | 13 | NotificationConfig, génération bash |
@@ -2439,7 +2557,7 @@ make all
 | `test_identity_user.py` | — | LinuxUserManager, ensure_user, ensure_user_groups |
 | `test_cli.py` | 15 | CliCommand (ABC, register, execute, sous-classes partielles), CliApplication (dispatch, flags, args, edge cases) |
 | `test_cli_dry_run.py` | 9 | DryRunContext (would_write/create/modify), add_dry_run_argument (--dry-run, -n) |
-| **Total** | **543+** | |
+| **Total** | **579+** | |
 
 ### Tests Paramétrés
 
