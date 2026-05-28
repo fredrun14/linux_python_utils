@@ -31,6 +31,7 @@ Example:
 """
 
 import os
+import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -477,16 +478,23 @@ class LinuxCliInstaller(CliInstaller):
         Returns:
             True si l'installation uv a réussi, False sinon.
         """
+        uv_path = shutil.which("uv")
+        if uv_path is None:
+            self._logger.log_error(
+                "uv non trouvé — installez uv : pip install uv"
+            )
+            return False
+
         if config.deploy_type == "system":
             cmd = [
-                "sudo", "uv", "tool", "install",
+                "sudo", uv_path, "tool", "install",
                 "--python", self._PYTHON_EXEC,
                 "--editable",
                 str(config.source_dir),
             ]
         else:
             cmd = [
-                "uv", "tool", "install",
+                uv_path, "tool", "install",
                 "--editable", str(config.source_dir),
             ]
 
@@ -496,7 +504,7 @@ class LinuxCliInstaller(CliInstaller):
             )
         except FileNotFoundError:
             self._logger.log_error(
-                "uv non trouvé — installez uv : pip install uv"
+                f"uv non trouvé à {uv_path}"
             )
             return False
 
