@@ -265,14 +265,33 @@ class LinuxCommandExecutor(CommandExecutor):
 
         start = time.monotonic()
         try:
-            proc = subprocess.run(  # nosec B603
+            with subprocess.Popen(  # nosec B603
                 command,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
                 env=effective_env,
                 cwd=cwd,
-                timeout=effective_timeout,
-            )
+            ) as _proc:
+                try:
+                    _stdout, _stderr = _proc.communicate(
+                        timeout=effective_timeout
+                    )
+                except KeyboardInterrupt:
+                    _proc.terminate()
+                    try:
+                        _proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        _proc.kill()
+                    raise
+            proc = type(
+                "ProcResult", (),
+                {
+                    "returncode": _proc.returncode,
+                    "stdout": _stdout,
+                    "stderr": _stderr,
+                }
+            )()
             duration = time.monotonic() - start
             if proc.returncode != 0:
                 self._log_error(
