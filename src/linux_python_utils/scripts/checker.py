@@ -15,6 +15,7 @@ Typical usage example:
     )
 """
 
+import importlib.metadata
 import re
 import subprocess
 import tomllib
@@ -319,11 +320,7 @@ class LinuxScriptChecker(ScriptChecker):
         for dep in deps:
             pkg = self._extract_package_name(dep)
             constraint = self._extract_version_constraint(dep)
-            result = subprocess.run(
-                [pip_cmd, "show", pkg],
-                capture_output=True,
-            )
-            if result.returncode != 0:
+            if not self._is_installed(pkg, pip_cmd):
                 missing.append(
                     MissingDependency(
                         package=pkg, required=constraint
@@ -365,3 +362,33 @@ class LinuxScriptChecker(ScriptChecker):
         """
         match = re.search(r"[>=<!~][^,\s]+", dep)
         return match.group() if match else ""
+
+    @staticmethod
+    def _is_installed(pkg: str, pip_cmd: str) -> bool:
+        """Vérifie si un paquet est installé.
+
+        Utilise d'abord importlib.metadata (détecte les installs
+        éditables du venv courant), puis pip show en fallback.
+
+        Args:
+            pkg: Nom du paquet (ex. 'linux-python-utils').
+            pip_cmd: Chemin vers pip à utiliser en fallback.
+
+        Returns:
+            True si le paquet est disponible, False sinon.
+        """
+        normalized = pkg.replace("-", "_").lower()
+        try:
+            importlib.metadata.distribution(normalized)
+            return True
+        except importlib.metadata.PackageNotFoundError:
+            pass
+        try:
+            importlib.metadata.distribution(pkg)
+            return True
+        except importlib.metadata.PackageNotFoundError:
+            pass
+        result = subprocess.run(
+            [pip_cmd, "show", pkg], capture_output=True
+        )
+        return result.returncode == 0
