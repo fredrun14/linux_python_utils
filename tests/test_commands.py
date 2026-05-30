@@ -35,6 +35,8 @@ def _setup_popen(mock_popen, returncode=0, stdout="", stderr=""):
     proc.communicate.return_value = (stdout, stderr)
     proc.returncode = returncode
     mock_popen.return_value.__enter__.return_value = proc
+    # __exit__ ne doit pas avaler les exceptions levées dans le with
+    mock_popen.return_value.__exit__.return_value = False
     return proc
 
 
@@ -253,11 +255,12 @@ class TestLinuxCommandExecutorRun:
         assert result.stderr == "erreur"
 
     @patch(
-        "linux_python_utils.commands.runner.subprocess.run"
+        "linux_python_utils.commands.runner.subprocess.Popen"
     )
-    def test_run_timeout(self, mock_run):
+    def test_run_timeout(self, mock_popen):
         """Test du timeout lors de l'exécution."""
-        mock_run.side_effect = subprocess.TimeoutExpired(
+        proc = _setup_popen(mock_popen, returncode=0)
+        proc.communicate.side_effect = subprocess.TimeoutExpired(
             cmd=["sleep", "100"], timeout=5,
         )
         result = self.executor.run(
@@ -269,11 +272,11 @@ class TestLinuxCommandExecutorRun:
         self.mock_logger.log_error.assert_called_once()
 
     @patch(
-        "linux_python_utils.commands.runner.subprocess.run"
+        "linux_python_utils.commands.runner.subprocess.Popen"
     )
-    def test_run_commande_introuvable(self, mock_run):
+    def test_run_commande_introuvable(self, mock_popen):
         """Test avec une commande introuvable."""
-        mock_run.side_effect = FileNotFoundError(
+        mock_popen.side_effect = FileNotFoundError(
             "No such file or directory: 'inexistant'"
         )
         result = self.executor.run(["inexistant"])
@@ -283,13 +286,11 @@ class TestLinuxCommandExecutorRun:
         self.mock_logger.log_error.assert_called_once()
 
     @patch(
-        "linux_python_utils.commands.runner.subprocess.run"
+        "linux_python_utils.commands.runner.subprocess.Popen"
     )
-    def test_run_log_commande(self, mock_run):
+    def test_run_log_commande(self, mock_popen):
         """Test que la commande est loguée."""
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="", stderr="",
-        )
+        _setup_popen(mock_popen, returncode=0)
         self.executor.run(["ls", "-la"])
 
         self.mock_logger.log_info.assert_called_once()
@@ -344,16 +345,14 @@ class TestLinuxCommandExecutorRun:
         assert "rsync" in msg
 
     @patch(
-        "linux_python_utils.commands.runner.subprocess.run"
+        "linux_python_utils.commands.runner.subprocess.Popen"
     )
     def test_run_pas_log_erreur_si_code_retour_zero(
-        self, mock_run
+        self, mock_popen
     ):
         """Vérifie que log_error n'est pas appelé si returncode=0."""
         # Arrange
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="ok", stderr="",
-        )
+        _setup_popen(mock_popen, returncode=0, stdout="ok", stderr="")
 
         # Act
         self.executor.run(["ls", "-la"])
@@ -529,12 +528,12 @@ class TestLinuxCommandExecutorDryRun:
         )
 
     @patch(
-        "linux_python_utils.commands.runner.subprocess.run"
+        "linux_python_utils.commands.runner.subprocess.Popen"
     )
-    def test_dry_run_pas_execution(self, mock_run):
+    def test_dry_run_pas_execution(self, mock_popen):
         """Test que subprocess n'est pas appelé."""
         self.executor.run(["rm", "-rf", "/"])
-        mock_run.assert_not_called()
+        mock_popen.assert_not_called()
 
     def test_dry_run_log_commande(self):
         """Test que la commande est loguée avec [dry-run]."""
@@ -885,14 +884,12 @@ class TestLinuxCommandExecutorPrefixeLogs:
 
     @patch("linux_python_utils.commands.runner.os.getuid",
            return_value=1000)
-    @patch("linux_python_utils.commands.runner.subprocess.run")
+    @patch("linux_python_utils.commands.runner.subprocess.Popen")
     def test_log_contient_prefixe_user_quand_non_root(
-        self, mock_run, mock_getuid, mock_logger
+        self, mock_popen, mock_getuid, mock_logger
     ):
         """Vérifie le préfixe [user] dans le log quand non-root."""
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="", stderr=""
-        )
+        _setup_popen(mock_popen, returncode=0)
         executor = LinuxCommandExecutor(logger=mock_logger)
         executor.run(["ls"])
 
@@ -901,14 +898,12 @@ class TestLinuxCommandExecutorPrefixeLogs:
 
     @patch("linux_python_utils.commands.runner.os.getuid",
            return_value=0)
-    @patch("linux_python_utils.commands.runner.subprocess.run")
+    @patch("linux_python_utils.commands.runner.subprocess.Popen")
     def test_log_contient_prefixe_root_quand_root(
-        self, mock_run, mock_getuid, mock_logger
+        self, mock_popen, mock_getuid, mock_logger
     ):
         """Vérifie le préfixe [ROOT] dans le log quand root (uid=0)."""
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="", stderr=""
-        )
+        _setup_popen(mock_popen, returncode=0)
         executor = LinuxCommandExecutor(logger=mock_logger)
         executor.run(["id"])
 
@@ -963,14 +958,12 @@ class TestLinuxCommandExecutorConsoleFormatter:
         mock_proc.__exit__ = MagicMock(return_value=False)
         return mock_proc
 
-    @patch("linux_python_utils.commands.runner.subprocess.run")
+    @patch("linux_python_utils.commands.runner.subprocess.Popen")
     def test_console_formatter_format_start_appele_sur_run(
-        self, mock_run
+        self, mock_popen
     ):
         """Vérifie que format_start du formatter est appelé lors de run."""
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="", stderr=""
-        )
+        _setup_popen(mock_popen, returncode=0)
         mock_formatter = MagicMock(spec=CommandFormatter)
         mock_formatter.format_start.return_value = "msg"
 
@@ -1018,14 +1011,12 @@ class TestLinuxCommandExecutorConsoleFormatter:
             ["cmd"], executor._is_root
         )
 
-    @patch("linux_python_utils.commands.runner.subprocess.run")
+    @patch("linux_python_utils.commands.runner.subprocess.Popen")
     def test_sans_console_formatter_pas_appel_format(
-        self, mock_run
+        self, mock_popen
     ):
         """Vérifie qu'aucun formatter n'est appelé sans console_formatter."""
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="", stderr=""
-        )
+        _setup_popen(mock_popen, returncode=0)
         executor = LinuxCommandExecutor()
         # Ne doit pas lever d'exception
         result = executor.run(["ls"])
@@ -1061,14 +1052,12 @@ class TestLinuxCommandExecutorExecutedAsRoot:
 
     @patch("linux_python_utils.commands.runner.os.getuid",
            return_value=1000)
-    @patch("linux_python_utils.commands.runner.subprocess.run")
+    @patch("linux_python_utils.commands.runner.subprocess.Popen")
     def test_executed_as_root_faux_quand_uid_non_zero(
-        self, mock_run, mock_getuid
+        self, mock_popen, mock_getuid
     ):
         """Vérifie executed_as_root=False quand l'uid est non-zero."""
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="", stderr=""
-        )
+        _setup_popen(mock_popen, returncode=0)
         executor = LinuxCommandExecutor()
         result = executor.run(["ls"])
 
@@ -1076,14 +1065,12 @@ class TestLinuxCommandExecutorExecutedAsRoot:
 
     @patch("linux_python_utils.commands.runner.os.getuid",
            return_value=0)
-    @patch("linux_python_utils.commands.runner.subprocess.run")
+    @patch("linux_python_utils.commands.runner.subprocess.Popen")
     def test_executed_as_root_vrai_quand_uid_zero(
-        self, mock_run, mock_getuid
+        self, mock_popen, mock_getuid
     ):
         """Vérifie executed_as_root=True quand l'uid est 0 (root)."""
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="", stderr=""
-        )
+        _setup_popen(mock_popen, returncode=0)
         executor = LinuxCommandExecutor()
         result = executor.run(["id"])
 
@@ -1113,14 +1100,12 @@ class TestLinuxCommandExecutorExecutedAsRoot:
 
     @patch("linux_python_utils.commands.runner.os.getuid",
            return_value=0)
-    @patch("linux_python_utils.commands.runner.subprocess.run")
+    @patch("linux_python_utils.commands.runner.subprocess.Popen")
     def test_run_echec_executed_as_root_preserve(
-        self, mock_run, mock_getuid
+        self, mock_popen, mock_getuid
     ):
         """Vérifie executed_as_root dans un résultat en échec."""
-        mock_run.return_value = MagicMock(
-            returncode=1, stdout="", stderr="erreur"
-        )
+        _setup_popen(mock_popen, returncode=1, stdout="", stderr="erreur")
         executor = LinuxCommandExecutor()
         result = executor.run(["false"])
 
