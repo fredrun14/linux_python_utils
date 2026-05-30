@@ -97,7 +97,9 @@ class ScriptChecker(ABC):
         pyproject_path: Path,
         venv_path: Path | None,
         check_extras: list[str],
-    ) -> tuple[list[MissingDependency], int, str]:
+    ) -> tuple[
+        list[MissingDependency], list[InstalledDependency], int, str
+    ]:
         """Vérifie les dépendances déclarées dans pyproject.toml.
 
         Args:
@@ -106,7 +108,8 @@ class ScriptChecker(ABC):
             check_extras: Groupes d'extras à inclure.
 
         Returns:
-            Tuple (missing_deps, total_count, install_command).
+            Tuple (missing_deps, installed_deps, total_count,
+            install_command).
         """
 
 

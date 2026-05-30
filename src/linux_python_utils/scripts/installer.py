@@ -31,6 +31,7 @@ Example:
 """
 
 import os
+import pwd
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
@@ -474,6 +475,49 @@ class LinuxCliInstaller(CliInstaller):
             os.close(fd)
         self._logger.log_info(f"Wrapper écrit : {target_path}")
 
+    @staticmethod
+    def _candidate_homes() -> list[Path]:
+        """Retourne les homes à sonder pour localiser uv.
+
+        Inclut le home de l'utilisateur courant et, le cas échéant,
+        celui de ``$SUDO_USER`` (cas d'une exécution via sudo/root).
+
+        Returns:
+            Liste des répertoires home candidats.
+        """
+        homes = [Path.home()]
+        sudo_user = os.environ.get("SUDO_USER")
+        if sudo_user:
+            try:
+                homes.append(Path(pwd.getpwnam(sudo_user).pw_dir))
+            except KeyError:
+                pass
+        return homes
+
+    def _find_uv(self) -> str | None:
+        """Localise l'exécutable uv : PATH puis emplacements usuels.
+
+        Cherche dans l'ordre :
+        1. Le PATH courant (``shutil.which``).
+        2. ``~/.local/bin/uv`` et ``~/.cargo/bin/uv`` de l'utilisateur
+           courant et de ``$SUDO_USER``.
+
+        Indispensable sous sudo/root : le PATH de root n'inclut pas le
+        ``~/.local/bin`` de l'utilisateur qui a installé uv.
+
+        Returns:
+            Chemin absolu vers uv, ou None si introuvable.
+        """
+        found = shutil.which("uv")
+        if found:
+            return found
+        for home in self._candidate_homes():
+            for sub in ("/.local/bin/uv", "/.cargo/bin/uv"):
+                candidate = Path(str(home) + sub)
+                if candidate.is_file() and os.access(candidate, os.X_OK):
+                    return str(candidate)
+        return None
+
     def _run_uv_install(self, config: PythonCliConfig) -> bool:
         """Lance uv tool install pour déployer le script CLI.
 
@@ -483,22 +527,25 @@ class LinuxCliInstaller(CliInstaller):
         Returns:
             True si l'installation uv a réussi, False sinon.
         """
-        uv_path = shutil.which("uv")
+        uv_path = self._find_uv()
         if uv_path is None:
             self._logger.log_error(
-                "uv non trouvé — installez uv : pip install uv"
+                "uv introuvable (ni dans le PATH, ni dans "
+                "~/.local/bin ou ~/.cargo/bin). "
+                "Installez-le (pip install uv) ou ajoutez-le au PATH."
             )
             return False
 
         if config.deploy_type == "system":
-            cmd = [
-                "sudo",
+            base = [
                 "env", "UV_TOOL_BIN_DIR=/usr/local/bin",
                 uv_path, "tool", "install",
                 "--python", self._PYTHON_EXEC,
                 "--editable",
                 str(config.source_dir),
             ]
+            # sudo uniquement si on n'est pas déjà root
+            cmd = (["sudo"] if os.geteuid() != 0 else []) + base
         else:
             cmd = [
                 uv_path, "tool", "install",

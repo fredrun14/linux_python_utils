@@ -1,5 +1,6 @@
 """Tests pour le module scripts."""
 
+import importlib.metadata
 import os
 import tomllib
 from pathlib import Path
@@ -674,18 +675,24 @@ class TestLinuxScriptCheckerDeps:
         pyproject = self._make_pyproject(tmp_path, ["requests>=2.0"])
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
-            missing, total, _ = self.checker.check_dependencies(
+            missing, installed, total, _ = self.checker.check_dependencies(
                 pyproject, None, []
             )
         assert missing == []
+        assert len(installed) == 1
         assert total == 1
 
     def test_missing_package_in_report(self, tmp_path):
         """Vérifie que le paquet manquant apparaît dans missing."""
         pyproject = self._make_pyproject(tmp_path, ["click>=8.0"])
-        with patch("subprocess.run") as mock_run:
+        # _is_installed sonde importlib.metadata avant pip : forcer
+        # PackageNotFoundError pour simuler un paquet absent.
+        with patch(
+            "importlib.metadata.distribution",
+            side_effect=importlib.metadata.PackageNotFoundError,
+        ), patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1)
-            missing, total, _ = self.checker.check_dependencies(
+            missing, _installed, total, _ = self.checker.check_dependencies(
                 pyproject, None, []
             )
         assert len(missing) == 1
@@ -701,7 +708,7 @@ class TestLinuxScriptCheckerDeps:
         )
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
-            _, total, _ = self.checker.check_dependencies(
+            _, _installed, total, _ = self.checker.check_dependencies(
                 pyproject, None, ["dev"]
             )
         assert total == 1
@@ -766,7 +773,7 @@ class TestLinuxCliInstaller:
             "requires_python": None, "dependencies": [],
             "optional_dependencies": {}, "scripts": {"app": "app:main"},
         }
-        self.checker.check_dependencies.return_value = ([], 0, "")
+        self.checker.check_dependencies.return_value = ([], [], 0, "")
         config = self._user_config(tmp_path)
         with patch(
             "linux_python_utils.scripts.installer.ScriptPaths"
@@ -787,7 +794,7 @@ class TestLinuxCliInstaller:
             "requires_python": None, "dependencies": [],
             "optional_dependencies": {}, "scripts": {"app": "app:main"},
         }
-        self.checker.check_dependencies.return_value = ([], 0, "")
+        self.checker.check_dependencies.return_value = ([], [], 0, "")
         config = self._user_config(tmp_path)
         with patch(
             "linux_python_utils.scripts.installer.ScriptPaths"
@@ -809,7 +816,7 @@ class TestLinuxCliInstaller:
             "requires_python": None, "dependencies": [],
             "optional_dependencies": {}, "scripts": {},
         }
-        self.checker.check_dependencies.return_value = ([], 0, "")
+        self.checker.check_dependencies.return_value = ([], [], 0, "")
         config = self._user_config(tmp_path)
         with patch(
             "linux_python_utils.scripts.installer.ScriptPaths"
@@ -823,27 +830,53 @@ class TestLinuxCliInstaller:
             self.installer.install(config, confirm_wrapper=False)
         mock_write.assert_called_once()
 
-    def test_system_type_uses_sudo_in_command(self, tmp_path):
-        """Vérifie que sudo est inclus dans la commande uv pour system."""
+    def _run_system_install_cmd(self, tmp_path, euid):
+        """Lance un install system mocké et retourne la commande uv.
+
+        Args:
+            tmp_path: Répertoire temporaire pytest.
+            euid: Valeur simulée de os.geteuid().
+
+        Returns:
+            La liste d'arguments passée à subprocess.run.
+        """
         self.checker.check_python.return_value = True
         self.checker.read_pyproject.return_value = {
             "name": "app", "version": "1.0",
             "requires_python": None, "dependencies": [],
             "optional_dependencies": {}, "scripts": {"app": "app:main"},
         }
-        self.checker.check_dependencies.return_value = ([], 0, "")
+        self.checker.check_dependencies.return_value = ([], [], 0, "")
         config = PythonCliConfig(
             name="app", deploy_type="system", source_dir=tmp_path
         )
         with patch(
             "linux_python_utils.scripts.installer.ScriptPaths"
         ) as mock_cls, \
-             patch("subprocess.run") as mock_run:
+             patch("subprocess.run") as mock_run, \
+             patch(
+                 "linux_python_utils.scripts.installer.shutil.which",
+                 return_value="/usr/bin/uv",
+             ), \
+             patch(
+                 "linux_python_utils.scripts.installer.os.geteuid",
+                 return_value=euid,
+             ):
             mock_cls.return_value = self._patch_paths(tmp_path)
             mock_run.return_value = MagicMock(returncode=0, stderr="")
             self.installer.install(config, confirm_wrapper=False)
-            cmd = mock_run.call_args[0][0]
-        assert "sudo" in cmd
+            return mock_run.call_args[0][0]
+
+    def test_system_avec_sudo_si_non_root(self, tmp_path):
+        """sudo présent dans la commande system si euid != 0."""
+        cmd = self._run_system_install_cmd(tmp_path, euid=1000)
+        assert cmd[0] == "sudo"
+
+    def test_system_sans_sudo_si_root(self, tmp_path):
+        """sudo absent de la commande system si déjà root (euid == 0)."""
+        cmd = self._run_system_install_cmd(tmp_path, euid=0)
+        assert "sudo" not in cmd
+        assert cmd[0] == "env"
 
     def test_missing_deps_recorded_in_report(self, tmp_path):
         """Vérifie que les deps manquantes sont dans le rapport."""
@@ -855,7 +888,7 @@ class TestLinuxCliInstaller:
         }
         missing_dep = MissingDependency("requests", ">=2.0")
         self.checker.check_dependencies.return_value = (
-            [missing_dep], 1, "pip3 install -e '/app'"
+            [missing_dep], [], 1, "pip3 install -e '/app'"
         )
         config = self._user_config(tmp_path)
         with patch(
@@ -867,6 +900,69 @@ class TestLinuxCliInstaller:
             report = self.installer.install(config, confirm_wrapper=False)
         assert len(report.missing_deps) == 1
         assert report.success is True
+
+    def test_find_uv_prefere_le_path(self, tmp_path):
+        """_find_uv retourne le résultat de shutil.which en priorité."""
+        with patch(
+            "linux_python_utils.scripts.installer.shutil.which",
+            return_value="/usr/bin/uv",
+        ):
+            assert self.installer._find_uv() == "/usr/bin/uv"
+
+    def test_find_uv_repli_local_bin(self, tmp_path):
+        """_find_uv trouve uv dans ~/.local/bin si absent du PATH."""
+        fake_uv = tmp_path / ".local" / "bin" / "uv"
+        fake_uv.parent.mkdir(parents=True)
+        fake_uv.write_text("#!/bin/sh\n")
+        fake_uv.chmod(0o755)
+        with patch(
+            "linux_python_utils.scripts.installer.shutil.which",
+            return_value=None,
+        ), patch(
+            "linux_python_utils.scripts.installer.Path.home",
+            return_value=tmp_path,
+        ), patch.dict(
+            "linux_python_utils.scripts.installer.os.environ", {}, clear=True
+        ):
+            assert self.installer._find_uv() == str(fake_uv)
+
+    def test_find_uv_repli_sudo_user(self, tmp_path):
+        """_find_uv sonde le home de $SUDO_USER (cas sudo/root)."""
+        sudo_home = tmp_path / "fredhome"
+        fake_uv = sudo_home / ".local" / "bin" / "uv"
+        fake_uv.parent.mkdir(parents=True)
+        fake_uv.write_text("#!/bin/sh\n")
+        fake_uv.chmod(0o755)
+        pw = MagicMock()
+        pw.pw_dir = str(sudo_home)
+        with patch(
+            "linux_python_utils.scripts.installer.shutil.which",
+            return_value=None,
+        ), patch(
+            "linux_python_utils.scripts.installer.Path.home",
+            return_value=tmp_path / "roothome",
+        ), patch.dict(
+            "linux_python_utils.scripts.installer.os.environ",
+            {"SUDO_USER": "fred"},
+            clear=True,
+        ), patch(
+            "linux_python_utils.scripts.installer.pwd.getpwnam",
+            return_value=pw,
+        ):
+            assert self.installer._find_uv() == str(fake_uv)
+
+    def test_find_uv_introuvable_retourne_none(self, tmp_path):
+        """_find_uv retourne None si uv n'est nulle part."""
+        with patch(
+            "linux_python_utils.scripts.installer.shutil.which",
+            return_value=None,
+        ), patch(
+            "linux_python_utils.scripts.installer.Path.home",
+            return_value=tmp_path / "empty",
+        ), patch.dict(
+            "linux_python_utils.scripts.installer.os.environ", {}, clear=True
+        ):
+            assert self.installer._find_uv() is None
 
 
 class TestLinuxCliInstallerWrapper:
