@@ -549,7 +549,7 @@ class LinuxCliInstaller(CliInstaller):
         else:
             cmd = [
                 uv_path, "tool", "install",
-                "--editable", str(config.source_dir),
+                "--force", "--editable", str(config.source_dir),
             ]
 
         try:
