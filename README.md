@@ -2655,6 +2655,36 @@ config.create_default_config("~/.config/app/config.toml")
 ```
 </details>
 
+<details>
+<summary><b>❌ uv tool install — error: Executable already exists</b></summary>
+
+**Cause :** Un précédent `uv tool install` a échoué ou a été supprimé partiellement, laissant un symlink cassé dans `~/.local/bin/`.
+
+```
+error: Executable already exists: mon-outil (use `--force` to overwrite)
+```
+
+**Diagnostic :**
+```bash
+ls -la ~/.local/bin/mon-outil
+# → lrwxrwxrwx ... ~/.local/bin/mon-outil -> ~/.local/share/uv/tools/mon-outil/bin/mon-outil
+#   (cible inexistante = symlink cassé)
+```
+
+**Solution :**
+```bash
+# Supprimer le symlink cassé
+rm ~/.local/bin/mon-outil
+
+# Relancer l'installation
+mon-outil install
+```
+
+> `LinuxCliInstaller` (v1.7+) ajoute automatiquement `--force` à `uv tool install`
+> pour les déploiements utilisateur, rendant la commande idempotente.
+
+</details>
+
 ## 🤝 Contribution
 
 Les contributions sont les bienvenues !
