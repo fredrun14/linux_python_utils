@@ -3,7 +3,7 @@
 import subprocess  # nosec B404
 
 from linux_python_utils.logging.base import Logger
-from linux_python_utils.systemd.validators import validate_unit_name
+from linux_python_utils.systemd.validators import validate_full_unit_name
 
 
 class SystemdExecutor:
@@ -73,7 +73,7 @@ class SystemdExecutor:
         Returns:
             True si succès, False sinon
         """
-        validate_unit_name(unit_name.rsplit(".", 1)[0])
+        validate_full_unit_name(unit_name)
         try:
             args = ["enable"]
             if now:
@@ -108,7 +108,7 @@ class SystemdExecutor:
         Returns:
             True si succès, False sinon
         """
-        validate_unit_name(unit_name.rsplit(".", 1)[0])
+        validate_full_unit_name(unit_name)
         try:
             args = ["disable"]
             if now:
@@ -130,6 +130,32 @@ class SystemdExecutor:
             )
             return False
 
+    def _simple_action(
+        self,
+        verb: str,
+        unit_name: str,
+        msg_ok: str,
+        msg_err: str,
+    ) -> bool:
+        """Exécute une action systemctl simple (start/stop/restart).
+
+        Args:
+            verb: Commande systemctl (start, stop, restart…).
+            unit_name: Nom de l'unité (déjà validé par l'appelant).
+            msg_ok: Message de log en cas de succès.
+            msg_err: Préfixe du message de log en cas d'échec.
+
+        Returns:
+            True si succès, False sinon.
+        """
+        try:
+            self._run_systemctl([verb, unit_name])
+            self.logger.log_info(msg_ok)
+            return True
+        except subprocess.CalledProcessError as e:
+            self.logger.log_error(f"{msg_err}: {e}")
+            return False
+
     def start_unit(self, unit_name: str) -> bool:
         """
         Démarre une unité systemd.
@@ -140,16 +166,12 @@ class SystemdExecutor:
         Returns:
             True si succès, False sinon
         """
-        validate_unit_name(unit_name.rsplit(".", 1)[0])
-        try:
-            self._run_systemctl(["start", unit_name])
-            self.logger.log_info(f"Unité {unit_name} démarrée.")
-            return True
-        except subprocess.CalledProcessError as e:
-            self.logger.log_error(
-                f"Erreur lors du démarrage de {unit_name}: {e}"
-            )
-            return False
+        validate_full_unit_name(unit_name)
+        return self._simple_action(
+            "start", unit_name,
+            f"Unité {unit_name} démarrée.",
+            f"Erreur lors du démarrage de {unit_name}",
+        )
 
     def stop_unit(self, unit_name: str) -> bool:
         """
@@ -161,16 +183,12 @@ class SystemdExecutor:
         Returns:
             True si succès, False sinon
         """
-        validate_unit_name(unit_name.rsplit(".", 1)[0])
-        try:
-            self._run_systemctl(["stop", unit_name])
-            self.logger.log_info(f"Unité {unit_name} arrêtée.")
-            return True
-        except subprocess.CalledProcessError as e:
-            self.logger.log_error(
-                f"Erreur lors de l'arrêt de {unit_name}: {e}"
-            )
-            return False
+        validate_full_unit_name(unit_name)
+        return self._simple_action(
+            "stop", unit_name,
+            f"Unité {unit_name} arrêtée.",
+            f"Erreur lors de l'arrêt de {unit_name}",
+        )
 
     def restart_unit(self, unit_name: str) -> bool:
         """
@@ -182,16 +200,12 @@ class SystemdExecutor:
         Returns:
             True si succès, False sinon
         """
-        validate_unit_name(unit_name.rsplit(".", 1)[0])
-        try:
-            self._run_systemctl(["restart", unit_name])
-            self.logger.log_info(f"Unité {unit_name} redémarrée.")
-            return True
-        except subprocess.CalledProcessError as e:
-            self.logger.log_error(
-                f"Erreur lors du redémarrage de {unit_name}: {e}"
-            )
-            return False
+        validate_full_unit_name(unit_name)
+        return self._simple_action(
+            "restart", unit_name,
+            f"Unité {unit_name} redémarrée.",
+            f"Erreur lors du redémarrage de {unit_name}",
+        )
 
     def get_status(self, unit_name: str) -> str | None:
         """
@@ -203,7 +217,7 @@ class SystemdExecutor:
         Returns:
             Statut de l'unité (active, inactive, failed, etc.) ou None
         """
-        validate_unit_name(unit_name.rsplit(".", 1)[0])
+        validate_full_unit_name(unit_name)
         try:
             result = self._run_systemctl(
                 ["is-active", unit_name],
@@ -239,7 +253,7 @@ class SystemdExecutor:
         Returns:
             True si activée, False sinon
         """
-        validate_unit_name(unit_name.rsplit(".", 1)[0])
+        validate_full_unit_name(unit_name)
         try:
             result = self._run_systemctl(
                 ["is-enabled", unit_name],

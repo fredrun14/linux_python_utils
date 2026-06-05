@@ -336,6 +336,18 @@ class TestMountConfigLoader(unittest.TestCase):
             loader.load_multiple()
 
         self.assertIn("doit être une liste", str(context.exception))
+        self.assertIn("mounts", str(context.exception))
+
+    def test_load_multiple_message_contient_nom_section(self):
+        """Vérifie que le nom de section est interpolé dans le message."""
+        config = {"custom_mounts": {"not": "a list"}}
+        mock_loader = MockConfigLoader(config)
+        loader = MountConfigLoader("/fake/path.toml", mock_loader)
+
+        with self.assertRaises(TypeError) as context:
+            loader.load_multiple(section="custom_mounts")
+
+        self.assertIn("custom_mounts", str(context.exception))
 
 
 class TestBashScriptConfigLoader(unittest.TestCase):
@@ -550,9 +562,16 @@ if __name__ == "__main__":
 
 
 class TestConfigLoadersBaseImport:
-    """Import du module base pour la couverture."""
+    """Vérifie que les loaders spécialisés sont importables depuis le paquet."""
 
-    def test_import_base_module(self) -> None:
-        """L'import du module base s'effectue sans erreur."""
-        import linux_python_utils.systemd.config_loaders.base  # noqa: F401
-        assert True
+    def test_import_service_loader(self) -> None:
+        """ServiceConfigLoader est importable depuis config_loaders."""
+        from linux_python_utils.systemd.config_loaders import (  # noqa: F401
+            ServiceConfigLoader,
+        )
+
+    def test_import_mount_loader(self) -> None:
+        """MountConfigLoader est importable depuis config_loaders."""
+        from linux_python_utils.systemd.config_loaders import (  # noqa: F401
+            MountConfigLoader,
+        )

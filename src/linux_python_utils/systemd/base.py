@@ -1,359 +1,465 @@
 """Interfaces abstraites pour la gestion des unités systemd."""
 
+import json
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, replace
-from typing import ClassVar, TYPE_CHECKING
-from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING
 
-from linux_python_utils.systemd.validators import validate_unit_name
+from linux_python_utils.systemd.base_config import (
+    AutomountConfig,
+    BaseSystemdConfig,
+    MountConfig,
+    ServiceConfig,
+    TimerConfig,
+)
+from linux_python_utils.systemd.validators import (
+    path_to_unit_name as _path_to_unit_name,
+    validate_service_name,
+    validate_unit_name,
+)
 
 if TYPE_CHECKING:
     from linux_python_utils.logging.base import Logger
     from linux_python_utils.systemd.executor import SystemdExecutor
 
+# Re-exports pour compatibilité des imports existants
+__all__ = [
+    "BaseSystemdConfig",
+    "MountConfig",
+    "AutomountConfig",
+    "TimerConfig",
+    "ServiceConfig",
+    "UnitManager",
+    "MountUnitManager",
+    "TimerUnitManager",
+    "ServiceUnitManager",
+    "UserUnitManager",
+    "UserTimerUnitManager",
+    "UserServiceUnitManager",
+    "_ServiceOperationsMixin",
+    "_TimerOperationsMixin",
+]
+
+# Les dataclasses (BaseSystemdConfig, MountConfig, AutomountConfig,
+# TimerConfig, ServiceConfig) sont définies dans base_config.py et
+# réexportées ici pour préserver la compatibilité des imports.
+
 
 # =============================================================================
-# Dataclasses de configuration
+# Helpers d'écriture sécurisée (O_NOFOLLOW)
 # =============================================================================
 
+def _write_unit_content(
+    unit_path: str,
+    content: str,
+    logger: "Logger",
+    *,
+    log_label: str = "",
+) -> bool:
+    """Écrit le contenu d'une unité via fd O_NOFOLLOW (TOCTOU-safe).
 
-@dataclass(frozen=True)
-class BaseSystemdConfig:
-    """Configuration de base pour une unité systemd.
+    Args:
+        unit_path: Chemin absolu du fichier à écrire.
+        content: Contenu à écrire (UTF-8).
+        logger: Logger pour les messages d'erreur/info.
+        log_label: Suffixe optionnel dans le message de log (ex: " utilisateur").
 
-    Attributes:
-        description: Description de l'unité pour systemd.
-        created_at: Horodatage automatique de la création de la configuration.
+    Returns:
+        True si succès, False sinon.
     """
-
-    description: str
-    created_at: datetime = field(
-        default_factory=datetime.now, compare=False, kw_only=True
-    )
-
-
-@dataclass(frozen=True)
-class MountConfig(BaseSystemdConfig):
-    """Configuration pour une unité .mount systemd.
-
-    Attributes:
-        what: Source du montage (ex: "192.168.1.10:/share", "//server/share").
-        where: Chemin du point de montage local.
-        type: Type de système de fichiers (nfs, cifs, sshfs, ext4, etc.).
-        options: Options de montage (défaut: chaîne vide).
-    """
-
-    what: str
-    where: str
-    type: str
-    options: str = ""
-
-    def __post_init__(self) -> None:
-        """Valide que les champs requis sont présents et cohérents."""
-        if not self.what or not self.where:
-            raise ValueError("'what' et 'where' sont requis")
-        if not self.where.startswith("/"):
-            raise ValueError(
-                f"'where' doit être un chemin absolu : {self.where!r}"
+    try:
+        fd = os.open(
+            unit_path,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+            0o644,
+        )
+    except OSError as e:
+        if e.errno == 40:  # errno.ELOOP — lien symbolique
+            logger.log_error(
+                f"Refus d'écrire {unit_path} : lien symbolique détecté"
             )
-        self._validate_what()
+        elif isinstance(e, PermissionError):
+            logger.log_error(
+                f"Permission refusée pour écrire {unit_path}. "
+                "Exécution en tant que root requise."
+            )
+        else:
+            logger.log_error(
+                f"Erreur lors de l'écriture de {unit_path}: {e}"
+            )
+        return False
+    try:
+        os.fchmod(fd, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+    except OSError as e:
+        logger.log_error(
+            f"Erreur lors de l'écriture de {unit_path}: {e}"
+        )
+        return False
+    logger.log_info(f"Fichier unit{log_label} créé: {unit_path}")
+    return True
 
-    def _validate_what(self) -> None:
-        """Valide le champ 'what' selon le type de montage."""
-        fs_type = self.type.lower()
-        if fs_type in ("nfs", "nfs4"):
-            if ":" not in self.what or self.what.startswith(":"):
-                raise ValueError(
-                    f"Format NFS invalide pour 'what' : {self.what!r}"
-                    " (attendu : host:/path)"
-                )
-        elif fs_type == "cifs":
-            if not self.what.startswith("//"):
-                raise ValueError(
-                    f"Format CIFS invalide pour 'what' : {self.what!r}"
-                    " (attendu : //host/share)"
-                )
-        elif fs_type in (
-            "ext4", "ext3", "xfs", "btrfs", "vfat", "ntfs"
+
+def _remove_unit_content(
+    unit_path: str,
+    logger: "Logger",
+    *,
+    log_label: str = "",
+) -> bool:
+    """Supprime un fichier unit (TOCTOU-safe via try/except).
+
+    Args:
+        unit_path: Chemin absolu du fichier à supprimer.
+        logger: Logger pour les messages d'erreur/info.
+        log_label: Suffixe optionnel dans le message de log.
+
+    Returns:
+        True si succès ou fichier inexistant, False si erreur.
+    """
+    try:
+        os.remove(unit_path)
+        logger.log_info(f"Fichier unit{log_label} supprimé: {unit_path}")
+    except FileNotFoundError:
+        pass
+    except PermissionError:
+        logger.log_error(
+            f"Permission refusée pour supprimer {unit_path}. "
+            "Exécution en tant que root requise."
+        )
+        return False
+    except OSError as e:
+        logger.log_error(
+            f"Erreur lors de la suppression de {unit_path}: {e}"
+        )
+        return False
+    return True
+
+
+# =============================================================================
+# Mixins de comportement partagé système ↔ utilisateur
+# =============================================================================
+
+class _ServiceOperationsMixin:
+    """Mixin des opérations service communes aux managers système et utilisateur.
+
+    Requiert que la classe héritante fournisse :
+    ``logger``, ``executor``, ``enable()``, ``disable()``,
+    ``get_status()``, ``reload_systemd()``, ``_remove_unit_file()``.
+    """
+
+    _service_label: str = "Service"
+
+    def start_service(self, service_name: str) -> bool:
+        """Démarre un service.
+
+        Args:
+            service_name: Nom du service (sans extension .service).
+
+        Returns:
+            True si succès, False sinon.
+        """
+        validate_service_name(service_name)
+        return self.executor.start_unit(  # type: ignore[attr-defined]
+            f"{service_name}.service"
+        )
+
+    def stop_service(self, service_name: str) -> bool:
+        """Arrête un service.
+
+        Args:
+            service_name: Nom du service (sans extension .service).
+
+        Returns:
+            True si succès, False sinon.
+        """
+        validate_service_name(service_name)
+        return self.executor.stop_unit(  # type: ignore[attr-defined]
+            f"{service_name}.service"
+        )
+
+    def restart_service(self, service_name: str) -> bool:
+        """Redémarre un service.
+
+        Args:
+            service_name: Nom du service (sans extension .service).
+
+        Returns:
+            True si succès, False sinon.
+        """
+        validate_service_name(service_name)
+        return self.executor.restart_unit(  # type: ignore[attr-defined]
+            f"{service_name}.service"
+        )
+
+    def enable_service(self, service_name: str) -> bool:
+        """Active un service.
+
+        Args:
+            service_name: Nom du service (sans extension .service).
+
+        Returns:
+            True si succès, False sinon.
+        """
+        validate_service_name(service_name)
+        return self.enable(  # type: ignore[attr-defined]
+            f"{service_name}.service"
+        )
+
+    def disable_service(self, service_name: str) -> bool:
+        """Désactive un service.
+
+        Args:
+            service_name: Nom du service (sans extension .service).
+
+        Returns:
+            True si succès, False sinon.
+        """
+        validate_service_name(service_name)
+        return self.disable(  # type: ignore[attr-defined]
+            f"{service_name}.service"
+        )
+
+    def remove_service_unit(self, service_name: str) -> bool:
+        """Supprime un fichier .service.
+
+        Args:
+            service_name: Nom du service (sans extension).
+
+        Returns:
+            True si succès, False sinon.
+        """
+        validate_service_name(service_name)
+        if not self.disable_service(service_name):
+            self.logger.log_warning(  # type: ignore[attr-defined]
+                f"disable_service échoué pour {service_name!r} "
+                "(service peut-être déjà inactif) — "
+                "suppression du fichier unit quand même"
+            )
+        if not self._remove_unit_file(  # type: ignore[attr-defined]
+            f"{service_name}.service"
         ):
-            if not self.what.startswith("/dev/"):
-                raise ValueError(
-                    f"'what' doit être un device pour {fs_type} : "
-                    f"{self.what!r} (attendu : /dev/...)"
-                )
+            return False
+        self.reload_systemd()  # type: ignore[attr-defined]
+        self.logger.log_info(  # type: ignore[attr-defined]
+            f"{self._service_label} {service_name}.service supprimé"
+        )
+        return True
 
-    @property
-    def unit_name(self) -> str:
-        """Convertit le chemin de montage en nom d'unité systemd.
+    def get_service_status(self, service_name: str) -> "str | None":
+        """Récupère le statut d'un service.
 
-        Exemple: /media/nas/backup → media-nas-backup
-
-        Returns:
-            Nom de l'unité systemd (sans extension).
-        """
-        name = self.where.strip("/").replace("/", "-")
-        return validate_unit_name(name)
-
-    def to_unit_file(self) -> str:
-        """Génère le contenu d'un fichier .mount systemd.
+        Args:
+            service_name: Nom du service (sans extension).
 
         Returns:
-            Contenu du fichier .mount.
+            Statut du service ou None si erreur.
         """
-        options_line = f"Options={self.options}\n" if self.options else ""
-        return f"""[Unit]
-Description={self.description}
-DefaultDependencies=no
-After=network-online.target nss-lookup.target
-Requires=network-online.target
-Wants=nss-lookup.target
-StartLimitIntervalSec=120
-StartLimitBurst=5
+        validate_service_name(service_name)
+        return self.get_status(  # type: ignore[attr-defined]
+            f"{service_name}.service"
+        )
 
-[Mount]
-What={self.what}
-Where={self.where}
-Type={self.type}
-{options_line}
-TimeoutSec=30
+    def is_service_active(self, service_name: str) -> bool:
+        """Vérifie si un service est actif.
 
-[Install]
-WantedBy=remote-fs.target
-"""
+        Args:
+            service_name: Nom du service (sans extension).
+
+        Returns:
+            True si actif, False sinon.
+        """
+        return self.get_service_status(service_name) == "active"
+
+    def is_service_enabled(self, service_name: str) -> bool:
+        """Vérifie si un service est activé au démarrage.
+
+        Args:
+            service_name: Nom du service (sans extension).
+
+        Returns:
+            True si activé, False sinon.
+        """
+        validate_service_name(service_name)
+        return self.executor.is_enabled(  # type: ignore[attr-defined]
+            f"{service_name}.service"
+        )
 
 
-@dataclass(frozen=True)
-class AutomountConfig(BaseSystemdConfig):
-    """Configuration pour une unité .automount systemd.
+class _TimerOperationsMixin:
+    """Mixin des opérations timer communes aux managers système et utilisateur.
 
-    Attributes:
-
-        where: Chemin du point de montage local.
-        timeout_idle_sec: Délai d'inactivité avant démontage automatique
-            en secondes (0 = pas de démontage automatique).
+    Requiert que la classe héritante fournisse :
+    ``logger``, ``executor``, ``enable()``, ``disable()``,
+    ``get_status()``, ``reload_systemd()``, ``_remove_unit_file()``.
     """
 
-    where: str
-    timeout_idle_sec: int = 0
+    _timer_label: str = "Timer"
 
-    def __post_init__(self) -> None:
-        """Valide que les champs requis sont présents."""
-        if not self.where:
-            raise ValueError("'where' est requis")
-        if not self.where.startswith("/"):
-            raise ValueError(
-                f"'where' doit être un chemin absolu : {self.where!r}"
+    def enable_timer(self, timer_name: str) -> bool:
+        """Active un timer.
+
+        Args:
+            timer_name: Nom du timer (sans extension .timer).
+
+        Returns:
+            True si succès, False sinon.
+        """
+        validate_unit_name(timer_name)
+        return self.enable(  # type: ignore[attr-defined]
+            f"{timer_name}.timer"
+        )
+
+    def disable_timer(self, timer_name: str) -> bool:
+        """Désactive un timer.
+
+        Args:
+            timer_name: Nom du timer (sans extension .timer).
+
+        Returns:
+            True si succès, False sinon.
+        """
+        validate_unit_name(timer_name)
+        return self.disable(  # type: ignore[attr-defined]
+            f"{timer_name}.timer"
+        )
+
+    def remove_timer_unit(self, timer_name: str) -> bool:
+        """Supprime un fichier .timer.
+
+        Args:
+            timer_name: Nom du timer (sans extension).
+
+        Returns:
+            True si succès, False sinon.
+        """
+        validate_unit_name(timer_name)
+        if not self.disable_timer(timer_name):
+            self.logger.log_warning(  # type: ignore[attr-defined]
+                f"disable_timer échoué pour {timer_name!r} "
+                "(unité peut-être déjà inactive) — "
+                "suppression du fichier unit quand même"
+            )
+        if not self._remove_unit_file(  # type: ignore[attr-defined]
+            f"{timer_name}.timer"
+        ):
+            return False
+        self.reload_systemd()  # type: ignore[attr-defined]
+        self.logger.log_info(  # type: ignore[attr-defined]
+            f"{self._timer_label} {timer_name}.timer supprimé"
+        )
+        return True
+
+    def get_timer_status(self, timer_name: str) -> "str | None":
+        """Récupère le statut d'un timer.
+
+        Args:
+            timer_name: Nom du timer (sans extension).
+
+        Returns:
+            Statut du timer ou None si erreur.
+        """
+        validate_unit_name(timer_name)
+        return self.get_status(  # type: ignore[attr-defined]
+            f"{timer_name}.timer"
+        )
+
+    def list_timers(self) -> "list[dict[str, str]]":
+        """Liste tous les timers actifs.
+
+        Utilise ``--output=json`` pour un parsing fiable, avec
+        fallback sur le parsing texte si le format JSON n'est pas
+        supporté par la version de systemd installée.
+
+        Returns:
+            Liste de dictionnaires avec les infos des timers.
+
+        Raises:
+            RuntimeError: Si l'exécution de systemctl échoue.
+        """
+        try:
+            result = self.executor._run_systemctl(  # type: ignore[attr-defined]
+                ["list-timers", "--no-pager", "--output=json"],
+                check=False,
+            )
+        except (FileNotFoundError, OSError) as e:
+            raise RuntimeError(
+                f"Impossible d'exécuter systemctl : {e}"
+            ) from e
+
+        if result.returncode != 0:
+            if "unknown option" in result.stderr.lower() \
+                    or "invalid option" in result.stderr.lower():
+                return self._list_timers_text_fallback()
+            raise RuntimeError(
+                f"Erreur systemctl list-timers : {result.stderr}"
             )
 
-    @property
-    def unit_name(self) -> str:
-        """Convertit le chemin de montage en nom d'unité systemd.
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return self._list_timers_text_fallback()
 
-        Exemple: /media/nas/backup → media-nas-backup
+        timers = []
+        for entry in data:
+            timers.append({
+                "unit": entry.get("unit", ""),
+                "activates": entry.get("activates", ""),
+                "next": entry.get("next", ""),
+                "left": entry.get("left", ""),
+                "last": entry.get("last", ""),
+                "passed": entry.get("passed", ""),
+            })
+        return timers
 
-        Returns:
-            Nom de l'unité systemd (sans extension).
-        """
-        name = self.where.strip("/").replace("/", "-")
-        return validate_unit_name(name)
-
-    def to_unit_file(self) -> str:
-        """Génère le contenu d'un fichier .automount systemd.
-
-        Returns:
-            Contenu du fichier .automount.
-        """
-        timeout_line = ""
-        if self.timeout_idle_sec > 0:
-            timeout_line = f"TimeoutIdleSec={self.timeout_idle_sec}\n"
-        return f"""[Unit]
-Description=Automontage {self.description}
-DefaultDependencies=no
-ConditionPathExists={self.where}
-
-[Automount]
-Where={self.where}
-{timeout_line}
-DirectoryMode=0750
-
-[Install]
-WantedBy=remote-fs.target
-"""
-
-
-@dataclass(frozen=True)
-class TimerConfig(BaseSystemdConfig):
-    """Configuration pour une unité .timer systemd.
-
-    Attributes:
-        unit: Nom de l'unité à déclencher (ex: "backup.service").
-        on_calendar: Expression de calendrier (ex: "daily", "*-*-* 06:00:00").
-        on_boot_sec: Délai après le démarrage (ex: "5min").
-        on_unit_active_sec: Délai après la dernière activation de l'unité.
-        persistent: Rattraper les exécutions manquées après un arrêt.
-        randomized_delay_sec: Délai aléatoire ajouté (ex: "1h").
-    """
-
-    unit: str
-    on_calendar: str = ""
-    on_boot_sec: str = ""
-    on_unit_active_sec: str = ""
-    persistent: bool = False
-    randomized_delay_sec: str = ""
-
-    def __post_init__(self) -> None:
-        """Valide que les champs requis sont présents."""
-        if not self.unit:
-            raise ValueError("'unit' est requis")
-
-    @property
-    def timer_name(self) -> str:
-        """Extrait le nom du timer depuis le nom de l'unité cible.
-
-        Exemple: backup.service → backup
+    def _list_timers_text_fallback(self) -> "list[dict[str, str]]":
+        """Fallback texte pour list_timers sur vieux systemd.
 
         Returns:
-            Nom du timer (sans extension).
+            Liste de dictionnaires avec les infos des timers.
+
+        Raises:
+            RuntimeError: Si l'exécution de systemctl échoue.
         """
-        return self.unit.rsplit(".", 1)[0]
-
-    def to_unit_file(self) -> str:
-        """Génère le contenu d'un fichier .timer systemd.
-
-        Returns:
-            Contenu du fichier .timer.
-        """
-        lines = [
-            "[Unit]",
-            f"Description={self.description}",
-            "",
-            "[Timer]",
-            f"Unit={self.unit}"
-        ]
-
-        if self.on_calendar:
-            lines.append(f"OnCalendar={self.on_calendar}")
-        if self.on_boot_sec:
-            lines.append(f"OnBootSec={self.on_boot_sec}")
-        if self.on_unit_active_sec:
-            lines.append(f"OnUnitActiveSec={self.on_unit_active_sec}")
-        if self.persistent:
-            lines.append("Persistent=true")
-        if self.randomized_delay_sec:
-            lines.append(f"RandomizedDelaySec={self.randomized_delay_sec}")
-
-        lines.extend([
-            "",
-            "[Install]",
-            "WantedBy=timers.target"
-        ])
-
-        return "\n".join(lines) + "\n"
-
-
-@dataclass(frozen=True)
-class ServiceConfig(BaseSystemdConfig):
-    """Configuration pour une unité .service systemd.
-
-    Attributes:
-        exec_start: Commande à exécuter au démarrage.
-        type: Type de service (simple, oneshot, forking, notify, dbus, idle).
-        user: Utilisateur sous lequel exécuter le service.
-        group: Groupe sous lequel exécuter le service.
-        working_directory: Répertoire de travail.
-        environment: Variables d'environnement (dict).
-        restart: Politique de redémarrage (no, always, on-failure, etc.).
-        restart_sec: Délai avant redémarrage en secondes.
-        wanted_by: Cible d'installation (défaut: multi-user.target).
-    """
-
-    _VALID_TYPES: ClassVar[tuple[str, ...]] = (
-        "simple", "exec", "forking", "oneshot",
-        "dbus", "notify", "idle",
-    )
-    _VALID_RESTART: ClassVar[tuple[str, ...]] = (
-        "no", "always", "on-success", "on-failure",
-        "on-abnormal", "on-abort", "on-watchdog",
-    )
-
-    exec_start: str
-    type: str = "simple"
-    user: str = ""
-    group: str = ""
-    working_directory: str = ""
-    environment: dict[str, str] = field(default_factory=dict)
-    restart: str = "no"
-    restart_sec: int = 0
-    wanted_by: str = "multi-user.target"
-
-    def __post_init__(self) -> None:
-        """Valide que les champs requis sont présents et cohérents."""
-        if not self.exec_start:
-            raise ValueError("'exec_start' est requis")
-        if self.type not in self._VALID_TYPES:
-            raise ValueError(
-                f"Type de service invalide : {self.type!r} "
-                f"(valeurs acceptées : {', '.join(self._VALID_TYPES)})"
+        try:
+            result = self.executor._run_systemctl(  # type: ignore[attr-defined]
+                ["list-timers", "--no-pager", "--plain"],
+                check=False,
             )
-        if self.restart not in self._VALID_RESTART:
-            raise ValueError(
-                f"Politique de redémarrage invalide : {self.restart!r} "
-                f"(valeurs acceptées : "
-                f"{', '.join(self._VALID_RESTART)})"
+        except (FileNotFoundError, OSError) as e:
+            raise RuntimeError(
+                f"Impossible d'exécuter systemctl : {e}"
+            ) from e
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Erreur systemctl list-timers : {result.stderr}"
             )
-        self._validate_environment()
 
-    def _validate_environment(self) -> None:
-        """Valide les variables d'environnement contre l'injection."""
-        for key, value in self.environment.items():
-            if "\n" in key or "=" in key:
-                raise ValueError(
-                    f"Clé d'environnement invalide : {key!r}"
-                )
-            if "\n" in value:
-                raise ValueError(
-                    f"Valeur d'environnement invalide pour "
-                    f"{key!r} : retour à la ligne interdit"
-                )
+        timers = []
+        lines = result.stdout.strip().split("\n")
+        for line in lines[1:]:
+            if not line.strip() or line.startswith(" "):
+                continue
+            parts = line.split()
+            if len(parts) >= 2:
+                timers.append({
+                    "unit": parts[-2],
+                    "activates": parts[-1],
+                })
+        return timers
 
-    def to_unit_file(self) -> str:
-        """Génère le contenu d'un fichier .service systemd.
+    def is_timer_active(self, timer_name: str) -> bool:
+        """Vérifie si un timer est actif.
+
+        Args:
+            timer_name: Nom du timer (sans extension).
 
         Returns:
-            Contenu du fichier .service.
+            True si actif, False sinon.
         """
-        lines = [
-            "[Unit]",
-            f"Description={self.description}",
-            "",
-            "[Service]",
-            f"Type={self.type}",
-            f"ExecStart={self.exec_start}"
-        ]
-
-        if self.user:
-            lines.append(f"User={self.user}")
-        if self.group:
-            lines.append(f"Group={self.group}")
-        if self.working_directory:
-            lines.append(f"WorkingDirectory={self.working_directory}")
-
-        for key, value in self.environment.items():
-            lines.append(f"Environment={key}={value}")
-
-        if self.restart != "no":
-            lines.append(f"Restart={self.restart}")
-            if self.restart_sec > 0:
-                lines.append(f"RestartSec={self.restart_sec}")
-
-        lines.extend([
-            "",
-            "[Install]",
-            f"WantedBy={self.wanted_by}"
-        ])
-
-        return "\n".join(lines) + "\n"
+        return self.get_timer_status(timer_name) == "active"
 
 
 # =============================================================================
@@ -392,11 +498,7 @@ class UnitManager(ABC):
     def _write_unit_file(
         self, unit_name: str, content: str
     ) -> bool:
-        """Écrit un fichier unit dans le répertoire systemd.
-
-        Utilise ``O_NOFOLLOW`` pour refuser atomiquement les liens
-        symboliques (pas de fenêtre TOCTOU) et force les
-        permissions ``0o644``.
+        """Écrit un fichier unit dans le répertoire systemd (O_NOFOLLOW).
 
         Args:
             unit_name: Nom du fichier (avec extension).
@@ -406,45 +508,10 @@ class UnitManager(ABC):
             True si succès, False sinon.
         """
         unit_path = os.path.join(self.SYSTEMD_UNIT_PATH, unit_name)
-        try:
-            fd = os.open(
-                unit_path,
-                os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
-                0o644,
-            )
-        except OSError as e:
-            if e.errno == 40:  # errno.ELOOP — lien symbolique
-                self.logger.log_error(
-                    f"Refus d'écrire {unit_path} : "
-                    "lien symbolique détecté"
-                )
-            elif isinstance(e, PermissionError):
-                self.logger.log_error(
-                    f"Permission refusée pour écrire {unit_path}. "
-                    "Exécution en tant que root requise."
-                )
-            else:
-                self.logger.log_error(
-                    f"Erreur lors de l'écriture de {unit_path}: {e}"
-                )
-            return False
-        try:
-            os.fchmod(fd, 0o644)
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(content)
-        except OSError as e:
-            self.logger.log_error(
-                f"Erreur lors de l'écriture de {unit_path}: {e}"
-            )
-            return False
-        self.logger.log_info(f"Fichier unit créé: {unit_path}")
-        return True
+        return _write_unit_content(unit_path, content, self.logger)
 
     def _remove_unit_file(self, unit_name: str) -> bool:
-        """Supprime un fichier unit du répertoire systemd.
-
-        Utilise try/except au lieu de check-then-remove
-        pour éviter une fenêtre TOCTOU.
+        """Supprime un fichier unit du répertoire systemd (TOCTOU-safe).
 
         Args:
             unit_name: Nom du fichier (avec extension).
@@ -453,25 +520,7 @@ class UnitManager(ABC):
             True si succès ou fichier inexistant, False si erreur.
         """
         unit_path = os.path.join(self.SYSTEMD_UNIT_PATH, unit_name)
-        try:
-            os.remove(unit_path)
-            self.logger.log_info(
-                f"Fichier unit supprimé: {unit_path}"
-            )
-        except FileNotFoundError:
-            pass
-        except PermissionError:
-            self.logger.log_error(
-                f"Permission refusée pour supprimer {unit_path}. "
-                "Exécution en tant que root requise."
-            )
-            return False
-        except OSError as e:
-            self.logger.log_error(
-                f"Erreur lors de la suppression de {unit_path}: {e}"
-            )
-            return False
-        return True
+        return _remove_unit_content(unit_path, self.logger)
 
     def reload_systemd(self) -> bool:
         """
@@ -549,8 +598,7 @@ class MountUnitManager(UnitManager):
         Returns:
             Nom de l'unité systemd (sans extension).
         """
-        name = mount_path.strip("/").replace("/", "-")
-        return validate_unit_name(name)
+        return _path_to_unit_name(mount_path)
 
     @abstractmethod
     def install_mount_unit(
@@ -860,8 +908,6 @@ class UserUnitManager(ABC):
         """
         self.logger = logger
         self.executor = executor
-        # Expansion du chemin utilisateur
-        import os
         self._unit_path = os.path.expanduser(self.SYSTEMD_USER_UNIT_PATH)
 
     @property
@@ -875,7 +921,6 @@ class UserUnitManager(ABC):
         Returns:
             True si le répertoire existe ou a été créé, False sinon.
         """
-        from pathlib import Path
         try:
             Path(self._unit_path).mkdir(parents=True, exist_ok=True)
             return True
@@ -889,11 +934,7 @@ class UserUnitManager(ABC):
     def _write_unit_file(
         self, unit_name: str, content: str
     ) -> bool:
-        """Écrit un fichier unit dans le répertoire utilisateur.
-
-        Utilise ``O_NOFOLLOW`` pour refuser atomiquement les liens
-        symboliques (pas de fenêtre TOCTOU) et force les
-        permissions ``0o644``.
+        """Écrit un fichier unit dans le répertoire utilisateur (O_NOFOLLOW).
 
         Args:
             unit_name: Nom du fichier (avec extension).
@@ -905,42 +946,12 @@ class UserUnitManager(ABC):
         if not self._ensure_unit_directory():
             return False
         unit_path = os.path.join(self._unit_path, unit_name)
-        try:
-            fd = os.open(
-                unit_path,
-                os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
-                0o644,
-            )
-        except OSError as e:
-            if e.errno == 40:  # errno.ELOOP — lien symbolique
-                self.logger.log_error(
-                    f"Refus d'écrire {unit_path} : "
-                    "lien symbolique détecté"
-                )
-            else:
-                self.logger.log_error(
-                    f"Erreur lors de l'écriture de {unit_path}: {e}"
-                )
-            return False
-        try:
-            os.fchmod(fd, 0o644)
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(content)
-        except OSError as e:
-            self.logger.log_error(
-                f"Erreur lors de l'écriture de {unit_path}: {e}"
-            )
-            return False
-        self.logger.log_info(
-            f"Fichier unit utilisateur créé: {unit_path}"
+        return _write_unit_content(
+            unit_path, content, self.logger, log_label=" utilisateur"
         )
-        return True
 
     def _remove_unit_file(self, unit_name: str) -> bool:
-        """Supprime un fichier unit du répertoire utilisateur.
-
-        Utilise try/except au lieu de check-then-remove
-        pour éviter une fenêtre TOCTOU.
+        """Supprime un fichier unit du répertoire utilisateur (TOCTOU-safe).
 
         Args:
             unit_name: Nom du fichier (avec extension).
@@ -949,19 +960,9 @@ class UserUnitManager(ABC):
             True si succès ou fichier inexistant, False si erreur.
         """
         unit_path = os.path.join(self._unit_path, unit_name)
-        try:
-            os.remove(unit_path)
-            self.logger.log_info(
-                f"Fichier unit utilisateur supprimé: {unit_path}"
-            )
-        except FileNotFoundError:
-            pass
-        except OSError as e:
-            self.logger.log_error(
-                f"Erreur lors de la suppression de {unit_path}: {e}"
-            )
-            return False
-        return True
+        return _remove_unit_content(
+            unit_path, self.logger, log_label=" utilisateur"
+        )
 
     def reload_systemd(self) -> bool:
         """

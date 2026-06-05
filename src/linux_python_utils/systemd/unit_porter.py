@@ -32,8 +32,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 # local
+from linux_python_utils.filesystem.linux import write_text_secure
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.logging.console_logger import ConsoleLogger
+from linux_python_utils.systemd.validators import (
+    reject_control_chars,
+    validate_full_unit_name,
+)
 
 if TYPE_CHECKING:
     from linux_python_utils.systemd.executor import SystemdExecutor
@@ -279,7 +284,20 @@ class SystemdUnitRestorer:
         requires_exec = str(meta.get("requires_exec", ""))
 
         stem = toml_path.stem
+        if not stem.endswith(f"-{unit_type}"):
+            self._logger.log_error(
+                f"{toml_path.name} — stem {stem!r} incohérent "
+                f"avec unit_type {unit_type!r}"
+            )
+            return (False, "")
         unit_name = stem[: -len(unit_type) - 1] + "." + unit_type
+        try:
+            validate_full_unit_name(unit_name)
+        except ValueError as exc:
+            self._logger.log_error(
+                f"{toml_path.name} — nom d'unité invalide : {exc}"
+            )
+            return (False, "")
 
         if requires_exec and not self._exec_present(requires_exec):
             self._logger.log_error(
@@ -297,7 +315,13 @@ class SystemdUnitRestorer:
 
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest = dest_dir / unit_name
-        dest.write_text(ini_content, encoding="utf-8")
+        try:
+            write_text_secure(str(dest), ini_content)
+        except OSError as exc:
+            self._logger.log_error(
+                f"Écriture de {dest} refusée : {exc}"
+            )
+            return (False, "")
         self._logger.log_info(f"{unit_name} → {dest}")
 
         if enabled:
@@ -331,9 +355,13 @@ class SystemdUnitRestorer:
             for key, value in data[section].items():  # type: ignore[union-attr]
                 if isinstance(value, list):
                     for v in value:
-                        lines.append(f"{key}={v}")
+                        lines.append(
+                            f"{key}={reject_control_chars(str(v), key)}"
+                        )
                 else:
-                    lines.append(f"{key}={value}")
+                    lines.append(
+                        f"{key}={reject_control_chars(str(value), key)}"
+                    )
             lines.append("")
         return "\n".join(lines)
 

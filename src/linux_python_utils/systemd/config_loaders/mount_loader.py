@@ -143,7 +143,7 @@ class MountConfigLoader(ConfigFileLoader[MountConfig]):
         if not isinstance(data, list):
             raise TypeError(
                 f"La section '{section_name}' doit être une liste "
-                "(utilisez [[{section_name}]] dans le TOML)"
+                f"(utilisez [[{section_name}]] dans le TOML)"
             )
 
         return [

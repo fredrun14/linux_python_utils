@@ -3,6 +3,8 @@
 import pytest
 
 from linux_python_utils.systemd.validators import (
+    reject_control_chars,
+    validate_full_unit_name,
     validate_unit_name,
     validate_service_name,
 )
@@ -103,3 +105,75 @@ class TestValidateServiceName:
         """Vérifie le rejet de caractères spéciaux."""
         with pytest.raises(ValueError, match="invalide"):
             validate_service_name("name;cmd")
+
+
+class TestRejectControlChars:
+    """Tests pour reject_control_chars."""
+
+    def test_chaine_valide_retournee(self):
+        """Retourne la valeur inchangée si elle ne contient aucun contrôle."""
+        assert reject_control_chars("valeur normale", "desc") == "valeur normale"
+
+    def test_chaine_vide_acceptee(self):
+        """Accepte une chaîne vide."""
+        assert reject_control_chars("", "champ") == ""
+
+    def test_rejet_newline(self):
+        """Rejette un saut de ligne (\\n)."""
+        with pytest.raises(ValueError, match="contrôle"):
+            reject_control_chars("ligne1\nligne2", "description")
+
+    def test_rejet_carriage_return(self):
+        """Rejette un retour chariot (\\r)."""
+        with pytest.raises(ValueError, match="contrôle"):
+            reject_control_chars("val\reur", "champ")
+
+    def test_rejet_tab(self):
+        """Rejette une tabulation (\\t, code 9 < 32)."""
+        with pytest.raises(ValueError, match="contrôle"):
+            reject_control_chars("val\teur", "champ")
+
+    def test_message_contient_nom_champ(self):
+        """Le message d'erreur mentionne le nom du champ."""
+        with pytest.raises(ValueError, match="monchamp"):
+            reject_control_chars("val\neur", "monchamp")
+
+
+class TestValidateFullUnitName:
+    """Tests pour validate_full_unit_name."""
+
+    @pytest.mark.parametrize("name", [
+        "backup.service",
+        "mon-service.timer",
+        "media-nas.mount",
+        "sshd.socket",
+        "my_unit.automount",
+    ])
+    def test_noms_complets_valides(self, name: str):
+        """Accepte les noms complets avec extension autorisée."""
+        assert validate_full_unit_name(name) == name
+
+    def test_rejet_sans_extension(self):
+        """Rejette un nom sans extension."""
+        with pytest.raises(ValueError, match="sans extension"):
+            validate_full_unit_name("backup")
+
+    def test_rejet_extension_inconnue(self):
+        """Rejette une extension non autorisée."""
+        with pytest.raises(ValueError, match="non autorisée"):
+            validate_full_unit_name("backup.path")
+
+    def test_rejet_extension_swap(self):
+        """Rejette .swap (hors whitelist)."""
+        with pytest.raises(ValueError, match="non autorisée"):
+            validate_full_unit_name("dev-sda1.swap")
+
+    def test_rejet_radical_invalide(self):
+        """Rejette un radical contenant des caractères interdits."""
+        with pytest.raises(ValueError):
+            validate_full_unit_name("../etc.service")
+
+    def test_rejet_traversal_dans_radical(self):
+        """Rejette une tentative de path traversal."""
+        with pytest.raises(ValueError):
+            validate_full_unit_name("../../etc/cron.service")

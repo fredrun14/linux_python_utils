@@ -1,17 +1,21 @@
 """Implémentation Linux de la gestion des unités service utilisateur."""
 
 import os
+import shlex
 
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.systemd.base import (
+    _ServiceOperationsMixin,
     UserServiceUnitManager,
-    ServiceConfig
+    ServiceConfig,
 )
 from linux_python_utils.systemd.executor import UserSystemdExecutor
 from linux_python_utils.systemd.validators import validate_service_name
 
 
-class LinuxUserServiceUnitManager(UserServiceUnitManager):
+class LinuxUserServiceUnitManager(
+    _ServiceOperationsMixin, UserServiceUnitManager
+):
     """Implémentation Linux de la gestion des unités .service utilisateur.
 
     Génère et installe des fichiers unit systemd pour les services
@@ -25,6 +29,8 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
         executor: Instance de UserSystemdExecutor pour les opérations.
         SYSTEMD_USER_UNIT_PATH: Chemin du répertoire des unités utilisateur.
     """
+
+    _service_label = "Service utilisateur"
 
     def __init__(
         self,
@@ -94,7 +100,7 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
         """
         # Extraire le nom du service depuis exec_start
         service_name = os.path.basename(
-            config.exec_start.split()[0]
+            shlex.split(config.exec_start)[0]
         ).replace(".", "-")
         try:
             validate_service_name(service_name)
@@ -159,141 +165,3 @@ class LinuxUserServiceUnitManager(UserServiceUnitManager):
             f"Service utilisateur {service_name}.service installé"
         )
         return True
-
-    def start_service(self, service_name: str) -> bool:
-        """
-        Démarre un service utilisateur.
-
-        Args:
-            service_name: Nom du service (sans extension .service)
-
-        Returns:
-            True si succès, False sinon
-        """
-        validate_service_name(service_name)
-        unit = f"{service_name}.service"
-        return self.executor.start_unit(unit)
-
-    def stop_service(self, service_name: str) -> bool:
-        """
-        Arrête un service utilisateur.
-
-        Args:
-            service_name: Nom du service (sans extension .service)
-
-        Returns:
-            True si succès, False sinon
-        """
-        validate_service_name(service_name)
-        unit = f"{service_name}.service"
-        return self.executor.stop_unit(unit)
-
-    def restart_service(self, service_name: str) -> bool:
-        """
-        Redémarre un service utilisateur.
-
-        Args:
-            service_name: Nom du service (sans extension .service)
-
-        Returns:
-            True si succès, False sinon
-        """
-        validate_service_name(service_name)
-        unit = f"{service_name}.service"
-        return self.executor.restart_unit(unit)
-
-    def enable_service(self, service_name: str) -> bool:
-        """
-        Active un service utilisateur.
-
-        Args:
-            service_name: Nom du service (sans extension .service)
-
-        Returns:
-            True si succès, False sinon
-        """
-        validate_service_name(service_name)
-        unit = f"{service_name}.service"
-        return self.enable(unit)
-
-    def disable_service(self, service_name: str) -> bool:
-        """
-        Désactive un service utilisateur.
-
-        Args:
-            service_name: Nom du service (sans extension .service)
-
-        Returns:
-            True si succès, False sinon
-        """
-        validate_service_name(service_name)
-        unit = f"{service_name}.service"
-        return self.disable(unit)
-
-    def remove_service_unit(self, service_name: str) -> bool:
-        """
-        Supprime un fichier .service utilisateur.
-
-        Args:
-            service_name: Nom du service (sans extension)
-
-        Returns:
-            True si succès, False sinon
-        """
-        validate_service_name(service_name)
-        # D'abord désactiver et arrêter le service
-        if not self.disable_service(service_name):
-            self.logger.log_warning(
-                f"disable_service échoué pour {service_name!r} "
-                "(service peut-être déjà inactif) — "
-                "suppression du fichier unit quand même"
-            )
-
-        # Supprimer le fichier
-        if not self._remove_unit_file(f"{service_name}.service"):
-            return False
-
-        # Recharger systemd utilisateur
-        self.reload_systemd()
-        self.logger.log_info(
-            f"Service utilisateur {service_name}.service supprimé"
-        )
-        return True
-
-    def get_service_status(self, service_name: str) -> str | None:
-        """
-        Récupère le statut d'un service utilisateur.
-
-        Args:
-            service_name: Nom du service (sans extension)
-
-        Returns:
-            Statut du service ou None si erreur
-        """
-        validate_service_name(service_name)
-        return self.get_status(f"{service_name}.service")
-
-    def is_service_active(self, service_name: str) -> bool:
-        """
-        Vérifie si un service utilisateur est actif.
-
-        Args:
-            service_name: Nom du service (sans extension)
-
-        Returns:
-            True si actif, False sinon
-        """
-        return self.get_service_status(service_name) == "active"
-
-    def is_service_enabled(self, service_name: str) -> bool:
-        """
-        Vérifie si un service utilisateur est activé au démarrage.
-
-        Args:
-            service_name: Nom du service (sans extension)
-
-        Returns:
-            True si activé, False sinon
-        """
-        validate_service_name(service_name)
-        return self.executor.is_enabled(f"{service_name}.service")

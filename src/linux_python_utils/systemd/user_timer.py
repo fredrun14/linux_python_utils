@@ -1,15 +1,15 @@
 """Implémentation Linux de la gestion des unités timer utilisateur."""
 
-import json
-import subprocess  # nosec B404
-
 from linux_python_utils.logging.base import Logger
-from linux_python_utils.systemd.base import UserTimerUnitManager, TimerConfig
+from linux_python_utils.systemd.base import (
+    _TimerOperationsMixin,
+    UserTimerUnitManager,
+    TimerConfig,
+)
 from linux_python_utils.systemd.executor import UserSystemdExecutor
-from linux_python_utils.systemd.validators import validate_unit_name
 
 
-class LinuxUserTimerUnitManager(UserTimerUnitManager):
+class LinuxUserTimerUnitManager(_TimerOperationsMixin, UserTimerUnitManager):
     """Implémentation Linux de la gestion des unités .timer utilisateur.
 
     Génère et installe des fichiers unit systemd pour la planification
@@ -23,6 +23,8 @@ class LinuxUserTimerUnitManager(UserTimerUnitManager):
         executor: Instance de UserSystemdExecutor pour les opérations.
         SYSTEMD_USER_UNIT_PATH: Chemin du répertoire des unités utilisateur.
     """
+
+    _timer_label = "Timer utilisateur"
 
     def __init__(
         self,
@@ -103,179 +105,3 @@ class LinuxUserTimerUnitManager(UserTimerUnitManager):
             f"Timer utilisateur {timer_name}.timer installé pour {config.unit}"
         )
         return True
-
-    def enable_timer(self, timer_name: str) -> bool:
-        """
-        Active un timer utilisateur.
-
-        Args:
-            timer_name: Nom du timer (sans extension .timer)
-
-        Returns:
-            True si succès, False sinon
-        """
-        validate_unit_name(timer_name)
-        unit = f"{timer_name}.timer"
-        return self.enable(unit)
-
-    def disable_timer(self, timer_name: str) -> bool:
-        """
-        Désactive un timer utilisateur.
-
-        Args:
-            timer_name: Nom du timer (sans extension .timer)
-
-        Returns:
-            True si succès, False sinon
-        """
-        validate_unit_name(timer_name)
-        unit = f"{timer_name}.timer"
-        return self.disable(unit)
-
-    def remove_timer_unit(self, timer_name: str) -> bool:
-        """
-        Supprime un fichier .timer utilisateur.
-
-        Args:
-            timer_name: Nom du timer (sans extension)
-
-        Returns:
-            True si succès, False sinon
-        """
-        validate_unit_name(timer_name)
-        # D'abord désactiver le timer
-        if not self.disable_timer(timer_name):
-            self.logger.log_warning(
-                f"disable_timer échoué pour {timer_name!r} "
-                "(unité peut-être déjà inactive) — "
-                "suppression du fichier unit quand même"
-            )
-
-        # Supprimer le fichier
-        if not self._remove_unit_file(f"{timer_name}.timer"):
-            return False
-
-        # Recharger systemd utilisateur
-        self.reload_systemd()
-        self.logger.log_info(
-            f"Timer utilisateur {timer_name}.timer supprimé"
-        )
-        return True
-
-    def get_timer_status(self, timer_name: str) -> str | None:
-        """
-        Récupère le statut d'un timer utilisateur.
-
-        Args:
-            timer_name: Nom du timer (sans extension)
-
-        Returns:
-            Statut du timer ou None si erreur
-        """
-        validate_unit_name(timer_name)
-        return self.get_status(f"{timer_name}.timer")
-
-    def list_timers(self) -> list[dict[str, str]]:
-        """Liste tous les timers utilisateur actifs.
-
-        Utilise ``--output=json`` pour un parsing fiable, avec
-        fallback sur le parsing texte si le format JSON n'est pas
-        supporté par la version de systemd installée.
-
-        Returns:
-            Liste de dictionnaires avec les infos des timers.
-
-        Raises:
-            RuntimeError: Si l'exécution de systemctl échoue.
-        """
-        try:
-            result = subprocess.run(  # nosec B603 B607
-                ["systemctl", "--user", "list-timers",
-                 "--no-pager", "--output=json"],
-                capture_output=True,
-                text=True,
-                check=False
-            )
-        except (FileNotFoundError, OSError) as e:
-            raise RuntimeError(
-                f"Impossible d'exécuter systemctl : {e}"
-            ) from e
-
-        if result.returncode != 0:
-            if "unknown option" in result.stderr.lower() \
-                    or "invalid option" in result.stderr.lower():
-                return self._list_timers_text_fallback()
-            raise RuntimeError(
-                "Erreur systemctl list-timers --user : "
-                f"{result.stderr}"
-            )
-
-        try:
-            data = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            return self._list_timers_text_fallback()
-
-        timers = []
-        for entry in data:
-            timers.append({
-                "unit": entry.get("unit", ""),
-                "activates": entry.get("activates", ""),
-                "next": entry.get("next", ""),
-                "left": entry.get("left", ""),
-                "last": entry.get("last", ""),
-                "passed": entry.get("passed", ""),
-            })
-        return timers
-
-    def _list_timers_text_fallback(self) -> list[dict[str, str]]:
-        """Fallback texte pour list_timers sur vieux systemd.
-
-        Returns:
-            Liste de dictionnaires avec les infos des timers.
-
-        Raises:
-            RuntimeError: Si l'exécution de systemctl échoue.
-        """
-        try:
-            result = subprocess.run(  # nosec B603 B607
-                ["systemctl", "--user", "list-timers",
-                 "--no-pager", "--plain"],
-                capture_output=True,
-                text=True,
-                check=False
-            )
-        except (FileNotFoundError, OSError) as e:
-            raise RuntimeError(
-                f"Impossible d'exécuter systemctl : {e}"
-            ) from e
-
-        if result.returncode != 0:
-            raise RuntimeError(
-                "Erreur systemctl list-timers --user : "
-                f"{result.stderr}"
-            )
-
-        timers = []
-        lines = result.stdout.strip().split("\n")
-        for line in lines[1:]:
-            if not line.strip() or line.startswith(" "):
-                continue
-            parts = line.split()
-            if len(parts) >= 2:
-                timers.append({
-                    "unit": parts[-2],
-                    "activates": parts[-1],
-                })
-        return timers
-
-    def is_timer_active(self, timer_name: str) -> bool:
-        """
-        Vérifie si un timer utilisateur est actif.
-
-        Args:
-            timer_name: Nom du timer (sans extension)
-
-        Returns:
-            True si actif, False sinon
-        """
-        return self.get_timer_status(timer_name) == "active"

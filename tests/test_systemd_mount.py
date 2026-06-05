@@ -784,3 +784,50 @@ class TestRemoveMountLogWarning:
         manager.remove_mount_unit("/mnt/test")
 
         logger.log_warning.assert_not_called()
+
+
+class TestToUnitFileSecurite:
+    """Tests de sécurité : rejet des caractères de contrôle dans to_unit_file."""
+
+    def test_mount_rejette_newline_dans_description(self):
+        """MountConfig.to_unit_file lève ValueError si description contient \\n."""
+        config = MountConfig(
+            description="desc\nExecStart=/bin/sh",
+            what="192.168.1.1:/share",
+            where="/mnt/nas",
+            type="nfs",
+        )
+        with pytest.raises(ValueError, match="contrôle"):
+            config.to_unit_file()
+
+    def test_mount_rejette_newline_dans_what(self):
+        """MountConfig.to_unit_file lève ValueError si what contient \\n."""
+        config = MountConfig(
+            description="NAS",
+            what="192.168.1.1:/share\nType=tmpfs",
+            where="/mnt/nas",
+            type="nfs",
+        )
+        with pytest.raises(ValueError, match="contrôle"):
+            config.to_unit_file()
+
+    def test_mount_rejette_newline_dans_options(self):
+        """MountConfig.to_unit_file lève ValueError si options contient \\n."""
+        config = MountConfig(
+            description="NAS",
+            what="192.168.1.1:/share",
+            where="/mnt/nas",
+            type="nfs",
+            options="rw\nExecStart=/bin/evil",
+        )
+        with pytest.raises(ValueError, match="contrôle"):
+            config.to_unit_file()
+
+    def test_automount_rejette_newline_dans_description(self):
+        """AutomountConfig.to_unit_file lève ValueError si description contient \\n."""
+        config = AutomountConfig(
+            description="auto\nType=tmpfs",
+            where="/mnt/nas",
+        )
+        with pytest.raises(ValueError, match="contrôle"):
+            config.to_unit_file()

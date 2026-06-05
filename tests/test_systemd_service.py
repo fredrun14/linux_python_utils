@@ -1006,3 +1006,38 @@ class TestRemoveServiceLogWarning:
         manager.remove_service_unit("user-svc")
 
         logger.log_warning.assert_not_called()
+
+
+class TestServiceToUnitFileSecurite:
+    """Tests de sécurité : rejet des caractères de contrôle dans ServiceConfig."""
+
+    def test_rejette_newline_dans_description(self):
+        """to_unit_file lève ValueError si description contient \\n."""
+        from linux_python_utils.systemd.base import ServiceConfig
+        config = ServiceConfig(
+            description="desc\nExecStart=/bin/evil",
+            exec_start="/usr/bin/foo",
+        )
+        with pytest.raises(ValueError, match="contrôle"):
+            config.to_unit_file()
+
+    def test_rejette_newline_dans_exec_start(self):
+        """to_unit_file lève ValueError si exec_start contient \\n."""
+        from linux_python_utils.systemd.base import ServiceConfig
+        config = ServiceConfig(
+            description="service légitime",
+            exec_start="/usr/bin/foo\nExecStart=/bin/evil",
+        )
+        with pytest.raises(ValueError, match="contrôle"):
+            config.to_unit_file()
+
+    def test_rejette_newline_dans_user(self):
+        """to_unit_file lève ValueError si user contient \\n."""
+        from linux_python_utils.systemd.base import ServiceConfig
+        config = ServiceConfig(
+            description="svc",
+            exec_start="/usr/bin/foo",
+            user="nobody\nUser=root",
+        )
+        with pytest.raises(ValueError, match="contrôle"):
+            config.to_unit_file()

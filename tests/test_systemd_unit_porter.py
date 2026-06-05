@@ -601,6 +601,73 @@ class TestRestore:
         assert name == "thermal-monitor.service"
         assert (dest_dir / "thermal-monitor.service").exists()
 
+    def test_rejette_stem_incoherent_avec_unit_type(
+        self, tmp_path: Path
+    ) -> None:
+        """Retourne False si le stem TOML ne se termine pas par -{unit_type}."""
+        content = (
+            "[meta]\n"
+            'unit_type = "service"\n'
+            "enabled = false\n"
+            'requires_exec = ""\n'
+        )
+        # nom = "mon-timer.toml" mais unit_type = "service"
+        toml_path = tmp_path / "mon-timer.toml"
+        toml_path.write_text(content)
+        logger = MagicMock()
+        restorer = _make_restorer(logger=logger)
+        ok, _ = restorer.restore(toml_path, tmp_path / "dest")
+
+        assert ok is False
+        logger.log_error.assert_called_once()
+
+    def test_rejette_unit_name_traversal(
+        self, tmp_path: Path
+    ) -> None:
+        """Retourne False si le nom déduit tente un path traversal."""
+        content = (
+            "[meta]\n"
+            'unit_type = "service"\n'
+            "enabled = false\n"
+            'requires_exec = ""\n'
+        )
+        # stem = "../etc/cron.d/x-service" → unit_name = "../etc/cron.d/x.service"
+        toml_path = tmp_path / "..etc.cron.d.x-service.toml"
+        toml_path.write_text(content)
+        logger = MagicMock()
+        restorer = _make_restorer(logger=logger)
+        ok, _ = restorer.restore(toml_path, tmp_path / "dest")
+
+        assert ok is False
+
+    def test_refuse_symlink_dans_dest(
+        self, tmp_path: Path
+    ) -> None:
+        """write_text_secure lève OSError si dest est un symlink."""
+        toml_path = self._make_toml(
+            tmp_path / "src", "mon-service.toml"
+        )
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+        target = dest_dir / "mon.service"
+        cible = tmp_path / "autre_fichier"
+        cible.write_text("")
+        target.symlink_to(cible)
+
+        restorer = _make_restorer()
+        ok, _ = restorer.restore(toml_path, dest_dir)
+
+        assert ok is False
+
+    def test_to_ini_rejette_newline_dans_valeur(self) -> None:
+        """to_ini lève ValueError si une valeur contient un \\n."""
+        data = {
+            "Unit": {"Description": "légitime\nExecStart=/bin/evil"},
+            "Service": {"ExecStart": "/usr/bin/foo"},
+        }
+        with pytest.raises(ValueError, match="contrôle"):
+            SystemdUnitRestorer.to_ini(data, "service")
+
 
 # ---------------------------------------------------------------------------
 # Tests d'import depuis la racine du package

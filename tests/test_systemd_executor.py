@@ -63,12 +63,22 @@ class TestSystemdExecutorValidation:
     def test_nom_valide_accepte(self):
         """Vérifie que les noms valides passent la validation."""
         executor = self._make_executor()
-        # Ne devrait pas lever d'exception (échouera au subprocess)
-        # On vérifie juste que la validation passe
         try:
             executor.get_status("backup.service")
         except ValueError:
             pytest.fail("Nom valide rejeté par la validation")
+
+    def test_rejet_extension_inconnue(self):
+        """Rejette une extension non autorisée dans enable_unit."""
+        executor = self._make_executor()
+        with pytest.raises(ValueError, match="non autorisée"):
+            executor.enable_unit("backup.path")
+
+    def test_rejet_sans_extension(self):
+        """Rejette un nom sans extension dans start_unit."""
+        executor = self._make_executor()
+        with pytest.raises(ValueError, match="sans extension"):
+            executor.start_unit("backup")
 
 
 class TestUserSystemdExecutorValidation:
