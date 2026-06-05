@@ -1,7 +1,7 @@
 """Tests pour le module integrity."""
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -50,22 +50,30 @@ class TestCalculateChecksum:
 
         assert checksum1 == checksum2
 
-    def test_md5_algorithm(self, tmp_path):
-        """Test avec algorithme MD5."""
+    def test_sha512_algorithm(self, tmp_path):
+        """Test avec algorithme SHA512 (autorisé)."""
         test_file = tmp_path / "test.txt"
         test_file.write_text("Test")
 
-        checksum = calculate_checksum(test_file, algorithm='md5')
+        checksum = calculate_checksum(test_file, algorithm='sha512')
 
-        assert len(checksum) == 32  # MD5 = 32 caractères hex
+        assert len(checksum) == 128  # SHA512 = 128 caractères hex
 
     def test_invalid_algorithm(self, tmp_path):
-        """Test avec algorithme invalide."""
+        """Test avec algorithme invalide (non dans la whitelist)."""
         test_file = tmp_path / "test.txt"
         test_file.write_text("Test")
 
-        with pytest.raises(ValueError, match="non supporté"):
+        with pytest.raises(ValueError, match="non autorisé"):
             calculate_checksum(test_file, algorithm='invalid')
+
+    def test_checksum_algorithme_non_autorise_leve_valueerror(self, tmp_path):
+        """MD5 est refusé par la whitelist (algorithme faible)."""
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("Test")
+
+        with pytest.raises(ValueError, match="non autorisé"):
+            calculate_checksum(test_file, algorithm='md5')
 
     def test_file_not_found(self):
         """Test avec fichier inexistant."""
@@ -284,3 +292,22 @@ class TestSHA256IntegrityChecker:
 
         # Assert
         assert result is False
+
+    def test_verify_source_vide_logue_warning(self, tmp_path):
+        """verify() retourne True et logue un warning si la source est vide."""
+        # Arrange
+        mock_logger = MagicMock()
+        source_dir = tmp_path / "empty_source"
+        source_dir.mkdir()
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+        checker = SHA256IntegrityChecker(mock_logger)
+
+        # Act
+        result = checker.verify(str(source_dir), str(dest_dir))
+
+        # Assert
+        assert result is True
+        mock_logger.log_warning.assert_called_once()
+        warning_msg = mock_logger.log_warning.call_args[0][0]
+        assert "vide" in warning_msg.lower() or "0" in warning_msg

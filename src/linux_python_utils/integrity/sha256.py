@@ -24,7 +24,7 @@ class SHA256IntegrityChecker(IntegrityChecker):
     def __init__(
         self,
         logger: Logger,
-        algorithm: str = 'sha256',
+        algorithm: str = "sha256",
         checksum_calculator: ChecksumCalculator | None = None,
     ) -> None:
         """Initialise le vérificateur d'intégrité.
@@ -42,7 +42,7 @@ class SHA256IntegrityChecker(IntegrityChecker):
     @staticmethod
     def calculate_checksum(
         file_path: str,
-        algorithm: str = 'sha256',
+        algorithm: str = "sha256",
     ) -> str:
         """Calcule le checksum d'un fichier (méthode statique).
 
@@ -83,7 +83,6 @@ class SHA256IntegrityChecker(IntegrityChecker):
         try:
             source_checksum = self._calculate(source_file)
             dest_checksum = self._calculate(dest_file)
-
             if source_checksum != dest_checksum:
                 self.logger.log_error(
                     f"Différence de checksum:\n"
@@ -95,6 +94,63 @@ class SHA256IntegrityChecker(IntegrityChecker):
         except OSError as e:
             self.logger.log_error(f"Erreur de vérification: {e}")
             return False
+
+    def _resolve_dest(
+        self,
+        source_path: Path,
+        destination_path: Path,
+        dest_subdir: str | None,
+    ) -> Path:
+        """Résout le répertoire de destination effectif.
+
+        Gère le cas rsync où le source est copié dans un sous-répertoire
+        portant son nom.
+
+        Args:
+            source_path: Répertoire source.
+            destination_path: Répertoire destination de base.
+            dest_subdir: Sous-répertoire explicite (prioritaire).
+
+        Returns:
+            Chemin de destination effectif.
+        """
+        if dest_subdir:
+            return destination_path / dest_subdir
+        actual = destination_path / source_path.name
+        if not actual.exists():
+            actual = destination_path
+        return actual
+
+    def _verify_tree(
+        self,
+        source_path: Path,
+        dest: Path,
+    ) -> tuple[bool, int]:
+        """Compare chaque fichier de l'arbre source à sa copie destination.
+
+        Args:
+            source_path: Répertoire source.
+            dest: Répertoire destination effectif.
+
+        Returns:
+            Tuple (succès, nombre de fichiers vérifiés).
+        """
+        count = 0
+        for source_file in source_path.rglob("*"):
+            if not source_file.is_file():
+                continue
+            rel_path = source_file.relative_to(source_path)
+            dest_file = dest / rel_path
+            if not dest_file.exists():
+                self.logger.log_error(f"Fichier manquant: {dest_file}")
+                return False, count
+            if not self.verify_file(source_file, dest_file):
+                self.logger.log_error(
+                    f"Checksum différent pour: {rel_path}"
+                )
+                return False, count
+            count += 1
+        return True, count
 
     def verify(
         self,
@@ -114,52 +170,26 @@ class SHA256IntegrityChecker(IntegrityChecker):
 
         Returns:
             True si tous les fichiers correspondent, False sinon.
+            Retourne True avec un warning si la source est vide.
         """
         try:
             source_path = Path(source)
             destination_path = Path(destination)
-
-            # Déterminer le répertoire de destination effectif
-            if dest_subdir:
-                actual_dest = destination_path / dest_subdir
-            else:
-                # rsync copie source/ vers destination/basename(source)/
-                actual_dest = destination_path / source_path.name
-                if not actual_dest.exists():
-                    actual_dest = destination_path
-
+            dest = self._resolve_dest(source_path, destination_path, dest_subdir)
             self.logger.log_info(
-                f"Vérification: {source_path} -> {actual_dest}"
+                f"Vérification: {source_path} -> {dest}"
             )
-
-            # Parcourir les fichiers source
-            for source_file in source_path.rglob('*'):
-                if not source_file.is_file():
-                    continue
-
-                # Chemin relatif par rapport au source
-                rel_path = source_file.relative_to(source_path)
-
-                # Fichier destination correspondant
-                dest_file = actual_dest / rel_path
-
-                if not dest_file.exists():
-                    self.logger.log_error(
-                        f"Fichier manquant: {dest_file}"
-                    )
-                    return False
-
-                if not self.verify_file(source_file, dest_file):
-                    self.logger.log_error(
-                        f"Checksum différent pour: {rel_path}"
-                    )
-                    return False
-
+            ok, count = self._verify_tree(source_path, dest)
+            if not ok:
+                return False
+            if count == 0:
+                self.logger.log_warning(
+                    "Aucun fichier vérifié (source vide ?)."
+                )
             self.logger.log_info(
-                "Tous les fichiers ont été vérifiés avec succès."
+                f"Vérification terminée : {count} fichier(s) vérifié(s)."
             )
             return True
-
         except Exception as e:
             self.logger.log_error(
                 f"Erreur lors de la vérification d'intégrité: {e}"

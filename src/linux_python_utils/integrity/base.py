@@ -3,12 +3,15 @@
 import hashlib
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Union
+
+# Algorithmes cryptographiquement acceptables (MD5/SHA1 exclus).
+_ALGOS_AUTORISES: frozenset[str] = frozenset(
+    {"sha256", "sha384", "sha512", "blake2b"}
+)
 
 
 class ChecksumCalculator(ABC):
-    """
-    Interface abstraite pour le calcul de checksums.
+    """Interface abstraite pour le calcul de checksums.
 
     Permet l'injection de dépendance et facilite les tests
     en permettant de substituer l'implémentation réelle par un mock.
@@ -17,62 +20,58 @@ class ChecksumCalculator(ABC):
     @abstractmethod
     def calculate(
         self,
-        file_path: Union[str, Path],
-        algorithm: str = 'sha256'
+        file_path: str | Path,
+        algorithm: str = "sha256",
     ) -> str:
-        """
-        Calcule le checksum d'un fichier.
+        """Calcule le checksum d'un fichier.
 
         Args:
-            file_path: Chemin du fichier
-            algorithm: Algorithme de hash (sha256, sha512, md5, etc.)
+            file_path: Chemin du fichier.
+            algorithm: Algorithme de hash (sha256, sha384, sha512, blake2b).
 
         Returns:
-            Checksum hexadécimal du fichier
+            Checksum hexadécimal du fichier.
 
         Raises:
-            FileNotFoundError: Si le fichier n'existe pas
-            ValueError: Si l'algorithme n'est pas supporté
+            FileNotFoundError: Si le fichier n'existe pas.
+            ValueError: Si l'algorithme n'est pas autorisé.
         """
-        pass
 
 
 class HashLibChecksumCalculator(ChecksumCalculator):
-    """
-    Implémentation du calculateur de checksum utilisant hashlib.
+    """Implémentation du calculateur de checksum utilisant hashlib.
 
-    Supporte tous les algorithmes disponibles dans hashlib
-    (sha256, sha512, md5, sha1, etc.).
+    Supporte uniquement les algorithmes autorisés : sha256, sha384,
+    sha512, blake2b (MD5 et SHA1 exclus car cryptographiquement faibles).
     """
 
     def calculate(
         self,
-        file_path: Union[str, Path],
-        algorithm: str = 'sha256'
+        file_path: str | Path,
+        algorithm: str = "sha256",
     ) -> str:
-        """
-        Calcule le checksum d'un fichier avec hashlib.
+        """Calcule le checksum d'un fichier avec hashlib.
 
         Args:
-            file_path: Chemin du fichier
-            algorithm: Algorithme de hash (sha256, sha512, md5, etc.)
+            file_path: Chemin du fichier.
+            algorithm: Algorithme de hash (sha256, sha384, sha512, blake2b).
 
         Returns:
-            Checksum hexadécimal du fichier
+            Checksum hexadécimal du fichier.
 
         Raises:
-            FileNotFoundError: Si le fichier n'existe pas
-            ValueError: Si l'algorithme n'est pas supporté
+            FileNotFoundError: Si le fichier n'existe pas.
+            ValueError: Si l'algorithme n'est pas dans la liste autorisée.
         """
-        try:
-            hash_func = getattr(hashlib, algorithm)()
-        except AttributeError:
-            raise ValueError(f"Algorithme non supporté: {algorithm}")
-
-        with open(file_path, 'rb') as f:
+        if algorithm not in _ALGOS_AUTORISES:
+            raise ValueError(
+                f"Algorithme non autorisé : {algorithm!r} "
+                f"(autorisés : {', '.join(sorted(_ALGOS_AUTORISES))})"
+            )
+        hash_func = getattr(hashlib, algorithm)()
+        with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
                 hash_func.update(chunk)
-
         return hash_func.hexdigest()
 
 
@@ -81,26 +80,25 @@ _default_calculator = HashLibChecksumCalculator()
 
 
 def calculate_checksum(
-    file_path: Union[str, Path],
-    algorithm: str = 'sha256'
+    file_path: str | Path,
+    algorithm: str = "sha256",
 ) -> str:
-    """
-    Calcule le checksum d'un fichier (fonction utilitaire).
+    """Calcule le checksum d'un fichier (fonction utilitaire).
 
     Utilise l'implémentation HashLibChecksumCalculator par défaut.
     Pour les tests ou une personnalisation, utiliser directement
     une instance de ChecksumCalculator.
 
     Args:
-        file_path: Chemin du fichier
-        algorithm: Algorithme de hash (sha256, sha512, md5, etc.)
+        file_path: Chemin du fichier.
+        algorithm: Algorithme de hash (sha256, sha384, sha512, blake2b).
 
     Returns:
-        Checksum hexadécimal du fichier
+        Checksum hexadécimal du fichier.
 
     Raises:
-        FileNotFoundError: Si le fichier n'existe pas
-        ValueError: Si l'algorithme n'est pas supporté
+        FileNotFoundError: Si le fichier n'existe pas.
+        ValueError: Si l'algorithme n'est pas autorisé.
     """
     return _default_calculator.calculate(file_path, algorithm)
 
@@ -110,14 +108,12 @@ class IntegrityChecker(ABC):
 
     @abstractmethod
     def verify(self, source: str, destination: str) -> bool:
-        """
-        Vérifie l'intégrité entre source et destination.
+        """Vérifie l'intégrité entre source et destination.
 
         Args:
-            source: Chemin source
-            destination: Chemin destination
+            source: Chemin source.
+            destination: Chemin destination.
 
         Returns:
-            True si l'intégrité est vérifiée, False sinon
+            True si l'intégrité est vérifiée, False sinon.
         """
-        pass
