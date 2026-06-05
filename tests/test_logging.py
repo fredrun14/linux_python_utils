@@ -1,6 +1,8 @@
 """Tests pour le module logging."""
 
 import io
+import os
+import stat
 import sys
 import tempfile
 from pathlib import Path
@@ -98,6 +100,36 @@ class TestFileLogger:
 
         content = log_file.read_text()
         assert "Direct message" in content
+
+    def test_fichier_log_cree_en_0600(self, tmp_path):
+        """Le fichier log est créé avec les permissions 0o600."""
+        log_file = tmp_path / "secure.log"
+        FileLogger(str(log_file))
+
+        mode = stat.S_IMODE(os.stat(str(log_file)).st_mode)
+        assert mode == 0o600
+
+    def test_log_refuse_symlink(self, tmp_path):
+        """FileLogger lève OSError si le chemin est un symlink (O_NOFOLLOW)."""
+        target = tmp_path / "real.log"
+        link = tmp_path / "link.log"
+        os.symlink(str(target), str(link))
+
+        with pytest.raises(OSError):
+            FileLogger(str(link))
+
+    def test_log_level_invalide_leve_valueerror(self, tmp_path):
+        """Un niveau de log invalide lève ValueError."""
+        log_file = str(tmp_path / "test.log")
+
+        # ConfigurationManager-style : get() accepte la notation pointée
+        class ConfigDotNotation:
+            """Config avec notation pointée (simule ConfigurationManager)."""
+            def get(self, key, default=None):
+                return {"logging.level": "VERBOSE"}.get(key, default)
+
+        with pytest.raises(ValueError, match="VERBOSE"):
+            FileLogger(log_file, config=ConfigDotNotation())
 
 
 class TestFileLoggerConsole:
@@ -264,6 +296,32 @@ class TestSecurityLogger:
         call_arg = mock_logger.log_info.call_args[0][0]
         payload = json.loads(call_arg)
         assert payload["details"]["table"] == "users"
+
+    def test_security_logger_masque_les_cles_sensibles(self):
+        """Les clés sensibles dans details sont remplacées par '***'."""
+        import json
+        from linux_python_utils.logging.security_logger import (
+            SecurityLogger, SecurityEvent, SecurityEventType
+        )
+        mock_logger = MagicMock()
+        sec_logger = SecurityLogger(mock_logger)
+        event = SecurityEvent(
+            event_type=SecurityEventType.AUTH_FAILURE,
+            details={
+                "password": "s3cr3t",
+                "token": "abc123",
+                "user": "alice",
+                "api_key": "key-xyz",
+            },
+            severity="warning",
+        )
+        sec_logger.log_event(event)
+        call_arg = mock_logger.log_warning.call_args[0][0]
+        payload = json.loads(call_arg)
+        assert payload["details"]["password"] == "***"
+        assert payload["details"]["token"] == "***"
+        assert payload["details"]["api_key"] == "***"
+        assert payload["details"]["user"] == "alice"
 
     def test_config_sans_methode_get(self, tmp_path):
         """FileLogger avec config sans methode get() utilise les valeurs par defaut."""
@@ -464,6 +522,19 @@ class TestTeeStream:
 
         # Assert
         assert "ligne capturée" in log_file.read_text(encoding="utf-8")
+
+    def test_close_ferme_log_pas_stdout(self) -> None:
+        """close() ferme _log_fh mais ne ferme pas le flux original."""
+        original = MagicMock()
+        log_fh = MagicMock()
+        from linux_python_utils.logging import TeeStream
+        tee = TeeStream(original, log_fh)
+
+        tee.close()
+
+        log_fh.flush.assert_called_once()
+        log_fh.close.assert_called_once()
+        original.close.assert_not_called()
 
     def test_tee_stderr_capture_erreurs(self, tmp_path: Path) -> None:
         """Remplacer sys.stderr par TeeStream capture stderr dans le fichier."""

@@ -55,6 +55,20 @@ class SecurityEvent:
     )
 
 
+_CLES_SENSIBLES = frozenset({
+    "password", "passwd", "token", "secret",
+    "key", "authorization", "api_key",
+})
+
+
+def _masquer(details: dict[str, Any]) -> dict[str, Any]:
+    """Remplace la valeur des clés sensibles par '***'."""
+    return {
+        k: ("***" if k.lower() in _CLES_SENSIBLES else v)
+        for k, v in details.items()
+    }
+
+
 class SecurityLogger:
     """Logger spécialisé pour les événements de sécurité.
 
@@ -93,7 +107,7 @@ class SecurityLogger:
             "timestamp": event.timestamp,
             "resource": event.resource,
             "severity": event.severity,
-            "details": event.details,
+            "details": _masquer(event.details),
         }
         if event.user_id is not None:
             payload["user_id"] = event.user_id

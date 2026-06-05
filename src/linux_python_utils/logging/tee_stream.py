@@ -67,6 +67,14 @@ class TeeStream:
         self._original.flush()
         self._log_fh.flush()
 
+    def close(self) -> None:
+        """Ferme le flux log ; ne ferme pas le flux original (stdout/stderr)."""
+        try:
+            self._log_fh.flush()
+            self._log_fh.close()
+        except (OSError, ValueError):
+            pass
+
     def __getattr__(self, name: str) -> Any:
         """Délègue les attributs inconnus au flux original.
 

@@ -5,6 +5,14 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
+_NIVEAUX = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
+
+
+def _open_secure(path: str) -> int:
+    """Ouvre le log avec O_NOFOLLOW et mode 0o600 (anti-symlink/anti-lecture)."""
+    flags = os.O_CREAT | os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW
+    return os.open(path, flags, 0o600)
+
 # local
 from linux_python_utils.logging.ansi_colors import AnsiColors
 from linux_python_utils.logging.base import Logger
@@ -95,7 +103,10 @@ class FileLogger(Logger):
             log_level_str = "INFO"
             log_format = "%(asctime)s - %(levelname)s - %(message)s"
 
-        log_level = getattr(logging, log_level_str, logging.INFO)
+        niveau = log_level_str.upper()
+        if niveau not in _NIVEAUX:
+            raise ValueError(f"Niveau de log invalide : {log_level_str!r}")
+        log_level = getattr(logging, niveau)
 
         # Créer un logger unique par instance
         self.logger = logging.getLogger(log_file)
@@ -103,8 +114,11 @@ class FileLogger(Logger):
 
         # Éviter les handlers dupliqués
         if not self.logger.handlers:
-            # Handler fichier — toujours plain-text
-            file_handler = logging.FileHandler(log_file, encoding='utf-8')
+            # Handler fichier — StreamHandler sur fd sécurisé (O_NOFOLLOW, 0o600)
+            fd = _open_secure(log_file)
+            file_handler = logging.StreamHandler(
+                os.fdopen(fd, "a", encoding="utf-8")
+            )
             file_handler.setLevel(log_level)
             file_handler.setFormatter(logging.Formatter(log_format))
             self.logger.addHandler(file_handler)
@@ -154,5 +168,5 @@ class FileLogger(Logger):
         """
         from datetime import datetime
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        with open(self.log_file, 'a', encoding='utf-8') as f:
+        with os.fdopen(_open_secure(self.log_file), "a", encoding="utf-8") as f:
             f.write(f"{timestamp} - {message}\n")
