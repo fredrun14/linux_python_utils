@@ -8,7 +8,7 @@ Ce module définit :
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -16,7 +16,7 @@ class CommandResult:
     """Résultat de l'exécution d'une commande système.
 
     Attributes:
-        command: Commande exécutée sous forme de liste.
+        command: Commande exécutée sous forme de tuple immuable.
         return_code: Code de retour du processus.
         stdout: Sortie standard capturée.
         stderr: Sortie d'erreur capturée.
@@ -25,13 +25,17 @@ class CommandResult:
         executed_as_root: True si la commande a été exécutée en root.
     """
 
-    command: List[str]
+    command: Tuple[str, ...]
     return_code: int
     stdout: str
     stderr: str
     success: bool
     duration: float
     executed_as_root: bool = False
+
+    def __post_init__(self) -> None:
+        """Convertit la commande en tuple pour l'immutabilité."""
+        object.__setattr__(self, "command", tuple(self.command))
 
 
 class CommandExecutor(ABC):

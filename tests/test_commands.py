@@ -56,7 +56,7 @@ class TestCommandResult:
             success=True,
             duration=0.5,
         )
-        assert result.command == ["ls", "-la"]
+        assert result.command == ("ls", "-la")
         assert result.return_code == 0
         assert result.stdout == "fichier.txt"
         assert result.stderr == ""
@@ -239,7 +239,7 @@ class TestLinuxCommandExecutorRun:
         assert result.return_code == 0
         assert result.stdout == "sortie"
         assert result.stderr == ""
-        assert result.command == ["echo", "test"]
+        assert result.command == ("echo", "test")
         assert result.duration >= 0
 
     @patch(
@@ -260,9 +260,10 @@ class TestLinuxCommandExecutorRun:
     def test_run_timeout(self, mock_popen):
         """Test du timeout lors de l'exécution."""
         proc = _setup_popen(mock_popen, returncode=0)
-        proc.communicate.side_effect = subprocess.TimeoutExpired(
-            cmd=["sleep", "100"], timeout=5,
-        )
+        proc.communicate.side_effect = [
+            subprocess.TimeoutExpired(cmd=["sleep", "100"], timeout=5),
+            ("", ""),  # drain après kill
+        ]
         result = self.executor.run(
             ["sleep", "100"], timeout=5,
         )
@@ -270,6 +271,42 @@ class TestLinuxCommandExecutorRun:
         assert result.success is False
         assert result.return_code == -1
         self.mock_logger.log_error.assert_called_once()
+
+    @patch(
+        "linux_python_utils.commands.runner.subprocess.Popen"
+    )
+    def test_run_timeout_tue_le_process(self, mock_popen):
+        """Vérifie que kill() est appelé sur TimeoutExpired."""
+        proc = _setup_popen(mock_popen, returncode=0)
+        proc.communicate.side_effect = [
+            subprocess.TimeoutExpired(
+                cmd=["sleep", "100"], timeout=5
+            ),
+            ("sortie partielle", ""),
+        ]
+
+        result = self.executor.run(["sleep", "100"], timeout=5)
+
+        assert result.success is False
+        assert result.return_code == -1
+        assert result.stdout == "sortie partielle"
+        proc.kill.assert_called_once()
+        self.mock_logger.log_error.assert_called_once()
+
+    @patch(
+        "linux_python_utils.commands.runner.subprocess.Popen"
+    )
+    def test_run_keyboard_interrupt_termine_le_process(
+        self, mock_popen
+    ):
+        """Vérifie que terminate() est appelé sur KeyboardInterrupt."""
+        proc = _setup_popen(mock_popen, returncode=0)
+        proc.communicate.side_effect = KeyboardInterrupt()
+
+        with pytest.raises(KeyboardInterrupt):
+            self.executor.run(["sleep", "100"])
+
+        proc.terminate.assert_called_once()
 
     @patch(
         "linux_python_utils.commands.runner.subprocess.Popen"
@@ -1021,6 +1058,20 @@ class TestLinuxCommandExecutorConsoleFormatter:
         # Ne doit pas lever d'exception
         result = executor.run(["ls"])
         assert result.success is True
+
+    @patch("linux_python_utils.commands.runner.subprocess.Popen")
+    def test_console_output_emis_avec_formatter(
+        self, mock_popen, capsys
+    ):
+        """Vérifie que le formatter console émet un message sur stdout."""
+        _setup_popen(mock_popen, returncode=0)
+        executor = LinuxCommandExecutor(
+            console_formatter=PlainCommandFormatter()
+        )
+        executor.run(["echo", "test"])
+
+        captured = capsys.readouterr()
+        assert "echo test" in captured.out
 
     @patch(
         "linux_python_utils.commands.runner.subprocess.Popen"

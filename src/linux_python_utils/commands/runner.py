@@ -39,6 +39,7 @@ Example :
 """
 
 import os
+import shlex
 import subprocess  # nosec B404
 import time
 from typing import Dict, List, Optional
@@ -184,6 +185,36 @@ class LinuxCommandExecutor(CommandExecutor):
         if self._console_formatter:
             print(message)
 
+    def _result(
+        self,
+        command: List[str],
+        return_code: int,
+        stdout: str,
+        stderr: str,
+        duration: float,
+    ) -> CommandResult:
+        """Construit un CommandResult avec les champs communs.
+
+        Args:
+            command: Commande exécutée.
+            return_code: Code de retour du processus.
+            stdout: Sortie standard capturée.
+            stderr: Sortie d'erreur capturée.
+            duration: Durée d'exécution en secondes.
+
+        Returns:
+            CommandResult complet avec executed_as_root.
+        """
+        return CommandResult(
+            command=command,
+            return_code=return_code,
+            stdout=stdout,
+            stderr=stderr,
+            success=return_code == 0,
+            duration=duration,
+            executed_as_root=self._is_root,
+        )
+
     def _make_dry_run_result(
         self,
         command: List[str],
@@ -208,15 +239,7 @@ class LinuxCommandExecutor(CommandExecutor):
                 )
             )
 
-        return CommandResult(
-            command=command,
-            return_code=0,
-            stdout="",
-            stderr="",
-            success=True,
-            duration=0.0,
-            executed_as_root=self._is_root,
-        )
+        return self._result(command, 0, "", "", 0.0)
 
     def run(
         self,
@@ -227,9 +250,12 @@ class LinuxCommandExecutor(CommandExecutor):
     ) -> CommandResult:
         """Exécute une commande et retourne le résultat.
 
-        Utilise subprocess.run pour capturer stdout et stderr.
+        Utilise subprocess.Popen pour capturer stdout et stderr.
         Préfixe les messages de log avec [ROOT] ou [user] selon
         les privilèges détectés à l'initialisation.
+
+        Sur TimeoutExpired, tue le processus (SIGKILL) et draine
+        les pipes avant de retourner un résultat d'erreur.
 
         Args:
             command: Commande sous forme de liste.
@@ -277,6 +303,17 @@ class LinuxCommandExecutor(CommandExecutor):
                     _stdout, _stderr = _proc.communicate(
                         timeout=effective_timeout
                     )
+                except subprocess.TimeoutExpired:
+                    _proc.kill()
+                    _stdout, _stderr = _proc.communicate()
+                    duration = time.monotonic() - start
+                    self._log_error(
+                        f"Timeout après {effective_timeout}s : "
+                        f"{shlex.join(command)}"
+                    )
+                    return self._result(
+                        command, -1, _stdout, _stderr, duration
+                    )
                 except KeyboardInterrupt:
                     _proc.terminate()
                     try:
@@ -284,56 +321,19 @@ class LinuxCommandExecutor(CommandExecutor):
                     except subprocess.TimeoutExpired:
                         _proc.kill()
                     raise
-            proc = type(
-                "ProcResult", (),
-                {
-                    "returncode": _proc.returncode,
-                    "stdout": _stdout,
-                    "stderr": _stderr,
-                }
-            )()
             duration = time.monotonic() - start
-            if proc.returncode != 0:
+            if _proc.returncode != 0:
                 self._log_error(
-                    f"Code retour {proc.returncode} : "
-                    f"{' '.join(command)}"
+                    f"Code retour {_proc.returncode} : "
+                    f"{shlex.join(command)}"
                 )
-            return CommandResult(
-                command=command,
-                return_code=proc.returncode,
-                stdout=proc.stdout,
-                stderr=proc.stderr,
-                success=proc.returncode == 0,
-                duration=duration,
-                executed_as_root=self._is_root,
-            )
-        except subprocess.TimeoutExpired as e:
-            duration = time.monotonic() - start
-            self._log_error(
-                f"Timeout après {effective_timeout}s : "
-                f"{' '.join(command)}"
-            )
-            return CommandResult(
-                command=command,
-                return_code=-1,
-                stdout=e.stdout or "",
-                stderr=e.stderr or "",
-                success=False,
-                duration=duration,
-                executed_as_root=self._is_root,
+            return self._result(
+                command, _proc.returncode, _stdout, _stderr, duration
             )
         except OSError as e:
             duration = time.monotonic() - start
             self._log_error(f"Erreur système : {e}")
-            return CommandResult(
-                command=command,
-                return_code=-1,
-                stdout="",
-                stderr=str(e),
-                success=False,
-                duration=duration,
-                executed_as_root=self._is_root,
-            )
+            return self._result(command, -1, "", str(e), duration)
 
     def run_streaming(
         self,
@@ -346,7 +346,7 @@ class LinuxCommandExecutor(CommandExecutor):
 
         Utilise subprocess.Popen pour lire stdout ligne par
         ligne et l'envoyer au logger en temps réel. Stderr
-        est capturé séparément.
+        est capturé séparément après la fin du process.
 
         Args:
             command: Commande sous forme de liste.
@@ -361,6 +361,14 @@ class LinuxCommandExecutor(CommandExecutor):
         Note:
             Logue une erreur si le code retour est non-nul et qu'un
             logger est configuré.
+
+        Avertissement:
+            Risque de deadlock si la commande produit un volume
+            important sur stderr (> 64 Ko) : stderr se remplit et
+            bloque le process pendant que cette méthode attend sur
+            ``proc.wait()``. Pour éviter ce cas, fusionner les
+            sorties avec ``stderr=subprocess.STDOUT`` ou drainer
+            stderr dans un thread séparé.
         """
         if self._dry_run:
             return self._make_dry_run_result(command)
@@ -413,16 +421,14 @@ class LinuxCommandExecutor(CommandExecutor):
                 if proc.returncode != 0:
                     self._log_error(
                         f"Code retour {proc.returncode} : "
-                        f"{' '.join(command)}"
+                        f"{shlex.join(command)}"
                     )
-                return CommandResult(
-                    command=command,
-                    return_code=proc.returncode,
-                    stdout="\n".join(stdout_lines),
-                    stderr=stderr,
-                    success=proc.returncode == 0,
-                    duration=duration,
-                    executed_as_root=self._is_root,
+                return self._result(
+                    command,
+                    proc.returncode,
+                    "\n".join(stdout_lines),
+                    stderr,
+                    duration,
                 )
         except subprocess.TimeoutExpired:
             proc.kill()
@@ -433,26 +439,22 @@ class LinuxCommandExecutor(CommandExecutor):
                 stderr = proc.stderr.read()
             self._log_error(
                 f"Timeout après {effective_timeout}s : "
-                f"{' '.join(command)}"
+                f"{shlex.join(command)}"
             )
-            return CommandResult(
-                command=command,
-                return_code=-1,
-                stdout="\n".join(stdout_lines),
-                stderr=stderr,
-                success=False,
-                duration=duration,
-                executed_as_root=self._is_root,
+            return self._result(
+                command,
+                -1,
+                "\n".join(stdout_lines),
+                stderr,
+                duration,
             )
         except OSError as e:
             duration = time.monotonic() - start
             self._log_error(f"Erreur système : {e}")
-            return CommandResult(
-                command=command,
-                return_code=-1,
-                stdout="\n".join(stdout_lines),
-                stderr=str(e),
-                success=False,
-                duration=duration,
-                executed_as_root=self._is_root,
+            return self._result(
+                command,
+                -1,
+                "\n".join(stdout_lines),
+                str(e),
+                duration,
             )

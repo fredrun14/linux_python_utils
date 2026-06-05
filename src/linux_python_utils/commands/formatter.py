@@ -29,6 +29,7 @@ Note :
     ainsi de polluer les pipes ou les redirections.
 """
 
+import shlex
 import sys
 from abc import ABC, abstractmethod
 from typing import List
@@ -37,14 +38,41 @@ from typing import List
 class CommandFormatter(ABC):
     """Interface abstraite pour formater les messages de commande.
 
-    Chaque implémentation définit sa propre représentation visuelle
-    des messages d'exécution, de streaming et de simulation.
+    Implémente les méthodes de construction de messages (Template
+    Method). Les sous-classes n'ont qu'à définir ``_decorate`` pour
+    appliquer leur style visuel.
 
     Les formateurs reçoivent le contexte d'exécution (is_root)
     pour adapter leur affichage en conséquence.
     """
 
+    _ROOT_PREFIX = "[ROOT]"
+    _USER_PREFIX = "[user]"
+
+    def _prefix(self, is_root: bool) -> str:
+        """Retourne le préfixe textuel selon le contexte.
+
+        Args:
+            is_root: True si l'exécution est en root.
+
+        Returns:
+            Préfixe [ROOT] ou [user].
+        """
+        return self._ROOT_PREFIX if is_root else self._USER_PREFIX
+
     @abstractmethod
+    def _decorate(self, text: str, is_root: bool) -> str:
+        """Applique le style visuel au texte construit.
+
+        Args:
+            text: Texte déjà construit avec préfixe et contenu.
+            is_root: True si l'exécution est en root.
+
+        Returns:
+            Texte stylisé prêt à l'affichage.
+        """
+        pass
+
     def format_start(
         self, command: List[str], is_root: bool
     ) -> str:
@@ -57,9 +85,12 @@ class CommandFormatter(ABC):
         Returns:
             Message formaté prêt à l'affichage.
         """
-        pass
+        cmd_str = shlex.join(command)
+        return self._decorate(
+            f"{self._prefix(is_root)} Exécution : {cmd_str}",
+            is_root,
+        )
 
-    @abstractmethod
     def format_start_streaming(
         self, command: List[str], is_root: bool
     ) -> str:
@@ -72,9 +103,13 @@ class CommandFormatter(ABC):
         Returns:
             Message formaté prêt à l'affichage.
         """
-        pass
+        cmd_str = shlex.join(command)
+        return self._decorate(
+            f"{self._prefix(is_root)} "
+            f"Exécution (streaming) : {cmd_str}",
+            is_root,
+        )
 
-    @abstractmethod
     def format_dry_run(
         self, command: List[str], is_root: bool
     ) -> str:
@@ -87,9 +122,12 @@ class CommandFormatter(ABC):
         Returns:
             Message formaté prêt à l'affichage.
         """
-        pass
+        cmd_str = shlex.join(command)
+        return self._decorate(
+            f"{self._prefix(is_root)} [dry-run] {cmd_str}",
+            is_root,
+        )
 
-    @abstractmethod
     def format_line(
         self, line: str, is_root: bool
     ) -> str:
@@ -102,7 +140,7 @@ class CommandFormatter(ABC):
         Returns:
             Ligne formatée prête à l'affichage.
         """
-        pass
+        return line
 
 
 class PlainCommandFormatter(CommandFormatter):
@@ -120,49 +158,9 @@ class PlainCommandFormatter(CommandFormatter):
             [user] Exécution : rsync -av /src /dst
     """
 
-    _ROOT_PREFIX = "[ROOT]"
-    _USER_PREFIX = "[user]"
-
-    def _prefix(self, is_root: bool) -> str:
-        """Retourne le préfixe textuel selon le contexte.
-
-        Args:
-            is_root: True si l'exécution est en root.
-
-        Returns:
-            Préfixe [ROOT] ou [user].
-        """
-        return self._ROOT_PREFIX if is_root else self._USER_PREFIX
-
-    def format_start(
-        self, command: List[str], is_root: bool
-    ) -> str:
-        """Formate le début d'exécution avec préfixe textuel."""
-        cmd_str = " ".join(command)
-        return f"{self._prefix(is_root)} Exécution : {cmd_str}"
-
-    def format_start_streaming(
-        self, command: List[str], is_root: bool
-    ) -> str:
-        """Formate le début d'exécution streaming avec préfixe."""
-        cmd_str = " ".join(command)
-        return (
-            f"{self._prefix(is_root)} "
-            f"Exécution (streaming) : {cmd_str}"
-        )
-
-    def format_dry_run(
-        self, command: List[str], is_root: bool
-    ) -> str:
-        """Formate le message de simulation avec préfixe."""
-        cmd_str = " ".join(command)
-        return f"{self._prefix(is_root)} [dry-run] {cmd_str}"
-
-    def format_line(
-        self, line: str, is_root: bool
-    ) -> str:
-        """Retourne la ligne sans modification."""
-        return line
+    def _decorate(self, text: str, is_root: bool) -> str:
+        """Retourne le texte sans modification (identité)."""
+        return text
 
 
 class AnsiCommandFormatter(CommandFormatter):
@@ -195,9 +193,6 @@ class AnsiCommandFormatter(CommandFormatter):
     USER_STYLE = "\033[0;32m"   # Vert normal
     DRY_STYLE = "\033[0;90m"    # Gris discret
 
-    ROOT_PREFIX = "[ROOT]"
-    USER_PREFIX = "[user]"
-
     def _is_tty(self) -> bool:
         """Vérifie si stdout est un terminal interactif (TTY).
 
@@ -206,19 +201,8 @@ class AnsiCommandFormatter(CommandFormatter):
         """
         return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
 
-    def _prefix(self, is_root: bool) -> str:
-        """Retourne le préfixe selon le contexte.
-
-        Args:
-            is_root: True si l'exécution est en root.
-
-        Returns:
-            Préfixe [ROOT] ou [user].
-        """
-        return self.ROOT_PREFIX if is_root else self.USER_PREFIX
-
-    def _apply_style(self, text: str, is_root: bool) -> str:
-        """Applique le style ANSI si on est dans un TTY.
+    def _decorate(self, text: str, is_root: bool) -> str:
+        """Applique le style ANSI ROOT/USER si on est dans un TTY.
 
         Args:
             text: Texte à styliser.
@@ -232,39 +216,13 @@ class AnsiCommandFormatter(CommandFormatter):
         color = self.ROOT_STYLE if is_root else self.USER_STYLE
         return f"{color}{text}{self.RESET}"
 
-    def format_start(
-        self, command: List[str], is_root: bool
-    ) -> str:
-        """Formate le début d'exécution avec style ANSI."""
-        cmd_str = " ".join(command)
-        prefix = self._prefix(is_root)
-        return self._apply_style(
-            f"{prefix} Exécution : {cmd_str}", is_root
-        )
-
-    def format_start_streaming(
-        self, command: List[str], is_root: bool
-    ) -> str:
-        """Formate le début d'exécution streaming avec style ANSI."""
-        cmd_str = " ".join(command)
-        prefix = self._prefix(is_root)
-        return self._apply_style(
-            f"{prefix} Exécution (streaming) : {cmd_str}", is_root
-        )
-
     def format_dry_run(
         self, command: List[str], is_root: bool
     ) -> str:
         """Formate le message de simulation avec style gris discret."""
-        cmd_str = " ".join(command)
+        cmd_str = shlex.join(command)
         prefix = self._prefix(is_root)
         text = f"{prefix} [dry-run] {cmd_str}"
         if self._is_tty():
             return f"{self.DRY_STYLE}{text}{self.RESET}"
         return text
-
-    def format_line(
-        self, line: str, is_root: bool
-    ) -> str:
-        """Retourne la ligne sans style (contenu brut préservé)."""
-        return line
