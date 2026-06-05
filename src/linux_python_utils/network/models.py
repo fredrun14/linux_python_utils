@@ -6,7 +6,7 @@ represente un peripherique decouvert sur le reseau local.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from linux_python_utils.network.validators import (
     validate_ipv4,
@@ -54,7 +54,7 @@ class NetworkDevice:
         if self.fixed_ip is not None:
             validate_ipv4(self.fixed_ip)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialise le peripherique en dictionnaire.
 
         Les datetimes sont converties au format ISO 8601.

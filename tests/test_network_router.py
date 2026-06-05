@@ -9,11 +9,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from linux_python_utils.network.config import NetworkConfig, DhcpRange
+from linux_python_utils.network.ip_utils import _ip_to_int
 from linux_python_utils.network.router import (
     AsusRouterClient,
     AsusRouterScanner,
     RouterConfig,
-    _ip_to_int,
     _parse_custom_clientlist,
     _parse_nvram_reservations,
 )
@@ -736,20 +736,20 @@ class TestIpHelpers:
 
     def test_ip_to_int(self) -> None:
         """_ip_to_int() convertit correctement une IP."""
-        from linux_python_utils.network.router import _ip_to_int
+        from linux_python_utils.network.ip_utils import _ip_to_int
         assert _ip_to_int("192.168.50.1") == (
             (192 << 24) + (168 << 16) + (50 << 8) + 1
         )
 
     def test_int_to_ip(self) -> None:
         """_int_to_ip() convertit correctement un entier."""
-        from linux_python_utils.network.router import _int_to_ip
+        from linux_python_utils.network.ip_utils import _int_to_ip
         result = _int_to_ip((192 << 24) + (168 << 16) + (50 << 8) + 1)
         assert result == "192.168.50.1"
 
     def test_next_available_ip_premier_libre(self) -> None:
         """_next_available_ip() retourne la première IP libre."""
-        from linux_python_utils.network.router import _next_available_ip
+        from linux_python_utils.network.ip_utils import _next_available_ip
         from linux_python_utils.network.config import DhcpRange
         dhcp_range = DhcpRange(start="192.168.50.100", end="192.168.50.110")
         used = {"192.168.50.100", "192.168.50.101"}
@@ -758,7 +758,7 @@ class TestIpHelpers:
 
     def test_next_available_ip_plage_epuisee(self) -> None:
         """_next_available_ip() retourne None si plage épuisée."""
-        from linux_python_utils.network.router import _next_available_ip
+        from linux_python_utils.network.ip_utils import _next_available_ip
         from linux_python_utils.network.config import DhcpRange
         dhcp_range = DhcpRange(start="192.168.50.100", end="192.168.50.102")
         used = {
@@ -771,7 +771,7 @@ class TestIpHelpers:
 
     def test_infer_type_from_vendor(self) -> None:
         """_infer_type_from_vendor() infère le type depuis le fabricant."""
-        from linux_python_utils.network.router import _infer_type_from_vendor
+        from linux_python_utils.network.vendors import _infer_type_from_vendor
         assert _infer_type_from_vendor("NVIDIA Corporation") == "Media Player"
         assert _infer_type_from_vendor("Apple Inc") == "Apple"
         assert _infer_type_from_vendor("Unknown Corp") == "unknown"
@@ -1156,7 +1156,7 @@ class TestAsusRouterClientHook:
         mock_resp.__exit__ = MagicMock(return_value=False)
 
         with patch(
-            "linux_python_utils.network.router.urllib.request.urlopen",
+            "linux_python_utils.network.router.client.urllib.request.urlopen",
             return_value=mock_resp
         ):
             result = client._hook("get_clientlist(appobj)")
@@ -1171,7 +1171,7 @@ class TestAsusRouterClientHook:
         client._token = "fake-token"
 
         with patch(
-            "linux_python_utils.network.router.urllib.request.urlopen",
+            "linux_python_utils.network.router.client.urllib.request.urlopen",
             side_effect=Exception("network error")
         ):
             with pytest.raises(RuntimeError, match="hook"):
@@ -1235,7 +1235,7 @@ class TestAsusRouterDhcpManagerEdgeCases:
 
         mgr = AsusRouterDhcpManager(network_config, router_config)
         with patch(
-            "linux_python_utils.network.router.NetworkDevice",
+            "linux_python_utils.network.router.dhcp.NetworkDevice",
             side_effect=ValueError("bad mac")
         ):
             result = mgr._parse_nvram_staticlist(

@@ -9,6 +9,10 @@ from linux_python_utils.network.config import (
 from linux_python_utils.network.dhcp import (
     LinuxDhcpReservationManager,
 )
+from linux_python_utils.network.ip_utils import (
+    _int_to_ip,
+    _ip_to_int,
+)
 from linux_python_utils.network.models import NetworkDevice
 
 
@@ -122,24 +126,18 @@ class TestLinuxDhcpReservationManager:
 
     def test_ip_to_int(self) -> None:
         """Conversion IP vers entier."""
-        result = LinuxDhcpReservationManager._ip_to_int(
-            "192.168.1.100"
-        )
+        result = _ip_to_int("192.168.1.100")
         assert result == 3232235876
 
     def test_int_to_ip(self) -> None:
         """Conversion entier vers IP."""
-        result = LinuxDhcpReservationManager._int_to_ip(
-            3232235876
-        )
+        result = _int_to_ip(3232235876)
         assert result == "192.168.1.100"
 
     def test_ip_to_int_roundtrip(self) -> None:
         """Roundtrip ip_to_int puis int_to_ip."""
         ip = "192.168.1.100"
-        result = LinuxDhcpReservationManager._int_to_ip(
-            LinuxDhcpReservationManager._ip_to_int(ip)
-        )
+        result = _int_to_ip(_ip_to_int(ip))
         assert result == ip
 
     def test_eviter_collision_ip(self) -> None:
@@ -186,13 +184,10 @@ class TestIpToIntValidation:
 
     def test_ip_to_int_valide(self) -> None:
         """_ip_to_int() retourne l'entier correct pour une IP valide."""
-        result = LinuxDhcpReservationManager._ip_to_int(
-            "192.168.1.1"
-        )
-        assert result == 3232235777
+        assert _ip_to_int("192.168.1.1") == 3232235777
 
     def test_ip_to_int_invalide_leve_valueerror(self) -> None:
         """_ip_to_int() leve ValueError pour une IP invalide."""
         import pytest
         with pytest.raises(ValueError, match="IPv4"):
-            LinuxDhcpReservationManager._ip_to_int("256.0.0.1")
+            _ip_to_int("256.0.0.1")

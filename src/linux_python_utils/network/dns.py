@@ -6,6 +6,7 @@ locaux et les fichiers de configuration (hosts, dnsmasq).
 
 import dataclasses
 import re
+from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import List, Optional
 
@@ -30,8 +31,11 @@ def _sanitize_dns_label(label: str) -> str:
     return label.strip("-")[:63]
 
 
-class LinuxHostsFileManager(DnsManager):
-    """Gestionnaire DNS via le fichier /etc/hosts.
+class _BaseDnsManager(DnsManager, ABC):
+    """Base commune pour les gestionnaires DNS locaux.
+
+    Porte la logique de generation de noms DNS partagee
+    entre LinuxHostsFileManager et LinuxDnsmasqConfigGenerator.
 
     Attributes:
         _config: Configuration reseau.
@@ -43,7 +47,7 @@ class LinuxHostsFileManager(DnsManager):
         config: NetworkConfig,
         logger: Optional[Logger] = None,
     ) -> None:
-        """Initialise le gestionnaire hosts.
+        """Initialise le gestionnaire DNS.
 
         Args:
             config: Configuration reseau.
@@ -69,13 +73,54 @@ class LinuxHostsFileManager(DnsManager):
             if device.dns_name:
                 result.append(device)
                 continue
-            name = self._generate_name(device, domain)
+            name = _generate_dns_name(device, domain)
             result.append(
                 dataclasses.replace(
                     device, dns_name=name
                 )
             )
         return result
+
+    @abstractmethod
+    def generate_hosts_entries(
+        self, devices: List[NetworkDevice]
+    ) -> str:
+        """Genere le contenu du fichier de configuration.
+
+        Args:
+            devices: Liste des peripheriques.
+
+        Returns:
+            Contenu formate pour le fichier cible.
+        """
+
+
+def _generate_dns_name(
+    device: NetworkDevice, domain: str
+) -> str:
+    """Genere un nom DNS pour un peripherique.
+
+    Args:
+        device: Peripherique.
+        domain: Domaine local.
+
+    Returns:
+        Nom DNS complet (FQDN).
+    """
+    if device.hostname:
+        label = _sanitize_dns_label(device.hostname)
+    elif device.vendor:
+        last_octet = device.ip.split(".")[-1]
+        label = _sanitize_dns_label(device.vendor)
+        label = f"{label}-{last_octet}"
+    else:
+        last_octet = device.ip.split(".")[-1]
+        label = f"{device.device_type}-{last_octet}"
+    return f"{label}.{domain}"
+
+
+class LinuxHostsFileManager(_BaseDnsManager):
+    """Gestionnaire DNS via le fichier /etc/hosts."""
 
     def generate_hosts_entries(
         self, devices: List[NetworkDevice]
@@ -110,81 +155,9 @@ class LinuxHostsFileManager(DnsManager):
                 lines.append(f"{ip}    {fqdn}")
         return "\n".join(lines) + "\n"
 
-    @staticmethod
-    def _generate_name(
-        device: NetworkDevice, domain: str
-    ) -> str:
-        """Genere un nom DNS pour un peripherique.
 
-        Args:
-            device: Peripherique.
-            domain: Domaine local.
-
-        Returns:
-            Nom DNS complet (FQDN).
-        """
-        if device.hostname:
-            label = _sanitize_dns_label(device.hostname)
-        elif device.vendor:
-            last_octet = device.ip.split(".")[-1]
-            label = _sanitize_dns_label(device.vendor)
-            label = f"{label}-{last_octet}"
-        else:
-            last_octet = device.ip.split(".")[-1]
-            label = f"{device.device_type}-{last_octet}"
-        return f"{label}.{domain}"
-
-
-class LinuxDnsmasqConfigGenerator(DnsManager):
-    """Generateur de configuration DNS pour dnsmasq.
-
-    Attributes:
-        _config: Configuration reseau.
-        _logger: Logger optionnel.
-    """
-
-    def __init__(
-        self,
-        config: NetworkConfig,
-        logger: Optional[Logger] = None,
-    ) -> None:
-        """Initialise le generateur dnsmasq.
-
-        Args:
-            config: Configuration reseau.
-            logger: Logger optionnel.
-        """
-        self._config = config
-        self._logger = logger
-
-    def generate_dns_names(
-        self, devices: List[NetworkDevice]
-    ) -> List[NetworkDevice]:
-        """Genere les noms DNS pour les peripheriques.
-
-        Meme logique que LinuxHostsFileManager.
-
-        Args:
-            devices: Liste des peripheriques.
-
-        Returns:
-            Liste des peripheriques avec noms DNS.
-        """
-        domain = self._config.dns.domain
-        result: List[NetworkDevice] = []
-        for device in devices:
-            if device.dns_name:
-                result.append(device)
-                continue
-            name = LinuxHostsFileManager._generate_name(
-                device, domain
-            )
-            result.append(
-                dataclasses.replace(
-                    device, dns_name=name
-                )
-            )
-        return result
+class LinuxDnsmasqConfigGenerator(_BaseDnsManager):
+    """Generateur de configuration DNS pour dnsmasq."""
 
     def generate_hosts_entries(
         self, devices: List[NetworkDevice]

@@ -28,7 +28,9 @@ def _sort_by_ip(
     Returns:
         Liste triee.
     """
-    def _key(d: NetworkDevice):
+    def _key(
+        d: NetworkDevice,
+    ) -> tuple[int, list[int], str]:
         if d.ip:
             return (0, [int(o) for o in d.ip.split(".")], "")
         return (1, [], d.mac)

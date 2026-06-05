@@ -4,6 +4,7 @@ Ce module fournit des validateurs pour les adresses IPv4,
 les adresses MAC, les notations CIDR et les noms d'hote.
 """
 
+import ipaddress
 import re
 
 
@@ -19,15 +20,10 @@ def validate_ipv4(ip: str) -> str:
     Raises:
         ValueError: Si l'adresse est invalide.
     """
-    pattern = r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$"
-    match = re.match(pattern, ip)
-    if not match:
+    try:
+        ipaddress.IPv4Address(ip)
+    except ValueError:
         raise ValueError(f"Adresse IPv4 invalide : {ip!r}")
-    for octet in match.groups():
-        if not 0 <= int(octet) <= 255:
-            raise ValueError(
-                f"Octet hors plage (0-255) : {octet} dans {ip!r}"
-            )
     return ip
 
 
