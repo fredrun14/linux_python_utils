@@ -62,6 +62,21 @@ class CredentialManager:
         self._store = store
         self._logger = logger
 
+    def _require_store(self) -> CredentialStore:
+        """Retourne le store ou lève si aucun n'est configuré.
+
+        Returns:
+            Le store configuré.
+
+        Raises:
+            CredentialStoreError: si aucun store n'est configuré.
+        """
+        if self._store is None:
+            raise CredentialStoreError(
+                "Aucun store de secrets configuré."
+            )
+        return self._store
+
     def get(
         self,
         key: str,
@@ -122,12 +137,7 @@ class CredentialManager:
             CredentialStoreError: si aucun store n'est configure
                 ou si l'operation echoue.
         """
-        if self._store is None:
-            raise CredentialStoreError(
-                "Aucun store n'est configure pour ecrire "
-                "des credentials."
-            )
-        self._store.set(self._service, key, value)
+        self._require_store().set(self._service, key, value)
 
     def delete(self, key: str) -> None:
         """Supprime un credential du store configure.
@@ -138,12 +148,7 @@ class CredentialManager:
         Raises:
             CredentialStoreError: si aucun store n'est configure.
         """
-        if self._store is None:
-            raise CredentialStoreError(
-                "Aucun store n'est configure pour supprimer "
-                "des credentials."
-            )
-        self._store.delete(self._service, key)
+        self._require_store().delete(self._service, key)
 
     @classmethod
     def from_dotenv(

@@ -5,7 +5,7 @@ et Credential representant les cles et valeurs de secrets
 applicatifs.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,7 @@ class Credential:
 
     service: str
     key: str
-    value: str
+    value: str = field(repr=False)  # jamais affiché (anti-fuite)
     source: str = ""
 
     def __post_init__(self) -> None:

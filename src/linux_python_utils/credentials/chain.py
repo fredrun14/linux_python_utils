@@ -53,36 +53,28 @@ class CredentialChain(CredentialProvider):
         self._providers = providers
         self._logger = logger
 
-    def get(
+    def _find(
         self,
         service: str,
         key: str,
-    ) -> Optional[str]:
-        """Retourne le premier credential trouve dans la chaine.
+    ) -> tuple[Optional[CredentialProvider], Optional[str]]:
+        """Retourne le premier (provider, valeur) trouvé, sinon (None, None).
 
-        Les providers indisponibles (is_available() == False)
-        sont ignores silencieusement.
+        Parcourt les providers disponibles dans l'ordre. Log les escalades.
 
         Args:
             service: Nom du service applicatif.
-            key: Nom de la cle.
+            key: Nom de la clé.
 
         Returns:
-            Valeur du credential ou None si absent de tous les
-            providers.
+            Tuple (provider, valeur) du premier succès, ou (None, None).
         """
         for provider in self._providers:
             if not provider.is_available():
                 continue
             value = provider.get(service, key)
             if value:
-                if self._logger:
-                    self._logger.log_info(
-                        f"Credential trouve via "
-                        f"{provider.source_name!r} : "
-                        f"service={service!r}, key={key!r}"
-                    )
-                return value
+                return provider, value
             if self._logger:
                 self._logger.log_info(
                     f"Credential absent de "
@@ -90,6 +82,35 @@ class CredentialChain(CredentialProvider):
                     f"service={service!r}, "
                     f"key={key!r} — escalade"
                 )
+        return None, None
+
+    def get(
+        self,
+        service: str,
+        key: str,
+    ) -> Optional[str]:
+        """Retourne le premier credential trouvé dans la chaîne.
+
+        Les providers indisponibles (is_available() == False)
+        sont ignorés silencieusement.
+
+        Args:
+            service: Nom du service applicatif.
+            key: Nom de la clé.
+
+        Returns:
+            Valeur du credential ou None si absent de tous les
+            providers.
+        """
+        provider, value = self._find(service, key)
+        if value is not None:
+            if self._logger:
+                self._logger.log_info(
+                    f"Credential trouvé via "
+                    f"{provider.source_name!r} : "
+                    f"service={service!r}, key={key!r}"
+                )
+            return value
         return None
 
     def get_with_source(
@@ -101,24 +122,21 @@ class CredentialChain(CredentialProvider):
 
         Args:
             service: Nom du service applicatif.
-            key: Nom de la cle.
+            key: Nom de la clé.
 
         Returns:
-            Instance de Credential avec source renseignee,
+            Instance de Credential avec source renseignée,
             ou None si absent de tous les providers.
         """
-        for provider in self._providers:
-            if not provider.is_available():
-                continue
-            value = provider.get(service, key)
-            if value:
-                return Credential(
-                    service=service,
-                    key=key,
-                    value=value,
-                    source=provider.source_name,
-                )
-        return None
+        provider, value = self._find(service, key)
+        if value is None:
+            return None
+        return Credential(
+            service=service,
+            key=key,
+            value=value,
+            source=provider.source_name,
+        )
 
     def is_available(self) -> bool:
         """Indique si au moins un provider est disponible.

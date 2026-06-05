@@ -1,11 +1,11 @@
 """Provider de credentials depuis un fichier .env.
 
 Ce module fournit DotEnvCredentialProvider qui charge un fichier
-.env via python-dotenv (dependance optionnelle) puis lit les
-credentials depuis os.environ.
+.env via python-dotenv (dépendance optionnelle) et lit les
+credentials depuis un dictionnaire interne, sans polluer os.environ.
 """
 
-import os
+import stat
 from pathlib import Path
 from typing import Optional, Union
 
@@ -14,18 +14,21 @@ from linux_python_utils.logging.base import Logger
 
 
 class DotEnvCredentialProvider(CredentialProvider):
-    """Charge un fichier .env puis lit les credentials via os.environ.
+    """Charge un fichier .env et expose les credentials via un dict interne.
 
-    Utilise python-dotenv avec override=False : les variables shell
-    existantes ont priorite sur le contenu du fichier .env.
+    N'injecte rien dans os.environ : les secrets restent invisibles
+    pour les sous-processus (contrairement à load_dotenv).
 
-    Si python-dotenv n'est pas installe, is_available() retourne
-    False et get() retourne toujours None (degradation gracieuse).
+    Les clés sont normalisées en majuscules (key.upper()).
+
+    Si python-dotenv n'est pas installé, is_available() retourne
+    False et get() retourne toujours None (dégradation gracieuse).
 
     Attributes:
         _dotenv_path: Chemin vers le fichier .env.
         _logger: Logger optionnel.
-        _loaded: True si le fichier a ete charge avec succes.
+        _values: Dictionnaire clé → valeur issu de dotenv_values().
+        _loaded: True si le fichier a été chargé avec succès.
     """
 
     def __init__(
@@ -37,23 +40,31 @@ class DotEnvCredentialProvider(CredentialProvider):
 
         Args:
             dotenv_path: Chemin vers le fichier .env.
-            logger: Logger optionnel (injection de dependance).
+            logger: Logger optionnel (injection de dépendance).
         """
         self._dotenv_path = Path(dotenv_path)
         self._logger = logger
         self._loaded: bool = False
+        self._values: dict[str, str | None] = {}
+
+    def _check_permissions(self) -> None:
+        """Avertit si le .env est lisible par groupe ou autres utilisateurs."""
+        mode = self._dotenv_path.stat().st_mode
+        if mode & (stat.S_IRWXG | stat.S_IRWXO):
+            if self._logger:
+                self._logger.log_warning(
+                    f"{self._dotenv_path} accessible par d'autres "
+                    f"utilisateurs (permissions trop larges)."
+                )
 
     def load(self) -> bool:
-        """Charge le fichier .env dans os.environ.
-
-        Les variables deja presentes dans l'environnement ne sont
-        pas ecrasees (override=False).
+        """Charge le fichier .env dans le dict interne (sans toucher os.environ).
 
         Returns:
-            True si le fichier a ete charge avec succes.
+            True si le fichier a été chargé avec succès.
         """
         try:
-            from dotenv import load_dotenv
+            from dotenv import dotenv_values
         except ImportError:
             return False
         if not self._dotenv_path.exists():
@@ -63,10 +74,8 @@ class DotEnvCredentialProvider(CredentialProvider):
                     f"{self._dotenv_path}"
                 )
             return False
-        load_dotenv(
-            dotenv_path=self._dotenv_path,
-            override=False,
-        )
+        self._check_permissions()
+        self._values = dotenv_values(self._dotenv_path)
         self._loaded = True
         return True
 
@@ -75,26 +84,28 @@ class DotEnvCredentialProvider(CredentialProvider):
         service: str,
         key: str,
     ) -> Optional[str]:
-        """Charge le .env si necessaire puis lit la variable.
+        """Charge le .env si nécessaire puis lit la clé depuis le dict interne.
+
+        Les clés sont normalisées en majuscules (key.upper()).
 
         Args:
-            service: Nom du service (non utilise, pour
-                compatibilite avec l'interface).
-            key: Nom de la variable d'environnement.
+            service: Nom du service (non utilisé, pour compatibilité
+                avec l'interface).
+            key: Nom de la variable (normalisée en majuscules).
 
         Returns:
-            Valeur de la variable ou None.
+            Valeur de la variable ou None si absente ou vide.
         """
         if not self._loaded:
             self.load()
-        value = os.environ.get(key.upper())
+        value = self._values.get(key.upper())
         return value if value else None
 
     def is_available(self) -> bool:
-        """Indique si ce provider est operationnel.
+        """Indique si ce provider est opérationnel.
 
         Returns:
-            True si python-dotenv est installe et le fichier existe.
+            True si python-dotenv est installé et le fichier existe.
         """
         try:
             import dotenv  # noqa: F401

@@ -92,6 +92,11 @@ class TestCredential:
         )
         assert c.source == ""
 
+    def test_repr_ne_contient_pas_la_valeur(self) -> None:
+        """repr(Credential) ne doit jamais exposer la valeur secrète."""
+        c = Credential(service="svc", key="k", value="super_secret")
+        assert "super_secret" not in repr(c)
+
     def test_credential_key_property(self) -> None:
         """La propriete credential_key retourne un CredentialKey."""
         c = Credential(
@@ -176,52 +181,75 @@ class TestDotEnvCredentialProvider:
     """Tests du provider de fichier .env."""
 
     def test_load_charge_le_fichier(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
-        """load() charge les variables du fichier .env."""
-        monkeypatch.delenv("SECRET_DOTENV", raising=False)
+        """load() charge les variables dans le dict interne (pas os.environ)."""
         dotenv_file = tmp_path / ".env"
         dotenv_file.write_text("SECRET_DOTENV=valeur_dotenv\n")
         provider = DotEnvCredentialProvider(dotenv_path=dotenv_file)
 
-        def fake_load_dotenv(dotenv_path, override):
-            monkeypatch.setenv("SECRET_DOTENV", "valeur_dotenv")
-
         mock_dotenv = MagicMock()
-        mock_dotenv.load_dotenv = fake_load_dotenv
+        mock_dotenv.dotenv_values.return_value = {
+            "SECRET_DOTENV": "valeur_dotenv"
+        }
         with patch.dict("sys.modules", {"dotenv": mock_dotenv}):
             result = provider.load()
         assert result is True
-        assert os.environ.get("SECRET_DOTENV") == "valeur_dotenv"
+        assert provider._values == {"SECRET_DOTENV": "valeur_dotenv"}
 
-    def test_load_override_false(
+    def test_dotenv_ne_pollue_pas_os_environ(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """load() ne remplace pas une variable shell existante."""
-        monkeypatch.setenv("SECRET_SHELL", "valeur_shell")
+        """get() ne doit jamais injecter de variables dans os.environ."""
+        monkeypatch.delenv("SECRET_ISOLE", raising=False)
         dotenv_file = tmp_path / ".env"
-        dotenv_file.write_text("SECRET_SHELL=valeur_dotenv\n")
+        dotenv_file.write_text("SECRET_ISOLE=valeur_privee\n")
         provider = DotEnvCredentialProvider(dotenv_path=dotenv_file)
-        provider.load()
-        assert os.environ.get("SECRET_SHELL") == "valeur_shell"
+
+        mock_dotenv = MagicMock()
+        mock_dotenv.dotenv_values.return_value = {
+            "SECRET_ISOLE": "valeur_privee"
+        }
+        with patch.dict("sys.modules", {"dotenv": mock_dotenv}):
+            result = provider.get("monapp", "SECRET_ISOLE")
+
+        assert result == "valeur_privee"
+        assert "SECRET_ISOLE" not in os.environ
 
     def test_get_retourne_valeur_depuis_dotenv(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
-        """get() retourne la valeur depuis le fichier .env."""
-        monkeypatch.delenv("SECRET_GET", raising=False)
+        """get() retourne la valeur depuis le dict interne (pas os.environ)."""
         dotenv_file = tmp_path / ".env"
         dotenv_file.write_text("SECRET_GET=valeur_get\n")
         provider = DotEnvCredentialProvider(dotenv_path=dotenv_file)
 
-        def fake_load_dotenv(dotenv_path, override):
-            monkeypatch.setenv("SECRET_GET", "valeur_get")
-
         mock_dotenv = MagicMock()
-        mock_dotenv.load_dotenv = fake_load_dotenv
+        mock_dotenv.dotenv_values.return_value = {"SECRET_GET": "valeur_get"}
         with patch.dict("sys.modules", {"dotenv": mock_dotenv}):
             result = provider.get("monapp", "SECRET_GET")
         assert result == "valeur_get"
+
+    def test_dotenv_avertit_si_env_world_readable(
+        self, tmp_path: Path
+    ) -> None:
+        """load() log un warning si le .env est lisible par d'autres."""
+        dotenv_file = tmp_path / ".env"
+        dotenv_file.write_text("KEY=val\n")
+        dotenv_file.chmod(0o644)
+        mock_logger = MagicMock()
+        provider = DotEnvCredentialProvider(
+            dotenv_path=dotenv_file, logger=mock_logger
+        )
+        mock_dotenv = MagicMock()
+        mock_dotenv.dotenv_values.return_value = {"KEY": "val"}
+        with patch.dict("sys.modules", {"dotenv": mock_dotenv}):
+            provider.load()
+        mock_logger.log_warning.assert_called()
+        calls_str = " ".join(
+            str(c) for c in mock_logger.log_warning.call_args_list
+        )
+        assert "accessible" in calls_str
 
     def test_load_retourne_false_si_fichier_absent(
         self, tmp_path: Path
@@ -463,6 +491,20 @@ class TestKeyringCredentialProvider:
         provider.delete("svc", "key")
         mock_logger.log_info.assert_called_once()
 
+    def test_delete_logue_erreur_reelle(self) -> None:
+        """delete() log l'exception réelle via log_warning."""
+        mock_logger = MagicMock()
+        backend = MagicMock()
+        backend.delete_password.side_effect = Exception("erreur D-Bus")
+        provider = KeyringCredentialProvider(
+            keyring_backend=backend, logger=mock_logger
+        )
+        provider.delete("svc", "key")  # ne doit pas lever
+        mock_logger.log_warning.assert_called_once()
+        assert "erreur D-Bus" in str(
+            mock_logger.log_warning.call_args
+        )
+
     def test_is_available_true_avec_keyring_installe(self) -> None:
         """is_available() retourne True si keyring est installe (sans backend)."""
         provider = KeyringCredentialProvider()
@@ -594,6 +636,15 @@ class TestCredentialChain:
         assert result == "valeur"
         calls = [str(c) for c in mock_logger.log_info.call_args_list]
         assert any("escalade" in c for c in calls)
+
+    def test_get_ne_logue_jamais_la_valeur(self) -> None:
+        """get() ne doit jamais écrire la valeur secrète dans les logs."""
+        mock_logger = MagicMock()
+        p1 = _make_provider("valeur_secrete", source="env")
+        chain = CredentialChain([p1], logger=mock_logger)
+        chain.get("svc", "KEY")
+        for call in mock_logger.mock_calls:
+            assert "valeur_secrete" not in str(call)
 
     def test_get_with_source_ignore_providers_indisponibles(self) -> None:
         """get_with_source() ignore les providers indisponibles."""

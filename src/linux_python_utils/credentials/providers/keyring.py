@@ -47,15 +47,27 @@ class KeyringCredentialProvider(CredentialStore):
         self._logger = logger
         self._backend = keyring_backend
 
+    def _keyring_importable(self) -> bool:
+        """Retourne True si le module keyring est importable.
+
+        Returns:
+            True si keyring est installé.
+        """
+        try:
+            import keyring  # noqa: F401
+            return True
+        except ImportError:
+            return False
+
     def _get_keyring(self) -> Any:
-        """Retourne le module keyring ou le backend injecte.
+        """Retourne le module keyring ou le backend injecté.
 
         Returns:
             Module keyring ou backend de test.
 
         Raises:
             CredentialProviderUnavailableError: si keyring absent
-                et aucun backend injecte.
+                et aucun backend injecté.
         """
         if self._backend is not None:
             return self._backend
@@ -64,7 +76,7 @@ class KeyringCredentialProvider(CredentialStore):
             return keyring
         except ImportError:
             raise CredentialProviderUnavailableError(
-                "Le module 'keyring' n'est pas installe. "
+                "Le module 'keyring' n'est pas installé. "
                 "Installez-le avec : pip install keyring"
             )
 
@@ -152,23 +164,22 @@ class KeyringCredentialProvider(CredentialStore):
                     f"Credential supprime du keyring : "
                     f"service={service!r}, key={key!r}"
                 )
-        except Exception:  # nosec B110
-            pass
+        except Exception as exc:  # nosec B110 - dégradation volontaire
+            if self._logger:
+                self._logger.log_warning(
+                    f"Échec suppression {service}/{key} : {exc}"
+                )
 
     def is_available(self) -> bool:
-        """Indique si le keyring est operationnel.
+        """Indique si le keyring est opérationnel.
 
         Returns:
-            True si le module keyring est installe ou si un
-            backend a ete injecte.
+            True si le module keyring est installé ou si un
+            backend a été injecté.
         """
         if self._backend is not None:
             return True
-        try:
-            import keyring  # noqa: F401
-            return True
-        except ImportError:
-            return False
+        return self._keyring_importable()
 
     @property
     def source_name(self) -> str:
