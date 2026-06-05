@@ -34,6 +34,7 @@ from linux_python_utils.scripts.checker import (
 )
 from linux_python_utils.scripts.report import (
     InstallReport,
+    InstalledDependency,
     MissingDependency,
 )
 
@@ -48,5 +49,6 @@ __all__ = [
     "ScriptChecker",
     "LinuxScriptChecker",
     "InstallReport",
+    "InstalledDependency",
     "MissingDependency",
 ]

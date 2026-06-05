@@ -16,6 +16,7 @@ Typical usage example:
 """
 
 import importlib.metadata
+import json
 import re
 import subprocess
 import tomllib
@@ -126,6 +127,13 @@ class LinuxScriptChecker(ScriptChecker):
 
     _PYTHON_EXEC: str = "/usr/bin/python3"
 
+    @staticmethod
+    def _run(cmd: list[str]) -> subprocess.CompletedProcess:
+        """Exécute une commande et retourne le résultat."""
+        return subprocess.run(
+            cmd, capture_output=True, text=True, timeout=60
+        )
+
     def __init__(self, logger: Logger) -> None:
         """Initialise avec le logger.
 
@@ -151,11 +159,7 @@ class LinuxScriptChecker(ScriptChecker):
             )
             return False
 
-        result = subprocess.run(
-            [self._PYTHON_EXEC, "--version"],
-            capture_output=True,
-            text=True,
-        )
+        result = self._run([self._PYTHON_EXEC, "--version"])
         if result.returncode != 0:
             self._logger.log_error("Impossible d'interroger python3")
             return False
@@ -203,10 +207,8 @@ class LinuxScriptChecker(ScriptChecker):
             )
             return False
 
-        result = subprocess.run(
-            [self._PYTHON_EXEC, "-m", "py_compile", str(script_path)],
-            capture_output=True,
-            text=True,
+        result = self._run(
+            [self._PYTHON_EXEC, "-m", "py_compile", str(script_path)]
         )
         if result.returncode != 0:
             self._logger.log_error(
@@ -240,10 +242,7 @@ class LinuxScriptChecker(ScriptChecker):
             )
             return False
 
-        result = subprocess.run(
-            [str(python_bin), "--version"],
-            capture_output=True,
-        )
+        result = self._run([str(python_bin), "--version"])
         if result.returncode != 0:
             self._logger.log_error(
                 f"Interpréteur venv non fonctionnel : {python_bin}"
@@ -313,8 +312,10 @@ class LinuxScriptChecker(ScriptChecker):
         """
         pyproject_data = self.read_pyproject(pyproject_path)
 
-        deps: list[str] = list(pyproject_data["dependencies"])  # type: ignore[arg-type]
-        opt: dict[str, list[str]] = pyproject_data["optional_dependencies"]  # type: ignore[assignment]
+        raw_deps = pyproject_data["dependencies"]
+        deps: list[str] = list(raw_deps)  # type: ignore[arg-type]
+        raw_opt = pyproject_data["optional_dependencies"]
+        opt: dict[str, list[str]] = raw_opt  # type: ignore[assignment]
         for extra in check_extras:
             if extra in opt:
                 deps.extend(opt[extra])
@@ -329,7 +330,9 @@ class LinuxScriptChecker(ScriptChecker):
         for dep in deps:
             pkg = self._extract_package_name(dep)
             constraint = self._extract_version_constraint(dep)
-            location = self._is_installed(pkg, pip_cmd)
+            location = self._is_installed(
+            pkg, pip_cmd, use_importlib=(venv_path is None)
+        )
             if location is None:
                 missing.append(
                     MissingDependency(
@@ -378,36 +381,44 @@ class LinuxScriptChecker(ScriptChecker):
         return match.group() if match else ""
 
     @staticmethod
-    def _is_installed(pkg: str, pip_cmd: str) -> str | None:
+    def _is_installed(
+        pkg: str,
+        pip_cmd: str,
+        use_importlib: bool = True,
+    ) -> str | None:
         """Vérifie si un paquet est installé et retourne son chemin.
 
-        Utilise d'abord importlib.metadata (détecte les installs
-        éditables du venv courant), puis pip show en fallback.
+        Utilise importlib.metadata uniquement pour le venv courant
+        (use_importlib=True), sinon pip show dans le venv cible.
 
         Args:
             pkg: Nom du paquet (ex. 'linux-python-utils').
-            pip_cmd: Chemin vers pip à utiliser en fallback.
+            pip_cmd: Chemin vers pip à utiliser.
+            use_importlib: Si True, interroge le venv courant via
+                importlib.metadata avant pip show.
 
         Returns:
             Chemin d'installation si trouvé, None sinon.
         """
-        import json
-
-        for name in (pkg.replace("-", "_").lower(), pkg):
-            try:
-                dist = importlib.metadata.distribution(name)
-                direct_url = dist.read_text("direct_url.json")
-                if direct_url:
-                    data = json.loads(direct_url)
-                    url = data.get("url", "")
-                    if url.startswith("file://"):
-                        return url[7:]
-                return str(dist.locate_file("."))
-            except importlib.metadata.PackageNotFoundError:
-                continue
+        if use_importlib:
+            for name in (pkg.replace("-", "_").lower(), pkg):
+                try:
+                    dist = importlib.metadata.distribution(name)
+                    direct_url = dist.read_text("direct_url.json")
+                    if direct_url:
+                        data = json.loads(direct_url)
+                        url = data.get("url", "")
+                        if url.startswith("file://"):
+                            return url[7:]
+                    return str(dist.locate_file("."))
+                except importlib.metadata.PackageNotFoundError:
+                    continue
 
         result = subprocess.run(
-            [pip_cmd, "show", pkg], capture_output=True, text=True
+            [pip_cmd, "show", pkg],
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         if result.returncode == 0:
             for line in result.stdout.splitlines():

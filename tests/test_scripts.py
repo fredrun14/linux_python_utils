@@ -346,6 +346,27 @@ class TestPythonCliConfig:
                 source_dir=tmp_path,
             )
 
+    def test_config_name_traversal_leve_valueerror(self, tmp_path):
+        """Un nom de traversal path-traversal lève ValueError."""
+        with pytest.raises(ValueError, match="name invalide"):
+            PythonCliConfig(
+                name="../../etc/cron.d/x",
+                deploy_type="user",
+                source_dir=tmp_path,
+            )
+
+    def test_config_name_caracteres_interdits_leve_valueerror(
+        self, tmp_path
+    ):
+        """Un name avec slash ou espace lève ValueError."""
+        for bad in ("/etc/passwd", "my app", "app;rm -rf /"):
+            with pytest.raises(ValueError, match="name invalide"):
+                PythonCliConfig(
+                    name=bad,
+                    deploy_type="user",
+                    source_dir=tmp_path,
+                )
+
     def test_config_is_frozen(self, tmp_path):
         """Vérifie que la dataclass est immutable."""
         config = PythonCliConfig(
@@ -698,6 +719,20 @@ class TestLinuxScriptCheckerDeps:
         assert len(missing) == 1
         assert missing[0].package == "click"
 
+    def test_checker_venv_cible_ignore_process_courant(
+        self, tmp_path
+    ):
+        """check_dependencies n'appelle pas importlib.metadata si venv_path fourni."""
+        pyproject = self._make_pyproject(tmp_path, ["requests>=2.0"])
+        with patch(
+            "importlib.metadata.distribution"
+        ) as mock_dist, patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="")
+            self.checker.check_dependencies(
+                pyproject, tmp_path / "venv", []
+            )
+        mock_dist.assert_not_called()
+
     def test_extras_are_included(self, tmp_path):
         """Vérifie que les extras sont inclus dans la vérification."""
         pyproject = tmp_path / "pyproject.toml"
@@ -998,3 +1033,49 @@ class TestLinuxCliInstallerWrapper:
         self.installer._write_wrapper("#!/bin/bash\n", target)
         assert target.exists()
         assert target.stat().st_mode & 0o111  # au moins un bit exécutable
+
+    def test_wrapper_refuse_symlink(self, tmp_path):
+        """_write_wrapper lève OSError si target_path est un symlink."""
+        real_file = tmp_path / "real.sh"
+        real_file.write_text("#!/bin/bash\n")
+        symlink = tmp_path / "link.sh"
+        symlink.symlink_to(real_file)
+
+        with pytest.raises(OSError):
+            self.installer._write_wrapper("#!/bin/bash\n", symlink)
+
+    def test_write_wrapper_oserror_retourne_rapport_echec(
+        self, tmp_path
+    ):
+        """install() retourne InstallReport(success=False) si wrapper échoue."""
+        self.checker.check_python.return_value = True
+        self.checker.read_pyproject.return_value = {
+            "name": "app",
+            "version": "1.0",
+            "requires_python": None,
+            "dependencies": [],
+            "optional_dependencies": {},
+            "scripts": {},
+        }
+        self.checker.check_dependencies.return_value = ([], [], 0, "")
+        config = PythonCliConfig(
+            name="app", deploy_type="user", source_dir=tmp_path
+        )
+        with patch(
+            "linux_python_utils.scripts.installer.ScriptPaths"
+        ) as mock_cls, patch.object(
+            self.installer,
+            "_write_wrapper",
+            side_effect=OSError("Permission denied"),
+        ):
+            mock_paths = MagicMock()
+            mock_paths.bin_path = tmp_path / "bin" / "app"
+            mock_cls.return_value = mock_paths
+            report = self.installer.install(
+                config, confirm_wrapper=False
+            )
+        assert report.success is False
+        assert any(
+            "Wrapper" in w or "Permission" in w
+            for w in report.warnings
+        )

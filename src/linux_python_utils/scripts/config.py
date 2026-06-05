@@ -25,11 +25,14 @@ Example:
         script = config.to_bash_script()
 """
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
 from linux_python_utils.notification import NotificationConfig
+
+_NOM_VALIDE = re.compile(r"^[a-zA-Z0-9._-]+$")
 
 
 @dataclass(frozen=True)
@@ -159,11 +162,21 @@ class PythonCliConfig:
         """Valide les champs après initialisation.
 
         Raises:
-            ValueError: Si name est vide ou deploy_type invalide.
+            ValueError: Si name est vide, contient des caractères
+                non autorisés (anti path-traversal), ou si
+                deploy_type est invalide.
         """
-        if not self.name.strip():
+        if not self.name or not self.name.strip():
             raise ValueError(
                 "name est requis et ne peut pas être vide"
+            )
+        if (
+            not _NOM_VALIDE.match(self.name)
+            or self.name in {".", ".."}
+        ):
+            raise ValueError(
+                f"name invalide (caractères interdits) : "
+                f"{self.name!r}"
             )
         if self.deploy_type not in ("system", "user"):
             raise ValueError(

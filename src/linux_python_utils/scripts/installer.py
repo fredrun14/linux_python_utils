@@ -374,7 +374,27 @@ class LinuxCliInstaller(CliInstaller):
             wrapper_content = self._generate_wrapper_content(
                 config, paths
             )
-            self._write_wrapper(wrapper_content, paths.bin_path)
+            try:
+                self._write_wrapper(
+                    wrapper_content, paths.bin_path
+                )
+            except OSError as exc:
+                self._logger.log_error(
+                    f"Échec écriture wrapper : {exc}"
+                )
+                return InstallReport(
+                    success=False,
+                    app_name=config.name,
+                    deploy_type=config.deploy_type,
+                    install_path=paths.bin_path,
+                    missing_deps=missing,
+                    installed_deps=installed,
+                    total_deps=total,
+                    install_command=install_cmd,
+                    warnings=warnings + [
+                        f"Wrapper non écrit : {exc}"
+                    ],
+                )
 
         if not self._run_uv_install(config):
             return InstallReport(
@@ -455,21 +475,30 @@ class LinuxCliInstaller(CliInstaller):
     def _write_wrapper(
         self, content: str, target_path: Path
     ) -> None:
-        """Écrit le wrapper bash sur disque et le rend exécutable.
+        """Écrit le wrapper bash sur disque (TOCTOU-safe).
 
-        Utilise O_NOFOLLOW + fchmod (TOCTOU-safe) pour les permissions.
+        Utilise O_NOFOLLOW pour refuser les liens symboliques.
+        O_CREAT|O_TRUNC crée ou écrase ; fchmod(0o755) appliqué
+        sur le fd avant fermeture (fd-safe).
 
         Args:
             content: Contenu du script bash.
             target_path: Chemin de destination.
 
         Raises:
-            OSError: Si l'écriture ou chmod échoue.
+            OSError: Si target_path est un symlink, si l'écriture
+                ou le chmod échoue.
         """
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(content, encoding="utf-8")
-        fd = os.open(str(target_path), os.O_RDONLY | os.O_NOFOLLOW)
+        flags = (
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW
+        )
+        fd = os.open(str(target_path), flags, 0o644)
         try:
+            with os.fdopen(
+                fd, "w", encoding="utf-8", closefd=False
+            ) as fh:
+                fh.write(content)
             os.fchmod(fd, 0o755)  # nosec B103
         finally:
             os.close(fd)
@@ -554,7 +583,7 @@ class LinuxCliInstaller(CliInstaller):
 
         try:
             result = subprocess.run(
-                cmd, capture_output=True, text=True
+                cmd, capture_output=True, text=True, timeout=120
             )
         except FileNotFoundError:
             self._logger.log_error(
