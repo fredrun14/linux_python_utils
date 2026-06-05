@@ -13,7 +13,7 @@ from linux_python_utils.dotconf.base import IniSection
 
 
 def parse_validator(
-    value: list[str],
+    value: Any,
 ) -> list[str]:
     """Convertit une valeur de validateur en liste de valeurs autorisées.
 

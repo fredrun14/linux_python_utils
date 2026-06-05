@@ -261,3 +261,30 @@ class TestExportAnsiRoundTrip:
         blocks = data["target"]["content"]
         # Round-trip : l'ESC est restitué après décodage.
         assert any("\x1b[32m" in b["content"] for b in blocks)
+
+
+class TestConfTomlExporterUnicode:
+    """Tests robustesse encodage non-UTF-8."""
+
+    def test_exporter_fichier_non_utf8_ne_crashe_pas(
+        self, exporter: ConfTomlExporter, tmp_path: Path
+    ) -> None:
+        """export() ne lève pas UnicodeDecodeError sur fichier latin-1."""
+        src = tmp_path / "dnf.conf"
+        src.write_bytes(b"fastestmirror=true\n# caf\xe9\n")
+        dest = tmp_path / "dnf.toml"
+        exporter.export(src, dest)
+        assert dest.exists()
+
+    def test_exporter_section_avec_espaces_reconnue(
+        self, exporter: ConfTomlExporter, tmp_path: Path
+    ) -> None:
+        """_is_ini et _parse reconnaissent [section] avec espaces."""
+        src = tmp_path / "test.conf"
+        src.write_text("  [main]  \nkey = value\n", encoding="utf-8")
+        dest = tmp_path / "test.toml"
+        exporter.export(src, dest)
+        import tomllib
+        data = tomllib.loads(dest.read_text(encoding="utf-8"))
+        blocks = data["target"]["content"]
+        assert any(b.get("section") == "main" for b in blocks)

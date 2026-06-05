@@ -239,3 +239,27 @@ class TestConfigApplierLogger:
 
         call_args = mock_logger.log_info.call_args[0][0]
         assert "Created:" in call_args
+
+
+class TestConfigApplierBlocVide:
+    """Tests défensifs pour bloc à contenu vide."""
+
+    def test_apply_block_contenu_vide_ne_crashe_pas(
+        self, tmp_path: Path
+    ) -> None:
+        """Un bloc vide dans apply() ne lève pas IndexError."""
+        spec = _make_spec(tmp_path, [ConfigBlock(content="")])
+        actions = ConfigApplier().apply(spec)
+        assert actions == []
+
+    def test_apply_block_contenu_espaces_ne_crashe_pas(
+        self, tmp_path: Path
+    ) -> None:
+        """Un bloc contenant uniquement des espaces retourne None."""
+        conf = tmp_path / "test.conf"
+        conf.write_text("existing = true\n", encoding="utf-8")
+        spec = ConfigSpec(
+            file_path=conf, blocks=[ConfigBlock(content="   ")]
+        )
+        actions = ConfigApplier().apply(spec)
+        assert actions == []

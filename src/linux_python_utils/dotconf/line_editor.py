@@ -1,6 +1,7 @@
 """Éditeur ligne-à-ligne préservant commentaires et formatage des fichiers de configuration."""
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 
@@ -28,12 +29,39 @@ class SectionAwareEditor:
         """
         self._path = file_path
 
+    @staticmethod
+    def _block_lines(content: str) -> list[str]:
+        """Retourne les lignes non vides du contenu, stripées."""
+        return [ln.strip() for ln in content.splitlines() if ln.strip()]
+
+    def _block_matches(
+        self,
+        content: str,
+        section: str | None,
+        predicate: Callable[[str, str], bool],
+    ) -> bool:
+        """Vérifie si toutes les lignes du bloc satisfont le prédicat."""
+        lines = self._read_lines()
+        if not lines:
+            return False
+        block_lines = self._block_lines(content)
+        search_lines = self._get_search_scope(lines, section)
+        if search_lines is None:
+            return False
+        return all(
+            any(predicate(fl, bl) for fl in search_lines)
+            for bl in block_lines
+        )
+
     def is_block_present(
         self,
         content: str,
         section: str | None = None,
     ) -> bool:
         """Vérifie si toutes les lignes du bloc sont actives dans le fichier.
+
+        Chaque ligne du bloc est recherchée indépendamment — elles n'ont
+        pas besoin d'être contiguës dans le fichier.
 
         Args:
             content: Contenu du bloc (peut être multilignes).
@@ -43,18 +71,8 @@ class SectionAwareEditor:
             True si toutes les lignes du bloc sont présentes et non commentées.
             False si le fichier n'existe pas ou si une ligne manque.
         """
-        lines = self._read_lines()
-        if not lines:
-            return False
-
-        block_lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
-        search_lines = self._get_search_scope(lines, section)
-        if search_lines is None:
-            return False
-
-        return all(
-            any(self._is_active_line(fl, bl) for fl in search_lines)
-            for bl in block_lines
+        return self._block_matches(
+            content, section, self._is_active_line
         )
 
     def is_block_commented(
@@ -72,18 +90,8 @@ class SectionAwareEditor:
             True si toutes les lignes du bloc existent sous forme commentée.
             False si le fichier n'existe pas ou si les lignes sont absentes.
         """
-        lines = self._read_lines()
-        if not lines:
-            return False
-
-        block_lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
-        search_lines = self._get_search_scope(lines, section)
-        if search_lines is None:
-            return False
-
-        return all(
-            any(self._is_commented_line(fl, bl) for fl in search_lines)
-            for bl in block_lines
+        return self._block_matches(
+            content, section, self._is_commented_line
         )
 
     def ensure_block(
@@ -117,7 +125,7 @@ class SectionAwareEditor:
             return False
 
         lines = self._read_lines()
-        block_lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
+        block_lines = self._block_lines(content)
 
         if self.is_block_commented(content, section):
             lines = self._uncomment_block_lines(lines, block_lines, section)

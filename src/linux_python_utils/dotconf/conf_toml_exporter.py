@@ -10,6 +10,9 @@ from linux_python_utils.dotconf.spec import ConfigBlock
 # Exclut 0x09 (\t), 0x0a (\n), 0x0d (\r), déjà gérés par des séquences.
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
+# En-tête de section INI — tolère les espaces autour des crochets.
+_SECTION_RE = re.compile(r'^\s*\[([^\]]+)\]\s*$')
+
 
 class ConfTomlExporter:
     """Exporte un fichier conf existant vers un TOML compatible TomlSpecLoader.
@@ -45,10 +48,18 @@ class ConfTomlExporter:
 
         Raises:
             FileNotFoundError: Si source n'existe pas.
+            UnicodeDecodeError: Uniquement si surrogateescape échoue
+                (caractères invalides non récupérables).
         """
         if not source.exists():
             raise FileNotFoundError(source)
-        lines = source.read_text(encoding="utf-8").splitlines()
+        try:
+            contenu = source.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            contenu = source.read_text(
+                encoding="utf-8", errors="surrogateescape"
+            )
+        lines = contenu.splitlines()
         abs_path = source.resolve()
         blocks = self._parse(lines)
         content = self._render_toml(abs_path, blocks)
@@ -79,7 +90,7 @@ class ConfTomlExporter:
                 pending.clear()
                 continue
             if is_ini:
-                m = re.match(r'^\[([^\]]+)\]$', stripped)
+                m = _SECTION_RE.match(stripped)
                 if m:
                     current_section = m.group(1)
                     pending.clear()
@@ -109,9 +120,7 @@ class ConfTomlExporter:
         Returns:
             True si au moins une ligne correspond à ``[section_name]``.
         """
-        return any(
-            re.match(r'^\s*\[([^\]]+)\]\s*$', line) for line in lines
-        )
+        return any(_SECTION_RE.match(line) for line in lines)
 
     def _render_toml(
         self,

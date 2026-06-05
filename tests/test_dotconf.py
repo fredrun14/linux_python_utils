@@ -400,6 +400,36 @@ class TestUpdateSectionLogSansValeur:
         )
 
 
+class TestLinuxIniConfigManagerChmod:
+    """Tests permissions fichier après écriture."""
+
+    def test_write_section_cree_fichier_en_0644(self, tmp_path):
+        """write_section() positionne les permissions à 0o644."""
+        import os
+        from unittest.mock import MagicMock
+        from linux_python_utils.dotconf.manager import LinuxIniConfigManager
+
+        mgr = LinuxIniConfigManager(MagicMock())
+        path = tmp_path / "out.conf"
+        mgr.write_section(
+            path, CommandsSectionFixture(upgrade_type="default")
+        )
+        assert oct(os.stat(path).st_mode & 0o777) == oct(0o644)
+
+    def test_update_section_cree_fichier_en_0644(self, tmp_path):
+        """update_section() positionne les permissions à 0o644."""
+        import os
+        from unittest.mock import MagicMock
+        from linux_python_utils.dotconf.manager import LinuxIniConfigManager
+
+        mgr = LinuxIniConfigManager(MagicMock())
+        path = tmp_path / "out.conf"
+        mgr.update_section(
+            path, CommandsSectionFixture(upgrade_type="default")
+        )
+        assert oct(os.stat(path).st_mode & 0o777) == oct(0o644)
+
+
 class TestValidatedSectionEdgeCases:
     """Tests pour les cas limites de ValidatedSection."""
 

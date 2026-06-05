@@ -55,7 +55,10 @@ class ConfigApplier:
         target = spec.file_path
 
         if not target.exists():
-            return self._create_file(target, spec.blocks)
+            effective = [b for b in spec.blocks if b.content.strip()]
+            if not effective:
+                return []
+            return self._create_file(target, effective)
 
         actions: list[str] = []
         for block in spec.blocks:
@@ -82,12 +85,17 @@ class ConfigApplier:
         Returns:
             Message d'action si le fichier a été modifié, None sinon.
         """
+        if not block.content.strip():
+            return None
+
         editor = SectionAwareEditor(target)
 
         if editor.is_block_present(block.content, block.section):
             return None
 
-        was_commented = editor.is_block_commented(block.content, block.section)
+        was_commented = editor.is_block_commented(
+            block.content, block.section
+        )
         editor.ensure_block(block.content, block.section, block.comment)
 
         first_line = block.content.splitlines()[0][:50]
@@ -119,10 +127,9 @@ class ConfigApplier:
         """
         target.parent.mkdir(parents=True, mode=0o755, exist_ok=True)
 
+        editor = SectionAwareEditor(target)
         for block in blocks:
-            SectionAwareEditor(target).ensure_block(
-                block.content, block.section, block.comment
-            )
+            editor.ensure_block(block.content, block.section, block.comment)
 
         target.chmod(0o644)
         action = f"Created: {target} ({len(blocks)} blocks)"
