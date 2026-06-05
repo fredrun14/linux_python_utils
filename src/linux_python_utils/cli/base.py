@@ -40,8 +40,9 @@ class CliCommand(ABC):
         """Enregistre la commande et ses arguments dans argparse.
 
         Args:
-            subparsers: Objet retourné par
-                ArgumentParser.add_subparsers().
+            subparsers: Objet retourné par ``ArgumentParser.add_subparsers()``.
+                Typé ``Any`` car ``argparse._SubParsersAction`` est une API
+                privée non exposée par la stdlib.
         """
         ...
 

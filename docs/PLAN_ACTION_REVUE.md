@@ -50,7 +50,7 @@
 ### GO — mineurs uniquement (priorité 3)
 
 - [x] ✅ **integrity** — `verify()` source vide, whitelist algos, typing ([TODO](TODO-20260605-1410-integrity.md))
-- [ ] ⬜ **cli** — documenter `register(subparsers: Any)` ([TODO](TODO-20260605-1410-cli.md))
+- [x] ✅ **cli** — documenter `register(subparsers: Any)` ([TODO](TODO-20260605-1410-cli.md))
 
 ## Top priorités transverses (bloquants sécurité)
 
