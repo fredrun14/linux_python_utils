@@ -456,39 +456,16 @@ class TestLinuxUserTimerUnitManagerSuccessPaths:
         manager._unit_path = str(tmp_path)
         return manager, logger, executor
 
-    def test_generate_timer_unit_minimal(self, tmp_path):
-        """generate_timer_unit() génère le contenu minimal."""
+    def test_install_timer_unit_rejette_caractere_controle(self, tmp_path):
+        """install_timer_unit() lève ValueError si description contient \\n."""
         manager, _, _ = self._make_manager(tmp_path)
         config = TimerConfig(
-            description="Timer utilisateur",
+            description="Timer\nUnit=evil.service",
             unit="backup.service",
             on_calendar="daily"
         )
-        content = manager.generate_timer_unit(config)
-        assert "[Unit]" in content
-        assert "Description=Timer utilisateur" in content
-        assert "[Timer]" in content
-        assert "Unit=backup.service" in content
-        assert "OnCalendar=daily" in content
-        assert "[Install]" in content
-        assert "WantedBy=timers.target" in content
-
-    def test_generate_timer_unit_avec_options(self, tmp_path):
-        """generate_timer_unit() inclut toutes les options."""
-        manager, _, _ = self._make_manager(tmp_path)
-        config = TimerConfig(
-            description="Timer complet",
-            unit="sync.service",
-            on_boot_sec="5min",
-            on_unit_active_sec="1h",
-            persistent=True,
-            randomized_delay_sec="10min"
-        )
-        content = manager.generate_timer_unit(config)
-        assert "OnBootSec=5min" in content
-        assert "OnUnitActiveSec=1h" in content
-        assert "Persistent=true" in content
-        assert "RandomizedDelaySec=10min" in content
+        with pytest.raises(ValueError, match="contrôle"):
+            manager.install_timer_unit(config)
 
     def test_install_timer_unit_succes(self, tmp_path):
         """install_timer_unit() retourne True en cas de succès."""

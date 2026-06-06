@@ -576,54 +576,27 @@ class TestLinuxUserServiceUnitManagerSuccessPaths:
         manager._unit_path = str(tmp_path)
         return manager, logger, executor
 
-    def test_generate_service_unit_minimal(self, tmp_path):
-        """generate_service_unit() génère le contenu minimal."""
+    def test_install_service_unit_rejette_caractere_controle(self, tmp_path):
+        """install_service_unit() lève ValueError si description contient \\n."""
         manager, _, _ = self._make_manager(tmp_path)
         config = ServiceConfig(
-            description="Service utilisateur",
+            description="Service\nExecStart=/bin/evil",
             exec_start="/usr/bin/my-app"
         )
-        content = manager.generate_service_unit(config)
-        assert "[Unit]" in content
-        assert "Description=Service utilisateur" in content
-        assert "[Service]" in content
-        assert "ExecStart=/usr/bin/my-app" in content
-        assert "[Install]" in content
+        with pytest.raises(ValueError, match="contrôle"):
+            manager.install_service_unit(config)
 
-    def test_generate_service_unit_avec_working_dir(self, tmp_path):
-        """generate_service_unit() inclut WorkingDirectory si défini."""
+    def test_install_service_unit_with_name_rejette_caractere_controle(
+        self, tmp_path
+    ):
+        """install_service_unit_with_name() lève ValueError sur \\n dans exec_start."""
         manager, _, _ = self._make_manager(tmp_path)
         config = ServiceConfig(
-            description="Test",
-            exec_start="/usr/bin/app",
-            working_directory="/var/lib/app"
+            description="Service test",
+            exec_start="/usr/bin/app\nExecStart=/bin/evil"
         )
-        content = manager.generate_service_unit(config)
-        assert "WorkingDirectory=/var/lib/app" in content
-
-    def test_generate_service_unit_avec_env(self, tmp_path):
-        """generate_service_unit() inclut les variables d'environnement."""
-        manager, _, _ = self._make_manager(tmp_path)
-        config = ServiceConfig(
-            description="Test",
-            exec_start="/usr/bin/app",
-            environment={"HOME": "/home/user"}
-        )
-        content = manager.generate_service_unit(config)
-        assert "Environment=HOME=/home/user" in content
-
-    def test_generate_service_unit_avec_restart(self, tmp_path):
-        """generate_service_unit() inclut Restart si non 'no'."""
-        manager, _, _ = self._make_manager(tmp_path)
-        config = ServiceConfig(
-            description="Test",
-            exec_start="/usr/bin/app",
-            restart="on-failure",
-            restart_sec=5
-        )
-        content = manager.generate_service_unit(config)
-        assert "Restart=on-failure" in content
-        assert "RestartSec=5" in content
+        with pytest.raises(ValueError, match="contrôle"):
+            manager.install_service_unit_with_name("mon-service", config)
 
     def test_install_service_unit_succes(self, tmp_path):
         """install_service_unit() retourne True en cas de succès."""

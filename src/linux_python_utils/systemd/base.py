@@ -1029,19 +1029,6 @@ class UserTimerUnitManager(UserUnitManager):
     """Interface pour la gestion des unités .timer utilisateur."""
 
     @abstractmethod
-    def generate_timer_unit(self, config: TimerConfig) -> str:
-        """
-        Génère le contenu d'un fichier .timer systemd.
-
-        Args:
-            config: Configuration du timer
-
-        Returns:
-            Contenu du fichier .timer
-        """
-        pass
-
-    @abstractmethod
     def install_timer_unit(self, config: TimerConfig) -> bool:
         """
         Installe une unité .timer utilisateur.
@@ -1119,19 +1106,6 @@ class UserTimerUnitManager(UserUnitManager):
 
 class UserServiceUnitManager(UserUnitManager):
     """Interface pour la gestion des unités .service utilisateur."""
-
-    @abstractmethod
-    def generate_service_unit(self, config: ServiceConfig) -> str:
-        """
-        Génère le contenu d'un fichier .service systemd.
-
-        Args:
-            config: Configuration du service
-
-        Returns:
-            Contenu du fichier .service
-        """
-        pass
 
     @abstractmethod
     def install_service_unit(self, config: ServiceConfig) -> bool:
