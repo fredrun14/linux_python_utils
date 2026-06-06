@@ -51,7 +51,7 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 - **📝 Application déclarative de config** — `TomlSpecLoader` + `ConfigApplier` : décrire les blocs à appliquer dans un TOML `[target]`, les appliquer sur n'importe quel `.conf` (ajout, décommentage, idempotence garantie)
 - **📜 Scripts bash et CLI** — Génération de scripts bash + déploiement de scripts Python CLI (FHS, uv, scope système/utilisateur, rapport d'installation)
 - **👤 Gestion d'identités Unix** — Création idempotente de groupes (`groupadd`/`groupmod`) et utilisateurs (`useradd`/`usermod`) avec vérification GID/UID
-- **🔔 Notifications** — Configuration des notifications desktop (KDE Plasma)
+- **🔔 Notifications** — Configuration de notifications desktop via `notify-send` (spec freedesktop.org — GNOME, KDE Plasma, XFCE...)
 - **✅ Validation** — Validation de chemins (existence, permissions, world-writable) et données avec support optionnel Pydantic
 - **🚨 Gestion d'erreurs** — Hiérarchie d'exceptions applicatives + chaîne de handlers (Chain of Responsibility)
 - **🔑 Secrets** — `CredentialChain` : env → `.env` → keyring système (KWallet, KeePassXC, GNOME Keyring)
@@ -674,17 +674,22 @@ except ApplicationError as e:
   │  + handle_and_exit(error, code)    │
   └────────────────────────────────────┘
 
-  Hiérarchie d'exceptions (errors/exceptions.py)
+  Hiérarchie d'exceptions (errors/exceptions.py + credentials/exceptions.py)
   Exception
-  └── LinuxUtilsError
+  └── ApplicationError
       ├── ConfigurationError
-      ├── FilesystemError
-      ├── CommandExecutionError
-      ├── CredentialError
-      │   ├── CredentialNotFoundError
-      │   ├── CredentialProviderUnavailableError
-      │   └── CredentialStoreError
-      └── SystemdError
+      │   └── FileConfigurationError
+      ├── SystemRequirementError
+      │   └── MissingDependencyError
+      ├── ValidationError
+      ├── InstallationError
+      ├── AppPermissionError
+      ├── RollbackError
+      ├── IntegrityError
+      └── CredentialError            (définie dans credentials/exceptions.py)
+          ├── CredentialNotFoundError
+          ├── CredentialStoreError
+          └── CredentialProviderUnavailableError
 ```
 
 ---
@@ -876,7 +881,7 @@ cmd = (
 
 | Champ | Type | Description |
 |-------|------|-------------|
-| `command` | `list[str]` | Commande exécutée |
+| `command` | `tuple[str, ...]` | Commande exécutée (convertie en tuple par `__post_init__` pour l'immutabilité) |
 | `return_code` | `int` | Code de retour |
 | `stdout` | `str` | Sortie standard |
 | `stderr` | `str` | Sortie d'erreur |
@@ -1418,27 +1423,69 @@ message_failure = "Échec!"
                     │  - reload_systemd()                         │
                     │  - enable_unit() / disable_unit()           │
                     │  - start_unit() / stop_unit()               │
-                    │  - get_status() / is_active()               │
+                    │  - get_status() / is_active() / is_enabled()│
                     └─────────────────────┬───────────────────────┘
-                                          │ hérite
+                                          │ hérite (surcharge _run_systemctl
+                                          │ → ajoute --user)
                                           ▼
                     ┌─────────────────────────────────────────────┐
                     │            UserSystemdExecutor              │
-                    │  surcharge _run_systemctl pour --user       │
                     └─────────────────────┬───────────────────────┘
-                                          │
                                           │ injection
-        ┌─────────────────────────────────┼─────────────────────────────────┐
-        │                                 │                                 │
-        ▼                                 ▼                                 ▼
-┌───────────────────┐           ┌───────────────────┐           ┌───────────────────┐
-│    UnitManager    │           │  UserUnitManager  │           │  (autres futurs)  │
-│ /etc/systemd/sys  │           │ ~/.config/systemd │           │                   │
-├───────────────────┤           ├───────────────────┤           └───────────────────┘
-│ LinuxMountUnitMgr │           │ LinuxUserTimerMgr │
-│ LinuxTimerUnitMgr │           │ LinuxUserServiceMgr│
-│ LinuxServiceUnitMgr│          └───────────────────┘
-└───────────────────┘
+        ┌─────────────────────────────────┴─────────────────────────────────┐
+        ▼                                                                   ▼
+┌───────────────────────────────┐                         ┌───────────────────────────────┐
+│        UnitManager (ABC)       │                         │     UserUnitManager (ABC)      │
+│  /etc/systemd/system            │                        │  ~/.config/systemd/user         │
+│  - _write_unit_file (O_NOFOLLOW)│                        │  - _ensure_unit_directory       │
+│  - _remove_unit_file (TOCTOU)   │                        │  - _write_unit_file/_remove_…   │
+│  - reload/enable/disable/status │                        │  - reload/enable/disable/status │
+└───────┬──────────┬──────────────┘                        └────────┬─────────────┬──────────┘
+        │          │                                                │             │
+        ▼          ▼                                               ▼             ▼
+MountUnitManager  TimerUnitManager  ServiceUnitManager   UserTimerUnitManager  UserServiceUnitManager
+        │                │                  │                      │                    │
+        ▼                ▼                  ▼                      ▼                    ▼
+LinuxMountUnitMgr  LinuxTimerUnitMgr  LinuxServiceUnitMgr  LinuxUserTimerUnitMgr  LinuxUserServiceUnitMgr
+
+  Mixins de comportement partagé système ↔ utilisateur (composition par
+  héritage multiple — évite de dupliquer la logique start/stop/enable/…
+  entre les 4 implémentations Timer/Service système et utilisateur) :
+
+  ┌────────────────────────────────────┐   ┌────────────────────────────────────┐
+  │     _ServiceOperationsMixin         │   │      _TimerOperationsMixin          │
+  │  start/stop/restart/enable/disable_ │   │  enable/disable/remove_timer_unit,  │
+  │  service, get_service_status,       │   │  get_timer_status, list_timers      │
+  │  remove_service_unit                │   │  (+ fallback texte si JSON absent)  │
+  └────────────────┬────────────────────┘   └────────────────┬────────────────────┘
+                   │ hérité par                                │ hérité par
+        LinuxServiceUnitManager                     LinuxTimerUnitManager
+        LinuxUserServiceUnitManager                 LinuxUserTimerUnitManager
+
+  Hiérarchie des configurations (dataclasses frozen, valident leurs
+  invariants en __post_init__, génèrent l'INI via to_unit_file()) :
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │                       BaseSystemdConfig                              │
+  │           description: str · created_at: datetime (auto)            │
+  └───────────────┬───────────────┬───────────────┬─────────────────────┘
+                  ▼               ▼               ▼
+           MountConfig    AutomountConfig    TimerConfig    ServiceConfig
+           (what/where     (where +           (timer_name    (type/restart
+            validés selon   timeout_idle_sec)  property)      whitelist,
+            le fs_type)                                       env anti-injection)
+           Toutes : to_unit_file() avec reject_control_chars() sur chaque champ
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │  Orchestration — ScheduledTaskInstaller (ABC)                     │
+  │              → SystemdScheduledTaskInstaller                      │
+  │                                                                    │
+  │  install(task_name, script_path, script_config, service_config,   │
+  │          timer_config) → bool                                     │
+  │  Compose par injection : BashScriptInstaller + LinuxServiceUnitMgr│
+  │  + LinuxTimerUnitManager — orchestre :                            │
+  │  1. script  →  2. service  →  3. timer  →  4. enable_timer        │
+  └──────────────────────────────────────────────────────────────────┘
 
   ┌──────────────────────────────────────────────────────────────┐
   │  Export / Restauration génériques (unit_porter.py)           │
@@ -1459,6 +1506,12 @@ message_failure = "Échec!"
   │  Convention de nommage TOML :                                │
   │  thermal-monitor.service → thermal-monitor-service.toml      │
   └──────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────┐
+  │  config_loaders/ — TOML/JSON → dataclass (ConfigFileLoader[T])│
+  │  ServiceConfigLoader · TimerConfigLoader · MountConfigLoader  │
+  │  · BashScriptConfigLoader (charge aussi NotificationConfig)   │
+  └──────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -1472,21 +1525,21 @@ Génération de scripts bash et déploiement de scripts Python CLI sur le systè
 #### Scripts bash
 
 ```python
-from linux_python_utils import BashScriptConfig, BashScriptInstaller
+from linux_python_utils import (
+    BashScriptConfig, BashScriptInstaller, LinuxFileManager,
+)
 
 config = BashScriptConfig(
-    name="backup",
-    description="Script de sauvegarde quotidien",
-    commands=["rsync -av /src /dest", "echo 'Done'"],
+    exec_command="rsync -av /src/ /dest/ && echo 'Done'",
     notification=None  # Ou NotificationConfig
 )
 
 # Générer le contenu du script
 print(config.to_bash_script())
 
-# Installer le script sur le système
-installer = BashScriptInstaller(logger)
-installer.install(config, "/usr/local/bin/backup.sh")
+# Installer le script sur le système (chmod TOCTOU-safe via fd)
+installer = BashScriptInstaller(logger, LinuxFileManager(logger))
+installer.install("/usr/local/bin/backup.sh", config)
 ```
 
 #### Déploiement de scripts Python CLI
@@ -1496,7 +1549,6 @@ Nécessite `pip install linux-python-utils[deploy]` (platformdirs) et `uv` insta
 ```python
 from linux_python_utils import (
     FileLogger,
-    LinuxCommandExecutor,
     PythonCliConfig,
     LinuxCliInstaller,
     ScriptPaths,
@@ -1505,34 +1557,36 @@ from linux_python_utils import (
 from pathlib import Path
 
 logger = FileLogger("/var/log/deploy.log")
-executor = LinuxCommandExecutor(logger)
 
-# Résolution des chemins FHS (système ou utilisateur)
-paths = ScriptPaths(scope="user")  # ou "system"
-print(paths.data_dir)     # ~/.local/share/
-print(paths.scripts_dir)  # ~/.local/share/mon-script/
+# Résolution des chemins FHS (nom de l'app + portée système/utilisateur)
+paths = ScriptPaths("mon-outil", "user")  # ou "system"
+print(paths.data_dir)   # ~/.local/share/mon-outil
+print(paths.bin_path)   # ~/.local/bin/mon-outil
 
 # Configuration du déploiement
 config = PythonCliConfig(
     name="mon-outil",
+    deploy_type="user",   # "user" ou "system"
     source_dir=Path("/home/user/projects/mon-outil"),
-    scope="user",   # "user" ou "system"
 )
 
-# Vérifications pré-installation (python3, pyproject.toml, dépendances)
+# Vérifications pré-installation, étape par étape
 checker = LinuxScriptChecker(logger)
-report = checker.check(config)
-if not report.success:
-    for dep in report.missing_deps:
-        print(f"Manquant: {dep.name} — {dep.remedy}")
+if checker.check_python(required_version="3.11"):
+    pyproject_path = config.source_dir / "pyproject.toml"
+    missing, installed, total, install_cmd = checker.check_dependencies(
+        pyproject_path, config.venv_path, config.check_extras
+    )
+    for dep in missing:
+        print(f"Manquant : {dep.package} {dep.required} ({dep.reason})")
 
-# Installation via uv tool install
-installer = LinuxCliInstaller(logger, executor)
+# Installation orchestrée : checks + wrapper bash + `uv tool install`
+installer = LinuxCliInstaller(logger, checker)
 report = installer.install(config)
 
-print(report.success)        # True/False
-print(report.install_path)   # Chemin d'installation
-print(report.missing_deps)   # Dépendances manquantes éventuelles
+print(report.success)            # True/False
+print(report.install_path)       # Chemin d'installation (wrapper ou binaire)
+print(report.format_summary())   # Résumé lisible (deps, avertissements...)
 ```
 
 ### Documentation API
@@ -1580,16 +1634,22 @@ print(report.missing_deps)   # Dépendances manquantes éventuelles
                        │  (FHS, uv, scope sys/user)         │
                        └────────────────────────────────────┘
 
-  ┌─────────────────────────────────────────┐
-  │           ScriptChecker (ABC)           │
-  │  + check(config) [abstract]             │
-  └───────────────┬─────────────────────────┘
+  ┌──────────────────────────────────────────────┐
+  │           ScriptChecker (ABC)                │
+  │  + check_python(required_version) [abstract] │
+  │  + check_script_syntax(path)      [abstract] │
+  │  + check_venv(venv_path)          [abstract] │
+  │  + read_pyproject(path)           [abstract] │
+  │  + check_dependencies(path, venv_path,       │
+  │      extras) [abstract]                      │
+  │      → (missing, installed, total, cmd)      │
+  └───────────────┬──────────────────────────────┘
                   │ hérite
                   ▼
-  ┌─────────────────────────────────────────┐
-  │          LinuxScriptChecker             │
-  │  + check(config) → list[MissingDep]    │
-  └─────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────┐
+  │          LinuxScriptChecker                  │
+  │  (subprocess + tomllib + importlib.metadata) │
+  └──────────────────────────────────────────────┘
 
   BashScriptConfig (frozen dataclass)
   ┌──────────────────────────────────────────────┐
@@ -1598,15 +1658,19 @@ print(report.missing_deps)   # Dépendances manquantes éventuelles
   │  + to_bash_script() → str                    │
   └──────────────────────────────────────────────┘
 
-  PythonCliConfig (dataclass)
+  PythonCliConfig (frozen dataclass)
   ┌──────────────────────────────────────────────┐
   │  - name: str                                 │
   │  - deploy_type: "user" | "system"            │
   │  - source_dir: Path                          │
+  │  - venv_path: Path | None = None             │
+  │  - check_extras: list[str] = []              │
+  │  - generate_wrapper: bool = True             │
   └──────────────────────────────────────────────┘
 
-  InstallReport + MissingDependency (rapport d'installation)
-  ScriptPaths   (utilitaires de chemins FHS)
+  InstallReport + MissingDependency + InstalledDependency
+  (rapport d'installation — voir report.py)
+  ScriptPaths   (utilitaires de chemins FHS, via platformdirs)
 ```
 
 ---
@@ -1624,24 +1688,23 @@ from linux_python_utils import (
     ConsoleTableReporter,
     NetworkConfig,
 )
-from pathlib import Path
 
-config = NetworkConfig(interface="eth0", subnet="192.168.1.0/24")
+config = NetworkConfig(cidr="192.168.1.0/24", interface="eth0")
 
-# Scanner le réseau
-scanner = LinuxArpScanner(config)
-devices = scanner.scan()
+# Scanner le réseau — la config est passée à scan(), pas au constructeur
+scanner = LinuxArpScanner()  # logger/executor injectables en option
+devices = scanner.scan(config)
 
-# Persister l'inventaire
-repo = JsonDeviceRepository(Path("/var/lib/myapp/devices.json"))
-repo.save_all(devices)
+# Persister l'inventaire (le chemin est une str, converti en Path en interne)
+repo = JsonDeviceRepository("/var/lib/myapp/devices.json")
+repo.save(devices)
 
-# Afficher un tableau
+# Afficher un tableau (report() retourne une str formatée)
 reporter = ConsoleTableReporter()
-reporter.report(devices)
+print(reporter.report(devices))
 ```
 
-Scanners disponibles : `LinuxArpScanner` (arp-scan), `LinuxNmapScanner` (nmap).
+Scanners disponibles : `LinuxArpScanner` (arp-scan), `LinuxNmapScanner` (nmap), `AsusRouterScanner` (API HTTP du routeur, sans root).
 
 Reporters disponibles : `ConsoleTableReporter`, `CsvReporter`, `JsonReporter`, `DiffReporter`.
 
@@ -1655,14 +1718,17 @@ Validateurs : `validate_ipv4`, `validate_mac`, `validate_cidr`, `validate_hostna
 |-----------------|----------------|-------------|
 | `NetworkScanner` | `LinuxArpScanner` | Scan réseau via arp-scan |
 | `NetworkScanner` | `LinuxNmapScanner` | Scan réseau via nmap |
+| `NetworkScanner` | `AsusRouterScanner` | Scan via API HTTP du routeur ASUS (sans root) |
 | `DeviceRepository` | `JsonDeviceRepository` | Persistance JSON de l'inventaire |
-| `DhcpReservationManager` | `LinuxDhcpReservationManager` | Réservations DHCP |
+| `DhcpReservationManager` | `LinuxDhcpReservationManager` | Réservations DHCP (export config dnsmasq) |
+| `RouterDhcpManager` (← `DhcpReservationManager`) | `AsusRouterDhcpManager` | Réservations DHCP appliquées directement au routeur ASUS |
 | `DnsManager` | `LinuxHostsFileManager` | Gestion `/etc/hosts` |
 | `DnsManager` | `LinuxDnsmasqConfigGenerator` | Génération config dnsmasq |
 | `DeviceReporter` | `ConsoleTableReporter` | Tableau ASCII |
 | `DeviceReporter` | `CsvReporter` | Export CSV |
 | `DeviceReporter` | `JsonReporter` | Export JSON |
 | `DeviceReporter` | `DiffReporter` | Diff entre deux inventaires |
+| — | `AsusRouterClient` | Client HTTP bas niveau pour l'API locale ASUS (login, hooks, NVRAM) |
 
 ### Architecture des Classes
 
@@ -1672,12 +1738,16 @@ Validateurs : `validate_ipv4`, `validate_mac`, `validate_cidr`, `validate_hostna
   │  + scan(config) → list[NetworkDevice]│
   └──────────────┬───────────────────────┘
                  │ hérite
-      ┌──────────┴──────────┐
-      ▼                     ▼
-┌──────────────┐    ┌───────────────┐
-│LinuxArpScanner│   │LinuxNmapScanner│
-│  (arp-scan)  │   │    (nmap)      │
-└──────────────┘    └───────────────┘
+      ┌──────────┼───────────────────┐
+      ▼          ▼                   ▼
+┌──────────────┐ ┌───────────────┐ ┌─────────────────────┐
+│LinuxArpScanner│ │LinuxNmapScanner│ │  AsusRouterScanner  │
+│  (arp-scan)  │ │    (nmap)      │ │ (API HTTP routeur,  │
+└──────────────┘ └───────────────┘ │  sans privilège root)│
+                                    └──────────┬──────────┘
+                                               │ utilise (composition)
+                                               ▼
+                                       AsusRouterClient
 
   ┌──────────────────────────────────────┐
   │       DeviceRepository (ABC)        │
@@ -1688,33 +1758,65 @@ Validateurs : `validate_ipv4`, `validate_mac`, `validate_cidr`, `validate_hostna
   └──────────────┬───────────────────────┘
                  │ hérite
                  ▼
-  ┌──────────────────────────────────────┐
-  │         JsonDeviceRepository         │
-  │  (persistance JSON)                  │
-  └──────────────────────────────────────┘
+  ┌──────────────────────────────────────────┐
+  │         JsonDeviceRepository             │
+  │  (persistance JSON, écriture atomique)   │
+  │  + merge_scan_results(existing, scanned) │
+  │    → (merged, nouveaux, disparus)        │
+  └──────────────────────────────────────────┘
 
-  ┌─────────────────────────────────┐   ┌───────────────────────────────────┐
-  │  DhcpReservationManager (ABC)   │   │          DnsManager (ABC)         │
-  │  + generate_reservations()      │   │  + add_entry() / remove_entry()   │
-  └────────────────┬────────────────┘   └─────────────────┬─────────────────┘
-                   │ hérite                               │ hérite
-                   ▼                          ┌───────────┴────────────┐
-  ┌──────────────────────────────┐            ▼                        ▼
-  │  LinuxDhcpReservationManager │  ┌────────────────────┐  ┌─────────────────────────┐
-  └──────────────────────────────┘  │LinuxHostsFileManager│  │LinuxDnsmasqConfigGen.   │
-                                    └────────────────────┘  └─────────────────────────┘
+  ┌─────────────────────────────────┐
+  │  DhcpReservationManager (ABC)   │
+  │  + generate_reservations()      │
+  │  + export_reservations()        │
+  └────────────────┬────────────────┘
+                   │ hérite
+        ┌──────────┴───────────────────┐
+        ▼                              ▼
+┌──────────────────────────┐  ┌─────────────────────────────┐
+│LinuxDhcpReservationManager│  │   RouterDhcpManager (ABC)   │
+│ (export config dnsmasq   │  │  + apply_reservations()     │
+│  dhcp-host=MAC,IP,host)  │  │  + read_reservations()      │
+└──────────────────────────┘  └──────────────┬──────────────┘
+                                              │ hérite
+                                              ▼
+                                   AsusRouterDhcpManager
+                                  (push NVRAM via AsusRouterClient,
+                                   relit la config DHCP avant écriture)
+
+  ┌────────────────────────────────────────┐
+  │            DnsManager (ABC)            │
+  │  + generate_dns_names(devices)         │
+  │  + generate_hosts_entries(devices)     │
+  └─────────────────┬───────────────────────┘
+                    │ hérite
+                    ▼
+  ┌────────────────────────────────────────┐
+  │      _BaseDnsManager (ABC interne)     │
+  │  factorise generate_dns_names() :      │
+  │  hostname > vendor+octet > type+octet  │
+  └─────────────────┬───────────────────────┘
+                    │ hérite
+        ┌───────────┴────────────┐
+        ▼                        ▼
+┌─────────────────────┐  ┌─────────────────────────┐
+│LinuxHostsFileManager│  │LinuxDnsmasqConfigGen.   │
+│   (/etc/hosts)      │  │ (address=/host/ip)      │
+└─────────────────────┘  └─────────────────────────┘
 
   ┌─────────────────────────────────────────────────────┐
   │              DeviceReporter (ABC)                   │
-  │  + report(devices) [abstract]                       │
+  │  + report(devices) → str [abstract]                 │
   └───────────────────────────┬─────────────────────────┘
                               │ hérite
         ┌──────────┬──────────┼──────────┐
         ▼          ▼          ▼          ▼
 ConsoleTable    Csv       Json        Diff
 Reporter        Reporter  Reporter    Reporter
+                                    (nouveaux / disparus
+                                     / IP changée)
 
-  NetworkDevice (frozen dataclass)
+  NetworkDevice (frozen dataclass, validée au __post_init__)
   ┌──────────────────────────────────────────┐
   │  ip · mac · hostname · vendor            │
   │  device_type · is_known · fixed_ip       │
@@ -1723,7 +1825,24 @@ Reporter        Reporter  Reporter    Reporter
   │  + to_dict() / from_dict() [classmethod] │
   └──────────────────────────────────────────┘
 
-  AsusRouterClient  ← client HTTP dédié au routeur ASUS
+  Configuration (frozen dataclasses, validées au __post_init__)
+  NetworkConfig(cidr, interface, dhcp_range, dns,
+                inventory_path, scan_timeout, scan_bandwidth)
+  ├── DhcpRange(start, end)        — valide l'ordre start ≤ end
+  └── DnsConfig(domain, hosts_file, dnsmasq_conf)
+
+  Sous-package router/ — intégration routeur ASUS RT-AX88U
+  ┌────────────────────────────────────────────────────┐
+  │ RouterConfig(url, timeout, username, password)     │
+  │   __post_init__ → _validate_router_url() (anti-SSRF,│
+  │   accepte uniquement http(s) + IP/hostname LAN)    │
+  │ RouterAuthError(RuntimeError)                      │
+  │ AsusRouterClient — HTTP : login/logout/_hook/      │
+  │   get_clients/get_dhcp_leases/get_nvram/           │
+  │   set_static_reservations                          │
+  │ _nvram.py — parseurs NVRAM (custom_clientlist,     │
+  │   dhcp_staticlist ancien/nouveau firmware)         │
+  └────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -1898,10 +2017,10 @@ app.run()  # parse sys.argv et dispatche
 
   ┌────────────────────────────────────────────────┐
   │              DryRunContext                     │
-  │  - dry_run: bool                               │
-  │  + would_write() → bool                        │
-  │  + would_create() → bool                       │
-  │  + would_modify() → bool                       │
+  │  + dry_run: bool                               │
+  │  + would_write(path, content) → None           │
+  │  + would_create(path) → None                   │
+  │  + would_modify(path, line) → None             │
   └────────────────────────────────────────────────┘
 
   add_dry_run_argument(parser)
@@ -2019,7 +2138,9 @@ content = "fastestmirror = True"
 
 ```python
 from pathlib import Path
-from linux_python_utils import TomlSpecLoader, ConfigApplier
+# Non ré-exportés au niveau racine (cf. Corrections du module dotconf) —
+# import direct depuis le sous-module
+from linux_python_utils.dotconf import TomlSpecLoader, ConfigApplier
 
 # Charger la spec TOML → ConfigSpec
 loader = TomlSpecLoader()
@@ -2052,6 +2173,31 @@ assert applier.apply(spec) == []
 - Décommente les lignes commentées (`# key = value` → `key = value`)
 - Ne touche pas aux blocs déjà présents (idempotent)
 - Retourne une liste d'actions décrivant ce qui a été modifié (vide si aucun changement)
+
+#### `ConfTomlExporter` — Export d'un `.conf` existant vers une spec TOML
+
+Sens inverse de `TomlSpecLoader`/`ConfigApplier` : lit un fichier `.conf` (plat ou INI) déjà configuré sur une machine et produit le TOML de spec correspondant — pour rejouer la même configuration ailleurs via `ConfigApplier`.
+
+```python
+from pathlib import Path
+# Non ré-exporté au niveau racine — import direct depuis le sous-module
+from linux_python_utils.dotconf import ConfTomlExporter
+
+exporter = ConfTomlExporter()
+exporter.export(
+    source=Path("/etc/dnf/dnf.conf"),
+    dest=Path("/tmp/dnf-spec.toml"),
+)
+# Produit un TOML [target] / [[target.content]] directement
+# rechargeable par TomlSpecLoader().load(...)
+
+# Sérialisation TOML générique d'un dict (tables imbriquées incluses)
+toml_text = exporter.export_mapping({
+    "main": {"fastestmirror": True, "max_parallel_downloads": 10},
+})
+```
+
+> Les commentaires consécutifs précédant une ligne de configuration sont associés au bloc suivant ; la détection INI vs fichier plat se fait automatiquement (`_is_ini`, présence d'un en-tête `[section]`). `_toml_escape` échappe guillemets, antislashs et caractères de contrôle (`\uXXXX`) pour produire un TOML valide même à partir d'un contenu arbitraire.
 
 ### Documentation API
 
@@ -2095,16 +2241,24 @@ assert applier.apply(spec) == []
 
   ┌──────────────────────────────────────────────────┐
   │            IniConfigManager (ABC)                │
-  │  + read(path) → IniConfig   [abstract]           │
-  │  + write(config, path)      [abstract]           │
+  │  + read(path) → dict[str, dict] [abstract]       │
+  │  + write(path, config: IniConfig)    [abstract]  │
+  │  + update_section(path, section,                 │
+  │      validators=None) → bool         [abstract]  │
+  │  + is_section_configured(path, section) → bool   │
+  │                                       [abstract]  │
   └────────────────────┬─────────────────────────────┘
                        │ hérite
                        ▼
   ┌──────────────────────────────────────────────────┐
   │           LinuxIniConfigManager                  │
-  │  (configparser stdlib)                           │
-  │  + read(path) → IniConfig                        │
-  │  + write(config, path)                           │
+  │  (configparser stdlib + chmod 0o644)             │
+  │  + read / write / update_section /               │
+  │      is_section_configured                       │
+  │  + write_section(path, section)                  │
+  │      (crée ou met à jour une seule section)      │
+  │  + section_to_ini / config_to_ini → str          │
+  │      (rendu sans écriture sur disque)            │
   └──────────────────────────────────────────────────┘
 
   ┌──────────────────────────────────────────────────┐
@@ -2156,9 +2310,10 @@ Vérification d'intégrité par checksums, et ABC pour la vérification de secti
 ```python
 from linux_python_utils import FileLogger, SHA256IntegrityChecker, calculate_checksum
 
-# Fonction utilitaire rapide
+# Fonction utilitaire rapide — whitelist d'algorithmes : sha256, sha384,
+# sha512, blake2b uniquement (MD5/SHA1 rejetés : ValueError, faibles)
 checksum = calculate_checksum("/path/to/file")  # SHA256 par défaut
-checksum_md5 = calculate_checksum("/path/to/file", algorithm="md5")
+checksum_512 = calculate_checksum("/path/to/file", algorithm="sha512")
 
 # Vérificateur avec logging
 logger = FileLogger("/var/log/backup.log")
@@ -2217,21 +2372,38 @@ if not checker.verify(Path("/etc/myapp.conf"), my_section):
                       ▼
   ┌────────────────────────────────────────────┐
   │       HashLibChecksumCalculator            │
-  │  (hashlib — sha256, sha512, md5...)        │
+  │  (hashlib — whitelist : sha256, sha384,    │
+  │   sha512, blake2b — MD5/SHA1 rejetés)      │
   └────────────────────────────────────────────┘
 
+  ┌────────────────────────────────────────────┐
+  │          IntegrityChecker (ABC)            │
+  │  + verify(source, destination) → bool      │
+  │    [abstract]                              │
+  └───────────────────┬────────────────────────┘
+                      │ hérite
+                      ▼
   ┌──────────────────────────────────────────────────┐
   │            SHA256IntegrityChecker                │
-  │  - _calculator: ChecksumCalculator               │
-  │  + check_file(path, expected) → bool             │
-  │  + check_directory(path, manifest) → dict        │
-  │  + generate_manifest(path) → dict                │
+  │  - _calculator: ChecksumCalculator (injecté)     │
+  │  + verify_file(source, dest) → bool              │
+  │  + verify(source, destination,                   │
+  │      dest_subdir=None) → bool                    │
+  │      (compare un répertoire entier, gère le      │
+  │       sous-répertoire créé par rsync)            │
+  │  + get_checksum(file_path) → str  (avec log)     │
+  │  + calculate_checksum(file_path, algorithm)      │
+  │      [staticmethod — délègue à la fonction       │
+  │       de module]                                 │
   └──────────────────────────────────────────────────┘
 
   ┌──────────────────────────────────────────────────┐
-  │            IniSectionIntegrityChecker            │
-  │  + compute_section_hash(section) → str           │
-  │  + verify_section(section, expected) → bool      │
+  │         IniSectionIntegrityChecker (ABC)         │
+  │  + verify(file_path: Path,                       │
+  │      section: object) → bool        [abstract]   │
+  │    (compare un fichier à un modèle — section     │
+  │     doit exposer section_name()/to_dict())       │
+  │    aucune implémentation concrète dans le module │
   └──────────────────────────────────────────────────┘
 ```
 
@@ -2253,9 +2425,12 @@ manager = CredentialManager.from_dotenv(
     dotenv_path=Path("config/.env"),
 )
 
-# Lire un secret
+# Lire un secret avec valeur par défaut (jamais d'exception)
+password = manager.get("DB_PASSWORD", default="")
+
+# Lire un secret obligatoire — lève si absent des trois sources
 try:
-    password = manager.get("DB_PASSWORD")
+    password = manager.require("DB_PASSWORD")
 except CredentialNotFoundError:
     print("Secret introuvable dans les trois sources")
 
@@ -2313,8 +2488,9 @@ pip install keyring        # pour KeyringCredentialProvider
   │  - _service: str                        │
   │  - _chain: CredentialChain              │
   │  - _store: CredentialStore | None       │
-  │  + get(key) → str | None                │
-  │  + require(key) → str                   │
+  │  + get(key, default="") → str           │
+  │  + require(key) → str  [raises          │
+  │      CredentialNotFoundError si absent] │
   │  + store(key, value)                    │
   │  + delete(key)                          │
   │  + from_dotenv(svc, path) [classmethod] │
@@ -2360,7 +2536,20 @@ perm_checker.validate()  # Lève PermissionError si non accessible
 # Vérifie qu'un fichier de config n'est pas world-writable
 # (sécurité essentielle pour les scripts exécutés en root)
 ww_checker = PathCheckerWorldWritable("/etc/myapp/config.toml")
-ww_checker.validate()  # Lève PermissionError si bit S_IWOTH positionné
+ww_checker.validate()  # Lève PermissionError (bit S_IWOTH ou symlink)
+
+# Vérifie la présence de commandes système requises (un quatrième
+# validateur, distinct des trois ci-dessus : il ne porte pas sur des
+# chemins mais sur la disponibilité d'exécutables dans le PATH)
+from linux_python_utils import SystemCommandValidator
+
+sys_checker = SystemCommandValidator({
+    "borg": "sudo dnf install borgbackup",
+    "rsync": "sudo dnf install rsync",
+})
+sys_checker.validate()  # Lève MissingDependencyError si absentes,
+                        # message listant les instructions d'installation
+manquantes = sys_checker.missing_commands()  # → list[str], sans lever
 
 # Validation de configuration avec Pydantic (optionnel)
 # pip install linux-python-utils[validation]
@@ -2381,63 +2570,84 @@ print(config.name)  # Instance AppConfig validée
 
 | ABC (Interface) | Implémentation | Description |
 |-----------------|----------------|-------------|
-| `Validator` | `PathChecker` | Répertoires parents existent |
-| `Validator` | `PathCheckerPermission` | Répertoires parents accessibles en écriture |
-| `Validator` | `PathCheckerWorldWritable` | Fichier non world-writable (sécurité root) |
+| `Validator` | `PathChecker` | Répertoires parents existent (`paths: list[str]`) |
+| `Validator` | `PathCheckerPermission` | Répertoires parents accessibles en écriture (`paths: list[str]`) |
+| `Validator` | `PathCheckerWorldWritable` | Fichier non world-writable, anti-symlink (`path: str \| Path`, unique) |
+| `Validator` | `SystemCommandValidator` | Présence de commandes système dans le `PATH` (`requirements: dict[str, str]`) |
 
 ### Architecture des Classes
 
 ```
   ┌──────────────────────────────────────────────────────┐
   │                   Validator (ABC)                    │
-  │  + validate() [abstract]                             │
-  │    raises: ValueError | PermissionError              │
-  └───────────────────────────┬──────────────────────────┘
-                              │ hérite
-                              ▼
-  ┌──────────────────────────────────────────────────────┐
-  │                    PathChecker                       │
-  │  - path: Path                                        │
-  │  + validate()  [abstract]                            │
-  └──────────┬────────────────────────┬──────────────────┘
-             │ hérite                 │ hérite
-             ▼                        ▼
-  ┌──────────────────────┐  ┌──────────────────────────────┐
-  │  PathCheckerPermission│  │  PathCheckerWorldWritable    │
-  │  - expected: int      │  │  Avertit si world-writable   │
-  │  + validate()         │  │  + validate()                │
-  └──────────────────────┘  └──────────────────────────────┘
+  │  + validate() → None  [abstract]                     │
+  │    raises: ValueError | PermissionError | ...        │
+  │    (chaque implémentation documente ses propres      │
+  │     exceptions concrètes — voir liste ci-dessous)    │
+  └───────┬──────────┬───────────┬────────────┬──────────┘
+          │ hérite   │ hérite    │ hérite     │ hérite
+          ▼          ▼           ▼            ▼
+  ┌──────────────┐ ┌──────────────────┐ ┌────────────────────┐ ┌──────────────────────┐
+  │ PathChecker  │ │PathCheckerPermis-│ │PathCheckerWorld-   │ │SystemCommandValidator│
+  │              │ │sion              │ │Writable            │ │                      │
+  │ - paths:     │ │ - paths:         │ │ - _path: Path      │ │ - _requirements:     │
+  │   list[str]  │ │   list[str]      │ │   (non résolu —    │ │   dict[str, str]     │
+  │ + validate() │ │ + validate()     │ │   pas de suivi de  │ │ + validate()         │
+  │   (.resolve  │ │   (vérifie       │ │   symlink)         │ │   [raises Missing-   │
+  │   anti path  │ │   l'existence    │ │ + validate()       │ │   DependencyError]   │
+  │   traversal) │ │   AVANT le       │ │   (os.lstat —      │ │ + missing_commands() │
+  │   [raises    │ │   droit d'écri-  │ │   TOCTOU-safe,     │ │   → list[str]        │
+  │   ValueError]│ │   ture, pour un  │ │   rejette aussi    │ │   (sans lever — via  │
+  │              │ │   message non    │ │   les symlinks)    │ │   shutil.which)      │
+  │              │ │   ambigu)        │ │   [raises File-    │ │                      │
+  │              │ │   [raises Value- │ │   NotFoundError |  │ │                      │
+  │              │ │   Error |        │ │   PermissionError] │ │                      │
+  │              │ │   PermissionEr-  │ │                    │ │                      │
+  │              │ │   ror]           │ │                    │ │                      │
+  └──────────────┘ └──────────────────┘ └────────────────────┘ └──────────────────────┘
 ```
+
+> Les quatre implémentations héritent **directement** de `Validator` — il
+> n'existe pas de hiérarchie intermédiaire entre elles (`PathCheckerPermission`
+> et `PathCheckerWorldWritable` ne dérivent PAS de `PathChecker` : ce sont
+> des stratégies sœurs, chacune avec sa propre forme de constructeur et son
+> propre jeu d'exceptions).
 
 ---
 
 ## 🔔 Module `notification`
 
-Configuration des notifications desktop (KDE Plasma).
+Configuration de notifications desktop via `notify-send`, diffusées à
+tous les utilisateurs ayant une session graphique active (bus D-Bus de
+session détecté via `loginctl`) — compatible avec tout environnement
+respectant la spécification freedesktop.org Desktop Notifications
+(GNOME, KDE Plasma, XFCE...).
 
 ### Utilisation
 
 ```python
 from linux_python_utils import NotificationConfig
 
-# Configuration de notification
+# Configuration de notification (champs texte validés : non vides,
+# sans caractère de contrôle — voir __post_init__)
 notif = NotificationConfig(
-    enabled=True,
     title="Sauvegarde",
     message_success="Sauvegarde terminée avec succès",
-    message_failure="Échec de la sauvegarde"
+    message_failure="Échec de la sauvegarde",
+    app_name="MonScript",  # injecté via shlex.quote — voir Corrections
 )
 
-# Générer les appels bash pour notify-send
-bash_calls = notif.to_bash_calls()
-bash_function = notif.to_bash_function()
+# Générer le code bash à intégrer dans un script de sauvegarde
+bash_function = notif.to_bash_function()      # définition de send_notification()
+appel_succes = notif.to_bash_call_success()   # appel en cas de succès
+appel_echec = notif.to_bash_call_failure()    # appel en cas d'échec
 ```
 
 ### Documentation API
 
 | Classe | Description |
 |--------|-------------|
-| `NotificationConfig` | Dataclass de configuration des notifications desktop (KDE Plasma) |
+| `NotificationConfig` | Dataclass de configuration des notifications desktop, génère du code bash (`to_bash_function`/`to_bash_call_success`/`to_bash_call_failure`) |
 
 ---
 

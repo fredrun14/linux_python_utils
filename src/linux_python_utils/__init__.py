@@ -293,6 +293,7 @@ __all__ = [
     "Validator",
     "PathChecker",
     "PathCheckerPermission",
+    "PathCheckerWorldWritable",
     "SystemCommandValidator",
     # Credentials - ABCs
     "CredentialProvider",
