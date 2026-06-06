@@ -63,3 +63,9 @@ class IntegrityError(ApplicationError):
     """Exception levée lors d'un échec de vérification d'intégrité."""
 
     pass
+
+
+class CommandExecutionError(ApplicationError):
+    """Exception levée quand une commande système retourne un code non nul."""
+
+    pass

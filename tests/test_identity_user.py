@@ -5,13 +5,30 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from linux_python_utils.commands import LinuxCommandExecutor
+from linux_python_utils.errors import CommandExecutionError
 from linux_python_utils.identity.user import LinuxUserManager
 from linux_python_utils.logging.base import Logger
 
 
+def _result_ok() -> MagicMock:
+    r = MagicMock()
+    r.success = True
+    r.return_code = 0
+    return r
+
+
+def _result_fail(code: int = 1) -> MagicMock:
+    r = MagicMock()
+    r.success = False
+    r.return_code = code
+    return r
+
+
 @pytest.fixture
 def executor() -> MagicMock:
-    return MagicMock(spec=LinuxCommandExecutor)
+    mock = MagicMock(spec=LinuxCommandExecutor)
+    mock.run.return_value = _result_ok()
+    return mock
 
 
 @pytest.fixture
@@ -239,3 +256,62 @@ class TestLinuxUserManagerValidation:
         """ensure_user_groups lève ValueError si un nom de groupe est invalide."""
         with pytest.raises(ValueError, match="Nom Unix invalide"):
             manager.ensure_user_groups("frederic", ["-badgroup"])
+
+
+class TestLinuxUserManagerEchecCommande:
+    """Tests de levée de CommandExecutionError sur code retour non nul."""
+
+    def test_ensure_user_usermod_echec_leve_exception(
+        self,
+        manager: LinuxUserManager,
+        executor: MagicMock,
+    ) -> None:
+        """usermod uid code non nul → CommandExecutionError."""
+        # Arrange
+        mock_pwd = MagicMock()
+        mock_pwd.pw_uid = 9999
+        executor.run.return_value = _result_fail(1)
+
+        # Act / Assert
+        with patch(
+            "linux_python_utils.identity.user.pwd.getpwnam",
+            return_value=mock_pwd,
+        ):
+            with pytest.raises(CommandExecutionError, match="usermod"):
+                manager.ensure_user("frederic", 1000, "/bin/zsh", "X", False)
+
+    def test_ensure_user_useradd_echec_leve_exception(
+        self,
+        manager: LinuxUserManager,
+        executor: MagicMock,
+    ) -> None:
+        """useradd code non nul → CommandExecutionError."""
+        # Arrange
+        executor.run.return_value = _result_fail(9)
+
+        # Act / Assert
+        with patch(
+            "linux_python_utils.identity.user.pwd.getpwnam",
+            side_effect=KeyError("frederic"),
+        ):
+            with pytest.raises(CommandExecutionError, match="useradd"):
+                manager.ensure_user("frederic", 1000, "/bin/zsh", "X", False)
+
+    def test_ensure_user_groups_usermod_echec_leve_exception(
+        self,
+        manager: LinuxUserManager,
+        executor: MagicMock,
+    ) -> None:
+        """usermod --append code non nul → CommandExecutionError."""
+        # Arrange
+        mock_grp = MagicMock()
+        mock_grp.gr_mem = []
+        executor.run.return_value = _result_fail(1)
+
+        # Act / Assert
+        with patch(
+            "linux_python_utils.identity.user.grp.getgrnam",
+            return_value=mock_grp,
+        ):
+            with pytest.raises(CommandExecutionError, match="usermod"):
+                manager.ensure_user_groups("frederic", ["audio"])

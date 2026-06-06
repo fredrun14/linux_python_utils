@@ -4,6 +4,7 @@ import grp
 import pwd
 
 from linux_python_utils.commands import CommandBuilder, LinuxCommandExecutor
+from linux_python_utils.errors import CommandExecutionError
 from linux_python_utils.identity.base import UserManagerBase, _valider_nom
 from linux_python_utils.logging import Logger
 
@@ -46,6 +47,8 @@ class LinuxUserManager(UserManagerBase):
 
         Raises:
             ValueError: Si ``name`` ne respecte pas la convention Unix.
+            CommandExecutionError: Si usermod/useradd retourne un code
+                non nul.
         """
         _valider_nom(name)
         try:
@@ -62,7 +65,12 @@ class LinuxUserManager(UserManagerBase):
                     .with_args([name])
                     .build()
                 )
-                self._executor.run(cmd)
+                result = self._executor.run(cmd)
+                if not result.success:
+                    raise CommandExecutionError(
+                        f"{self._prefix} usermod '{name}' "
+                        f"a échoué (code {result.return_code})"
+                    )
             else:
                 self._logger.log_info(
                     f"{self._prefix} Utilisateur '{name}' "
@@ -81,7 +89,12 @@ class LinuxUserManager(UserManagerBase):
             )
             if create_home:
                 builder = builder.with_flag("--create-home")
-            self._executor.run(builder.with_args([name]).build())
+            result = self._executor.run(builder.with_args([name]).build())
+            if not result.success:
+                raise CommandExecutionError(
+                    f"{self._prefix} useradd '{name}' "
+                    f"a échoué (code {result.return_code})"
+                )
 
     def ensure_user_groups(
         self,
@@ -101,6 +114,7 @@ class LinuxUserManager(UserManagerBase):
         Raises:
             ValueError: Si ``username`` ou un nom de groupe ne respecte
                 pas la convention Unix.
+            CommandExecutionError: Si usermod retourne un code non nul.
         """
         _valider_nom(username)
         for group_name in groups:
@@ -136,4 +150,9 @@ class LinuxUserManager(UserManagerBase):
             .with_args([username])
             .build()
         )
-        self._executor.run(cmd)
+        result = self._executor.run(cmd)
+        if not result.success:
+            raise CommandExecutionError(
+                f"{self._prefix} usermod --append '{username}' "
+                f"a échoué (code {result.return_code})"
+            )

@@ -5,13 +5,30 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from linux_python_utils.commands import LinuxCommandExecutor
+from linux_python_utils.errors import CommandExecutionError
 from linux_python_utils.identity.group import LinuxGroupManager
 from linux_python_utils.logging.base import Logger
 
 
+def _result_ok() -> MagicMock:
+    r = MagicMock()
+    r.success = True
+    r.return_code = 0
+    return r
+
+
+def _result_fail(code: int = 1) -> MagicMock:
+    r = MagicMock()
+    r.success = False
+    r.return_code = code
+    return r
+
+
 @pytest.fixture
 def executor() -> MagicMock:
-    return MagicMock(spec=LinuxCommandExecutor)
+    mock = MagicMock(spec=LinuxCommandExecutor)
+    mock.run.return_value = _result_ok()
+    return mock
 
 
 @pytest.fixture
@@ -92,6 +109,42 @@ class TestLinuxGroupManagerEnsureGroup:
         assert "--gid" in cmd
         assert "1042" in cmd
         assert "partage-lan" in cmd
+
+    def test_ensure_group_groupmod_echec_leve_exception(
+        self,
+        manager: LinuxGroupManager,
+        executor: MagicMock,
+    ) -> None:
+        """groupmod code non nul → CommandExecutionError."""
+        # Arrange
+        mock_grp = MagicMock()
+        mock_grp.gr_gid = 9999
+        executor.run.return_value = _result_fail(4)
+
+        # Act / Assert
+        with patch(
+            "linux_python_utils.identity.group.grp.getgrnam",
+            return_value=mock_grp,
+        ):
+            with pytest.raises(CommandExecutionError, match="groupmod"):
+                manager.ensure_group("partage-lan", 1042)
+
+    def test_ensure_group_groupadd_echec_leve_exception(
+        self,
+        manager: LinuxGroupManager,
+        executor: MagicMock,
+    ) -> None:
+        """groupadd code non nul → CommandExecutionError."""
+        # Arrange
+        executor.run.return_value = _result_fail(9)
+
+        # Act / Assert
+        with patch(
+            "linux_python_utils.identity.group.grp.getgrnam",
+            side_effect=KeyError("partage-lan"),
+        ):
+            with pytest.raises(CommandExecutionError, match="groupadd"):
+                manager.ensure_group("partage-lan", 1042)
 
 
 class TestLinuxGroupManagerValidation:

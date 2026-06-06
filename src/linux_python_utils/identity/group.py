@@ -3,6 +3,7 @@
 import grp
 
 from linux_python_utils.commands import CommandBuilder, LinuxCommandExecutor
+from linux_python_utils.errors import CommandExecutionError
 from linux_python_utils.identity.base import GroupManagerBase, _valider_nom
 from linux_python_utils.logging import Logger
 
@@ -35,6 +36,8 @@ class LinuxGroupManager(GroupManagerBase):
 
         Raises:
             ValueError: Si ``name`` ne respecte pas la convention Unix.
+            CommandExecutionError: Si groupadd/groupmod retourne un code
+                non nul.
         """
         _valider_nom(name)
         try:
@@ -51,7 +54,12 @@ class LinuxGroupManager(GroupManagerBase):
                     .with_args([name])
                     .build()
                 )
-                self._executor.run(cmd)
+                result = self._executor.run(cmd)
+                if not result.success:
+                    raise CommandExecutionError(
+                        f"{self._prefix} groupmod '{name}' "
+                        f"a échoué (code {result.return_code})"
+                    )
             else:
                 self._logger.log_info(
                     f"{self._prefix} Groupe '{name}' "
@@ -67,4 +75,9 @@ class LinuxGroupManager(GroupManagerBase):
                 .with_args([name])
                 .build()
             )
-            self._executor.run(cmd)
+            result = self._executor.run(cmd)
+            if not result.success:
+                raise CommandExecutionError(
+                    f"{self._prefix} groupadd '{name}' "
+                    f"a échoué (code {result.return_code})"
+                )

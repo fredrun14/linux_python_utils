@@ -10,7 +10,8 @@ from linux_python_utils.errors.exceptions import (ApplicationError,
                                                   InstallationError,
                                                   AppPermissionError,
                                                   RollbackError,
-                                                  IntegrityError)
+                                                  IntegrityError,
+                                                  CommandExecutionError)
 from linux_python_utils.errors.console_handler import ConsoleErrorHandler
 from linux_python_utils.errors.logger_handler import LoggerErrorHandler
 from linux_python_utils.errors.context import ErrorContext
@@ -27,6 +28,7 @@ __all__ = [
     "AppPermissionError",
     "RollbackError",
     "IntegrityError",
+    "CommandExecutionError",
     "ErrorHandler",
     "ConsoleErrorHandler",
     "LoggerErrorHandler",
