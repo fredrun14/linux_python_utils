@@ -2,8 +2,10 @@
 
 import grp
 import pwd
+from typing import Optional
 
 from linux_python_utils.commands import CommandBuilder, LinuxCommandExecutor
+from linux_python_utils.commands.base import CommandExecutor
 from linux_python_utils.errors import CommandExecutionError
 from linux_python_utils.identity.base import UserManagerBase, _valider_nom
 from linux_python_utils.logging import Logger
@@ -14,17 +16,18 @@ class LinuxUserManager(UserManagerBase):
 
     def __init__(
         self,
-        executor: LinuxCommandExecutor,
-        logger: Logger,
+        logger: Optional[Logger] = None,
+        executor: Optional[CommandExecutor] = None,
     ) -> None:
         """Initialise le gestionnaire avec ses dépendances.
 
         Args:
-            executor: Exécuteur de commandes Linux.
-            logger: Logger pour les messages d'information.
+            logger: Logger optionnel pour les messages d'information.
+            executor: Exécuteur de commandes optionnel ; construit par
+                défaut si absent.
         """
-        self._executor = executor
         self._logger = logger
+        self._executor = executor or LinuxCommandExecutor(logger=logger)
         self._prefix = "[LinuxUserManager]"
 
     def ensure_user(

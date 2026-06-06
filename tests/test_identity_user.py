@@ -38,7 +38,7 @@ def logger() -> MagicMock:
 
 @pytest.fixture
 def manager(executor: MagicMock, logger: MagicMock) -> LinuxUserManager:
-    return LinuxUserManager(executor, logger)
+    return LinuxUserManager(logger=logger, executor=executor)
 
 
 class TestLinuxUserManagerEnsureUser:

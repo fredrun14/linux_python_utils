@@ -38,7 +38,7 @@ def logger() -> MagicMock:
 
 @pytest.fixture
 def manager(executor: MagicMock, logger: MagicMock) -> LinuxGroupManager:
-    return LinuxGroupManager(executor, logger)
+    return LinuxGroupManager(logger=logger, executor=executor)
 
 
 class TestLinuxGroupManagerEnsureGroup:
