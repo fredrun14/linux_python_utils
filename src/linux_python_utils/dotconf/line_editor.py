@@ -1,4 +1,4 @@
-"""Éditeur ligne-à-ligne préservant commentaires et formatage des fichiers de configuration."""
+"""Éditeur ligne-à-ligne préservant formatage des fichiers de configuration."""
 
 import re
 from collections.abc import Callable
@@ -25,7 +25,7 @@ class SectionAwareEditor:
 
         Args:
             file_path: Chemin absolu du fichier à modifier.
-                       Le fichier peut ne pas exister (sera créé si nécessaire).
+                       Le fichier peut ne pas exister (créé si nécessaire).
         """
         self._path = file_path
 
@@ -100,23 +100,23 @@ class SectionAwareEditor:
         section: str | None = None,
         comment: str = "",
     ) -> bool:
-        """Assure la présence du bloc dans le fichier avec préservation des commentaires.
+        """Assure la présence du bloc avec préservation des commentaires.
 
         Comportement selon l'état du fichier :
 
         1. Bloc actif → aucune modification (retourne False).
         2. Bloc commenté → décommente les lignes concernées (retourne True).
-        3. Fichier absent ou bloc absent, section None → appende en fin de fichier.
+        3. Fichier/bloc absent, section None → appende en fin de fichier.
         4. Bloc absent, section existante → insère avant la section suivante.
         5. Bloc absent, section manquante → ajoute [section] en fin de fichier.
 
         Args:
             content: Contenu du bloc (une ou plusieurs lignes).
             section: Nom de la section INI cible. None pour les fichiers plats.
-            comment: Ligne de commentaire à ajouter avant le bloc (ex: "# Titre").
+            comment: Commentaire à insérer avant le bloc (ex: "# Titre").
 
         Returns:
-            True si le fichier a été modifié, False si aucun changement nécessaire.
+            True si modifié, False si aucun changement nécessaire.
         """
         if not content.strip():
             return False
@@ -157,7 +157,7 @@ class SectionAwareEditor:
 
         Returns:
             Liste des noms de sections dans leur ordre d'apparition.
-            Liste vide si le fichier n'existe pas ou ne contient pas de sections.
+            Liste vide si le fichier n'existe pas ou sans sections.
         """
         sections = []
         for line in self._read_lines():
@@ -170,14 +170,14 @@ class SectionAwareEditor:
         """Lit le fichier et retourne ses lignes avec fins de ligne.
 
         Returns:
-            Liste de lignes (avec \\n), ou liste vide si le fichier n'existe pas.
+            Liste de lignes (avec \\n), vide si le fichier n'existe pas.
         """
         if not self._path.exists():
             return []
         return self._path.read_text(encoding="utf-8").splitlines(keepends=True)
 
     def _write_lines(self, lines: list[str]) -> None:
-        """Écrit les lignes dans le fichier, en créant le dossier parent si nécessaire.
+        """Écrit les lignes dans le fichier (crée le dossier parent si besoin).
 
         Args:
             lines: Lignes à écrire (avec fins de ligne).
@@ -286,7 +286,7 @@ class SectionAwareEditor:
             target: Ligne cible à rechercher (stripée).
 
         Returns:
-            True si la ligne, une fois dépouillée de son préfixe de commentaire,
+            True si la ligne, dépouillée de son préfixe de commentaire,
             correspond à target.
         """
         stripped = line.strip()
@@ -298,7 +298,7 @@ class SectionAwareEditor:
         return False
 
     def _uncomment_line(self, line: str) -> str:
-        """Supprime le premier préfixe de commentaire (#, ;) et l'espace suivant.
+        """Supprime le préfixe de commentaire (#, ;) et l'espace suivant.
 
         Args:
             line: Ligne commentée (avec fin de ligne possible).

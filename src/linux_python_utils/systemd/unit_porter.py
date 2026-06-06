@@ -352,7 +352,7 @@ class SystemdUnitRestorer:
             if section not in data:
                 continue
             lines.append(f"[{section}]")
-            for key, value in data[section].items():  # type: ignore[union-attr]
+            for key, value in data[section].items():  # type: ignore
                 if isinstance(value, list):
                     for v in value:
                         lines.append(

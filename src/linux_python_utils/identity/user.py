@@ -70,7 +70,8 @@ class LinuxUserManager(UserManagerBase):
                 )
         except KeyError:
             self._logger.log_info(
-                f"{self._prefix} Création de l'utilisateur '{name}' (UID {uid})"
+                f"{self._prefix} Création de l'utilisateur"
+                f" '{name}' (UID {uid})"
             )
             builder = (
                 CommandBuilder("useradd")

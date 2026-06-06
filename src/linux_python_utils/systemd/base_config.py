@@ -234,7 +234,8 @@ class TimerConfig(BaseSystemdConfig):
         """
         lines = [
             "[Unit]",
-            f"Description={reject_control_chars(self.description, 'description')}",
+            f"Description="
+            f"{reject_control_chars(self.description, 'description')}",
             "",
             "[Timer]",
             f"Unit={reject_control_chars(self.unit, 'unit')}",
@@ -251,17 +252,17 @@ class TimerConfig(BaseSystemdConfig):
                 f"{reject_control_chars(self.on_boot_sec, 'on_boot_sec')}"
             )
         if self.on_unit_active_sec:
-            lines.append(
-                f"OnUnitActiveSec="
-                f"{reject_control_chars(self.on_unit_active_sec, 'on_unit_active_sec')}"
+            val = reject_control_chars(
+                self.on_unit_active_sec, 'on_unit_active_sec'
             )
+            lines.append(f"OnUnitActiveSec={val}")
         if self.persistent:
             lines.append("Persistent=true")
         if self.randomized_delay_sec:
-            lines.append(
-                f"RandomizedDelaySec="
-                f"{reject_control_chars(self.randomized_delay_sec, 'randomized_delay_sec')}"
+            val = reject_control_chars(
+                self.randomized_delay_sec, 'randomized_delay_sec'
             )
+            lines.append(f"RandomizedDelaySec={val}")
 
         lines.extend([
             "",
@@ -348,7 +349,8 @@ class ServiceConfig(BaseSystemdConfig):
         """
         lines = [
             "[Unit]",
-            f"Description={reject_control_chars(self.description, 'description')}",
+            f"Description="
+            f"{reject_control_chars(self.description, 'description')}",
             "",
             "[Service]",
             f"Type={self.type}",
@@ -364,10 +366,10 @@ class ServiceConfig(BaseSystemdConfig):
                 f"Group={reject_control_chars(self.group, 'group')}"
             )
         if self.working_directory:
-            lines.append(
-                f"WorkingDirectory="
-                f"{reject_control_chars(self.working_directory, 'working_directory')}"
+            val = reject_control_chars(
+                self.working_directory, 'working_directory'
             )
+            lines.append(f"WorkingDirectory={val}")
 
         for key, value in self.environment.items():
             lines.append(f"Environment={key}={value}")

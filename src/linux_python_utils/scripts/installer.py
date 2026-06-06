@@ -598,5 +598,3 @@ class LinuxCliInstaller(CliInstaller):
             return False
 
         return True
-
-

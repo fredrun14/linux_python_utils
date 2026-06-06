@@ -1,4 +1,4 @@
-"""Export d'un fichier de configuration existant vers un TOML TomlSpecLoader."""
+"""Export d'un fichier de configuration vers un TOML TomlSpecLoader."""
 
 import re
 from pathlib import Path

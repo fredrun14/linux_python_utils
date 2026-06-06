@@ -68,7 +68,7 @@ class TeeStream:
         self._log_fh.flush()
 
     def close(self) -> None:
-        """Ferme le flux log ; ne ferme pas le flux original (stdout/stderr)."""
+        """Ferme le flux log (ne ferme pas le flux original)."""
         try:
             self._log_fh.flush()
             self._log_fh.close()

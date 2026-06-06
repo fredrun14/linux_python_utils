@@ -331,8 +331,10 @@ class LinuxScriptChecker(ScriptChecker):
             pkg = self._extract_package_name(dep)
             constraint = self._extract_version_constraint(dep)
             location = self._is_installed(
-            pkg, pip_cmd, use_importlib=(venv_path is None)
-        )
+                pkg,
+                pip_cmd,
+                use_importlib=(venv_path is None),
+            )
             if location is None:
                 missing.append(
                     MissingDependency(

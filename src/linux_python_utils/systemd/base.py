@@ -63,7 +63,7 @@ def _write_unit_content(
         unit_path: Chemin absolu du fichier à écrire.
         content: Contenu à écrire (UTF-8).
         logger: Logger pour les messages d'erreur/info.
-        log_label: Suffixe optionnel dans le message de log (ex: " utilisateur").
+        log_label: Suffixe de log optionnel (ex: " utilisateur").
 
     Returns:
         True si succès, False sinon.
@@ -142,7 +142,7 @@ def _remove_unit_content(
 # =============================================================================
 
 class _ServiceOperationsMixin:
-    """Mixin des opérations service communes aux managers système et utilisateur.
+    """Mixin d'opérations service communes aux managers systemd.
 
     Requiert que la classe héritante fournisse :
     ``logger``, ``executor``, ``enable()``, ``disable()``,
@@ -379,7 +379,7 @@ class _TimerOperationsMixin:
             RuntimeError: Si l'exécution de systemctl échoue.
         """
         try:
-            result = self.executor._run_systemctl(  # type: ignore[attr-defined]
+            result = self.executor._run_systemctl(  # type: ignore
                 ["list-timers", "--no-pager", "--output=json"],
                 check=False,
             )
@@ -423,7 +423,7 @@ class _TimerOperationsMixin:
             RuntimeError: Si l'exécution de systemctl échoue.
         """
         try:
-            result = self.executor._run_systemctl(  # type: ignore[attr-defined]
+            result = self.executor._run_systemctl(  # type: ignore
                 ["list-timers", "--no-pager", "--plain"],
                 check=False,
             )

@@ -41,7 +41,7 @@ class GroupManagerBase(ABC):
 
 
 class UserManagerBase(ABC):
-    """Interface abstraite pour la gestion idempotente des utilisateurs Unix."""
+    """Interface abstraite pour la gestion idempotente des utilisateurs."""
 
     @abstractmethod
     def ensure_user(

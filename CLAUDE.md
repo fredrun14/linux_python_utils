@@ -25,28 +25,15 @@ pytest tests/test_foo.py::TestBar::test_baz -v  # test ciblé
 
 ## Architecture
 
-Interfaces via ABCs, implémentations concrètes Linux.
+Voir `src/linux_python_utils/` et `README.md` (section "Modules disponibles") — un répertoire par domaine :
+`logging`, `config`, `filesystem`, `systemd`, `commands`, `scripts`,
+`notification`, `integrity`, `dotconf`, `validation`, `errors`,
+`credentials`, `network`.
 
-| Module | Contenu clé |
-|--------|-------------|
-| `logging` | `FileLogger`, `SecurityLogger`, `SecurityEventType` |
-| `config` | `ConfigurationManager`, `FileConfigLoader` (TOML/JSON, dot-notation) |
-| `filesystem` | `LinuxFileManager`, `LinuxFileBackup` |
-| `systemd` | `LinuxServiceUnitManager`, `LinuxTimerUnitManager`, `LinuxMountUnitManager`, user variants, `SystemdScheduledTaskInstaller` |
-| `systemd.config_loaders` | `ServiceConfigLoader`, `TimerConfigLoader`, `MountConfigLoader`, `BashScriptConfigLoader` (TOML → dataclass) |
-| `commands` | `CommandBuilder` (fluent), `LinuxCommandExecutor`, `AnsiCommandFormatter` |
-| `scripts` | `BashScriptConfig`, `BashScriptInstaller` |
-| `notification` | `NotificationConfig` (KDE Plasma) |
-| `integrity` | `SHA256IntegrityChecker`, `IniSectionIntegrityChecker` |
-| `dotconf` | `LinuxIniConfigManager`, `ValidatedSection` |
-| `validation` | `PathChecker`, `PathCheckerPermission`, `PathCheckerWorldWritable` |
-| `errors` | `ErrorHandlerChain`, `ErrorContext`, hiérarchie d'exceptions |
-| `credentials` | `CredentialChain` : env → .env → keyring |
-| `network` | `LinuxArpScanner`, `LinuxNmapScanner`, `AsusRouterClient`, DHCP/DNS |
+API publique exportée depuis `src/linux_python_utils/__init__.py`.
 
 ## Patterns clés
 
 - **TOCTOU-safe** : `os.open(O_NOFOLLOW)` + `os.fchmod(0o644)` dans les classes de base
 - **Validation noms** : regex + anti-traversal dans `systemd/validators.py`
 - **UTF-8 explicite** partout (docstrings français)
-- **API publique** : tout exporté depuis `src/linux_python_utils/__init__.py`

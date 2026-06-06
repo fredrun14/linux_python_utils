@@ -58,7 +58,9 @@ class DotEnvCredentialProvider(CredentialProvider):
                 )
 
     def load(self) -> bool:
-        """Charge le fichier .env dans le dict interne (sans toucher os.environ).
+        """Charge le fichier .env dans le dict interne.
+
+        Ne modifie pas os.environ.
 
         Returns:
             True si le fichier a été chargé avec succès.

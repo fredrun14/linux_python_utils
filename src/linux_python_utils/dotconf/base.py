@@ -153,7 +153,7 @@ class IniConfigManager(ABC):
         path: Path,
         section: IniSection,
     ) -> bool:
-        """Vérifie si une section est déjà configurée avec les valeurs attendues.
+        """Vérifie si une section est configurée avec les valeurs attendues.
 
         Compare uniquement les clés définies dans section.to_dict() avec
         les valeurs présentes dans le fichier. Les clés supplémentaires

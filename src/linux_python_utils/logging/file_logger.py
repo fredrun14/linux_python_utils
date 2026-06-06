@@ -5,17 +5,18 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
+# local
+from linux_python_utils.logging.ansi_colors import AnsiColors
+from linux_python_utils.logging.base import Logger
+
 _NIVEAUX = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 
 
 def _open_secure(path: str) -> int:
-    """Ouvre le log avec O_NOFOLLOW et mode 0o600 (anti-symlink/anti-lecture)."""
+    """Ouvre le log avec O_NOFOLLOW/0o600 (anti-symlink, anti-lecture)."""
     flags = os.O_CREAT | os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW
     return os.open(path, flags, 0o600)
 
-# local
-from linux_python_utils.logging.ansi_colors import AnsiColors
-from linux_python_utils.logging.base import Logger
 
 _LEVEL_COLORS = {
     logging.INFO: AnsiColors.BLUE,
@@ -67,7 +68,7 @@ class FileLogger(Logger):
             config: Configuration optionnelle (dict ou ConfigurationManager).
                 Clés supportées: logging.level, logging.format.
             console_output: Activer la sortie console en plus du fichier.
-            colored_console: Coloriser la sortie console selon le niveau de log.
+            colored_console: Coloriser la sortie console par niveau de log.
                 Sans effet si console_output est False.
                 Le fichier log reste toujours en plain-text.
         """
@@ -114,7 +115,7 @@ class FileLogger(Logger):
 
         # Éviter les handlers dupliqués
         if not self.logger.handlers:
-            # Handler fichier — StreamHandler sur fd sécurisé (O_NOFOLLOW, 0o600)
+            # Handler fichier — fd sécurisé (O_NOFOLLOW, 0o600)
             fd = _open_secure(log_file)
             file_handler = logging.StreamHandler(
                 os.fdopen(fd, "a", encoding="utf-8")
@@ -168,5 +169,6 @@ class FileLogger(Logger):
         """
         from datetime import datetime
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        with os.fdopen(_open_secure(self.log_file), "a", encoding="utf-8") as f:
+        fd = _open_secure(self.log_file)
+        with os.fdopen(fd, "a", encoding="utf-8") as f:
             f.write(f"{timestamp} - {message}\n")

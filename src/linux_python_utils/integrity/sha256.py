@@ -175,7 +175,9 @@ class SHA256IntegrityChecker(IntegrityChecker):
         try:
             source_path = Path(source)
             destination_path = Path(destination)
-            dest = self._resolve_dest(source_path, destination_path, dest_subdir)
+            dest = self._resolve_dest(
+                source_path, destination_path, dest_subdir
+            )
             self.logger.log_info(
                 f"Vérification: {source_path} -> {dest}"
             )
