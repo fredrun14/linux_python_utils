@@ -42,7 +42,6 @@ import os
 import shlex
 import subprocess  # nosec B404
 import time
-from typing import Dict, List, Optional
 
 from linux_python_utils.commands.base import (
     CommandExecutor,
@@ -82,11 +81,11 @@ class LinuxCommandExecutor(CommandExecutor):
 
     def __init__(
         self,
-        logger: Optional[Logger] = None,
-        default_env: Optional[Dict[str, str]] = None,
-        default_timeout: Optional[int] = None,
+        logger: Logger | None = None,
+        default_env: dict[str, str] | None = None,
+        default_timeout: int | None = None,
         dry_run: bool = False,
-        console_formatter: Optional[CommandFormatter] = None,
+        console_formatter: CommandFormatter | None = None,
     ) -> None:
         """Initialise l'exécuteur de commandes.
 
@@ -114,8 +113,8 @@ class LinuxCommandExecutor(CommandExecutor):
 
     def _build_env(
         self,
-        env: Optional[Dict[str, str]] = None,
-    ) -> Optional[Dict[str, str]]:
+        env: dict[str, str] | None = None,
+    ) -> dict[str, str] | None:
         """Construit l'environnement d'exécution.
 
         Fusionne os.environ, default_env et env spécifique.
@@ -139,8 +138,8 @@ class LinuxCommandExecutor(CommandExecutor):
 
     def _resolve_timeout(
         self,
-        timeout: Optional[int] = None,
-    ) -> Optional[int]:
+        timeout: int | None = None,
+    ) -> int | None:
         """Détermine le timeout effectif.
 
         Le timeout spécifique à l'appel est prioritaire
@@ -157,37 +156,62 @@ class LinuxCommandExecutor(CommandExecutor):
         return self._default_timeout
 
     def _log(self, message: str) -> None:
-        """Envoie un message au logger fichier si disponible.
-
-        Args:
-            message: Message à logger.
-        """
+        """Envoie un message au logger fichier si disponible."""
         if self._logger:
             self._logger.log_info(message)
 
     def _log_error(self, message: str) -> None:
-        """Envoie un message d'erreur au logger si disponible.
-
-        Args:
-            message: Message d'erreur à logger.
-        """
+        """Envoie un message d'erreur au logger si disponible."""
         if self._logger:
             self._logger.log_error(message)
 
     def _console(self, message: str) -> None:
-        """Affiche un message sur la console via le formatter.
+        """Affiche un message sur la console.
 
-        N'affiche rien si aucun console_formatter n'est configuré.
+        Doit être appelé depuis un bloc ``if self._console_formatter``
+        — la garde est à la charge du site d'appel.
+        """
+        print(message)
+
+    def _emit(self, method: str, command: list[str]) -> None:
+        """Logue et affiche un événement de commande (start/dry-run).
 
         Args:
-            message: Message à afficher sur la console.
+            method: Nom de la méthode du formatter à invoquer.
+            command: Commande concernée.
         """
+        plain = getattr(self._plain, method)(command, self._is_root)
+        self._log(plain)
         if self._console_formatter:
-            print(message)
+            self._console(
+                getattr(self._console_formatter, method)(
+                    command, self._is_root
+                )
+            )
+
+    def _log_timeout(
+        self, command: list[str], timeout: int | None
+    ) -> None:
+        """Logue une expiration de timeout."""
+        self._log_error(
+            f"Timeout après {timeout}s : {shlex.join(command)}"
+        )
+
+    def _log_returncode(
+        self, command: list[str], code: int
+    ) -> None:
+        """Logue un code de retour non nul."""
+        self._log_error(
+            f"Code retour {code} : {shlex.join(command)}"
+        )
+
+    def _log_oserror(self, e: OSError) -> None:
+        """Logue une erreur système OS."""
+        self._log_error(f"Erreur système : {e}")
 
     def _result(
         self,
-        command: List[str],
+        command: list[str],
         return_code: int,
         stdout: str,
         stderr: str,
@@ -206,7 +230,7 @@ class LinuxCommandExecutor(CommandExecutor):
             CommandResult complet avec executed_as_root.
         """
         return CommandResult(
-            command=command,
+            command=tuple(command),
             return_code=return_code,
             stdout=stdout,
             stderr=stderr,
@@ -217,7 +241,7 @@ class LinuxCommandExecutor(CommandExecutor):
 
     def _make_dry_run_result(
         self,
-        command: List[str],
+        command: list[str],
     ) -> CommandResult:
         """Crée un CommandResult pour le mode dry_run.
 
@@ -227,26 +251,15 @@ class LinuxCommandExecutor(CommandExecutor):
         Returns:
             CommandResult avec code retour 0.
         """
-        plain_msg = self._plain.format_dry_run(
-            command, self._is_root
-        )
-        self._log(plain_msg)
-
-        if self._console_formatter:
-            self._console(
-                self._console_formatter.format_dry_run(
-                    command, self._is_root
-                )
-            )
-
+        self._emit("format_dry_run", command)
         return self._result(command, 0, "", "", 0.0)
 
     def run(
         self,
-        command: List[str],
-        env: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
-        timeout: Optional[int] = None,
+        command: list[str],
+        env: dict[str, str] | None = None,
+        cwd: str | None = None,
+        timeout: int | None = None,
     ) -> CommandResult:
         """Exécute une commande et retourne le résultat.
 
@@ -276,18 +289,7 @@ class LinuxCommandExecutor(CommandExecutor):
 
         effective_env = self._build_env(env)
         effective_timeout = self._resolve_timeout(timeout)
-
-        plain_msg = self._plain.format_start(
-            command, self._is_root
-        )
-        self._log(plain_msg)
-
-        if self._console_formatter:
-            self._console(
-                self._console_formatter.format_start(
-                    command, self._is_root
-                )
-            )
+        self._emit("format_start", command)
 
         start = time.monotonic()
         try:
@@ -307,10 +309,7 @@ class LinuxCommandExecutor(CommandExecutor):
                     _proc.kill()
                     _stdout, _stderr = _proc.communicate()
                     duration = time.monotonic() - start
-                    self._log_error(
-                        f"Timeout après {effective_timeout}s : "
-                        f"{shlex.join(command)}"
-                    )
+                    self._log_timeout(command, effective_timeout)
                     return self._result(
                         command, -1, _stdout, _stderr, duration
                     )
@@ -323,24 +322,21 @@ class LinuxCommandExecutor(CommandExecutor):
                     raise
             duration = time.monotonic() - start
             if _proc.returncode != 0:
-                self._log_error(
-                    f"Code retour {_proc.returncode} : "
-                    f"{shlex.join(command)}"
-                )
+                self._log_returncode(command, _proc.returncode)
             return self._result(
                 command, _proc.returncode, _stdout, _stderr, duration
             )
         except OSError as e:
             duration = time.monotonic() - start
-            self._log_error(f"Erreur système : {e}")
+            self._log_oserror(e)
             return self._result(command, -1, "", str(e), duration)
 
     def run_streaming(
         self,
-        command: List[str],
-        env: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
-        timeout: Optional[int] = None,
+        command: list[str],
+        env: dict[str, str] | None = None,
+        cwd: str | None = None,
+        timeout: int | None = None,
     ) -> CommandResult:
         """Exécute avec sortie en temps réel vers le logger.
 
@@ -375,21 +371,10 @@ class LinuxCommandExecutor(CommandExecutor):
 
         effective_env = self._build_env(env)
         effective_timeout = self._resolve_timeout(timeout)
-
-        plain_msg = self._plain.format_start_streaming(
-            command, self._is_root
-        )
-        self._log(plain_msg)
-
-        if self._console_formatter:
-            self._console(
-                self._console_formatter.format_start_streaming(
-                    command, self._is_root
-                )
-            )
+        self._emit("format_start_streaming", command)
 
         start = time.monotonic()
-        stdout_lines: List[str] = []
+        stdout_lines: list[str] = []
         try:
             with subprocess.Popen(  # nosec B603
                 command,
@@ -399,6 +384,8 @@ class LinuxCommandExecutor(CommandExecutor):
                 env=effective_env,
                 cwd=cwd,
             ) as proc:
+                assert proc.stdout is not None  # nosec
+                assert proc.stderr is not None  # nosec
                 for line in proc.stdout:
                     stripped = line.rstrip("\n")
                     stdout_lines.append(stripped)
@@ -419,10 +406,7 @@ class LinuxCommandExecutor(CommandExecutor):
 
                 duration = time.monotonic() - start
                 if proc.returncode != 0:
-                    self._log_error(
-                        f"Code retour {proc.returncode} : "
-                        f"{shlex.join(command)}"
-                    )
+                    self._log_returncode(command, proc.returncode)
                 return self._result(
                     command,
                     proc.returncode,
@@ -437,10 +421,7 @@ class LinuxCommandExecutor(CommandExecutor):
             stderr = ""
             if proc.stderr:
                 stderr = proc.stderr.read()
-            self._log_error(
-                f"Timeout après {effective_timeout}s : "
-                f"{shlex.join(command)}"
-            )
+            self._log_timeout(command, effective_timeout)
             return self._result(
                 command,
                 -1,
@@ -450,7 +431,7 @@ class LinuxCommandExecutor(CommandExecutor):
             )
         except OSError as e:
             duration = time.monotonic() - start
-            self._log_error(f"Erreur système : {e}")
+            self._log_oserror(e)
             return self._result(
                 command,
                 -1,

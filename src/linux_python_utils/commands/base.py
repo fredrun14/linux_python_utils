@@ -8,7 +8,6 @@ Ce module définit :
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -25,7 +24,7 @@ class CommandResult:
         executed_as_root: True si la commande a été exécutée en root.
     """
 
-    command: Tuple[str, ...]
+    command: tuple[str, ...]
     return_code: int
     stdout: str
     stderr: str
@@ -44,10 +43,10 @@ class CommandExecutor(ABC):
     @abstractmethod
     def run(
         self,
-        command: List[str],
-        env: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
-        timeout: Optional[int] = None,
+        command: list[str],
+        env: dict[str, str] | None = None,
+        cwd: str | None = None,
+        timeout: int | None = None,
     ) -> CommandResult:
         """Exécute une commande et retourne le résultat.
 
@@ -65,10 +64,10 @@ class CommandExecutor(ABC):
     @abstractmethod
     def run_streaming(
         self,
-        command: List[str],
-        env: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
-        timeout: Optional[int] = None,
+        command: list[str],
+        env: dict[str, str] | None = None,
+        cwd: str | None = None,
+        timeout: int | None = None,
     ) -> CommandResult:
         """Exécute une commande avec sortie en temps réel.
 

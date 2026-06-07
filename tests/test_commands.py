@@ -16,6 +16,22 @@ from linux_python_utils.commands import (
 from linux_python_utils.logging.base import Logger
 
 
+def _make_mock_proc(
+    stdout_lines: list[str],
+    stderr: str = "",
+    returncode: int = 0,
+) -> MagicMock:
+    """Crée un mock de subprocess.Popen configuré pour les tests."""
+    mock_proc = MagicMock()
+    mock_proc.stdout = iter(stdout_lines)
+    mock_proc.stderr.read.return_value = stderr
+    mock_proc.returncode = returncode
+    mock_proc.wait.return_value = None
+    mock_proc.__enter__ = MagicMock(return_value=mock_proc)
+    mock_proc.__exit__ = MagicMock(return_value=False)
+    return mock_proc
+
+
 def _setup_popen(mock_popen, returncode=0, stdout="", stderr=""):
     """Configure un mock subprocess.Popen utilisé en context manager.
 
@@ -411,26 +427,13 @@ class TestLinuxCommandExecutorRunStreaming:
             logger=self.mock_logger,
         )
 
-    def _make_mock_proc(
-        self, stdout_lines, stderr="", returncode=0,
-    ):
-        """Crée un mock de Popen configuré."""
-        mock_proc = MagicMock()
-        mock_proc.stdout = iter(stdout_lines)
-        mock_proc.stderr.read.return_value = stderr
-        mock_proc.returncode = returncode
-        mock_proc.wait.return_value = None
-        mock_proc.__enter__ = MagicMock(return_value=mock_proc)
-        mock_proc.__exit__ = MagicMock(return_value=False)
-        return mock_proc
-
     @patch(
         "linux_python_utils.commands.runner"
         ".subprocess.Popen"
     )
     def test_streaming_capture_sortie(self, mock_popen):
         """Test de la capture de sortie en streaming."""
-        mock_popen.return_value = self._make_mock_proc(
+        mock_popen.return_value = _make_mock_proc(
             ["ligne1\n", "ligne2\n"],
         )
         result = self.executor.run_streaming(["cmd"])
@@ -444,7 +447,7 @@ class TestLinuxCommandExecutorRunStreaming:
     )
     def test_streaming_log_chaque_ligne(self, mock_popen):
         """Test que chaque ligne est loguée."""
-        mock_popen.return_value = self._make_mock_proc(
+        mock_popen.return_value = _make_mock_proc(
             ["ligne1\n", "ligne2\n", "ligne3\n"],
         )
         self.executor.run_streaming(["cmd"])
@@ -458,7 +461,7 @@ class TestLinuxCommandExecutorRunStreaming:
     )
     def test_streaming_timeout(self, mock_popen):
         """Test du timeout en mode streaming."""
-        mock_proc = self._make_mock_proc(
+        mock_proc = _make_mock_proc(
             ["partiel\n"],
         )
         mock_proc.wait.side_effect = [
@@ -482,7 +485,7 @@ class TestLinuxCommandExecutorRunStreaming:
     )
     def test_streaming_capture_stderr(self, mock_popen):
         """Test de la capture de stderr."""
-        mock_popen.return_value = self._make_mock_proc(
+        mock_popen.return_value = _make_mock_proc(
             ["ok\n"], stderr="avertissement",
         )
         result = self.executor.run_streaming(["cmd"])
@@ -495,7 +498,7 @@ class TestLinuxCommandExecutorRunStreaming:
     )
     def test_streaming_sans_logger(self, mock_popen):
         """Test du streaming sans logger."""
-        mock_popen.return_value = self._make_mock_proc(
+        mock_popen.return_value = _make_mock_proc(
             ["ligne1\n"],
         )
         executor = LinuxCommandExecutor()
@@ -513,7 +516,7 @@ class TestLinuxCommandExecutorRunStreaming:
     ):
         """Vérifie que log_error est appelé si returncode != 0."""
         # Arrange
-        mock_popen.return_value = self._make_mock_proc(
+        mock_popen.return_value = _make_mock_proc(
             ["ligne1\n"], stderr="echec", returncode=1,
         )
 
@@ -539,7 +542,7 @@ class TestLinuxCommandExecutorRunStreaming:
     ):
         """Vérifie que log_error n'est pas appelé si returncode=0."""
         # Arrange
-        mock_popen.return_value = self._make_mock_proc(
+        mock_popen.return_value = _make_mock_proc(
             ["ligne1\n"], returncode=0,
         )
 
@@ -984,17 +987,6 @@ class TestLinuxCommandExecutorPrefixeLogs:
 class TestLinuxCommandExecutorConsoleFormatter:
     """Tests de l'intégration du console_formatter."""
 
-    def _make_mock_proc(self, stdout_lines, stderr="", returncode=0):
-        """Crée un mock de Popen configuré."""
-        mock_proc = MagicMock()
-        mock_proc.stdout = iter(stdout_lines)
-        mock_proc.stderr.read.return_value = stderr
-        mock_proc.returncode = returncode
-        mock_proc.wait.return_value = None
-        mock_proc.__enter__ = MagicMock(return_value=mock_proc)
-        mock_proc.__exit__ = MagicMock(return_value=False)
-        return mock_proc
-
     @patch("linux_python_utils.commands.runner.subprocess.Popen")
     def test_console_formatter_format_start_appele_sur_run(
         self, mock_popen
@@ -1034,7 +1026,7 @@ class TestLinuxCommandExecutorConsoleFormatter:
         self, mock_popen
     ):
         """Vérifie que format_start_streaming est appelé."""
-        mock_popen.return_value = self._make_mock_proc([])
+        mock_popen.return_value = _make_mock_proc([])
         mock_formatter = MagicMock(spec=CommandFormatter)
         mock_formatter.format_start_streaming.return_value = "msg"
         mock_formatter.format_line.return_value = "ligne"
@@ -1080,7 +1072,7 @@ class TestLinuxCommandExecutorConsoleFormatter:
         self, mock_popen
     ):
         """Vérifie que format_line est appelé pour chaque ligne."""
-        mock_popen.return_value = self._make_mock_proc(
+        mock_popen.return_value = _make_mock_proc(
             ["ligne1\n", "ligne2\n"]
         )
         mock_formatter = MagicMock(spec=CommandFormatter)

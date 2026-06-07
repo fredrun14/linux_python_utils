@@ -22,8 +22,6 @@ Example:
         #             "/src/", "/dest/"]
 """
 
-from typing import List, Optional
-
 
 class CommandBuilder:
     """Constructeur fluent pour assembler des commandes système."""
@@ -40,12 +38,10 @@ class CommandBuilder:
         if not program or not program.strip():
             raise ValueError("Le programme est requis.")
         self._program: str = program
-        self._options: List[str] = []
-        self._args: List[str] = []
+        self._options: list[str] = []
+        self._args: list[str] = []
 
-    def with_options(
-        self, options: List[str]
-    ) -> "CommandBuilder":
+    def with_options(self, options: list[str]) -> "CommandBuilder":
         """Ajoute une liste d'options.
 
         Args:
@@ -69,9 +65,7 @@ class CommandBuilder:
         self._options.append(flag)
         return self
 
-    def with_option(
-        self, key: str, value: str
-    ) -> "CommandBuilder":
+    def with_option(self, key: str, value: str) -> "CommandBuilder":
         """Ajoute une option clé=valeur.
 
         Produit le format 'clé=valeur' dans la commande.
@@ -89,7 +83,7 @@ class CommandBuilder:
     def with_option_if(
         self,
         key: str,
-        value: Optional[str],
+        value: str | None,
         condition: bool = True,
     ) -> "CommandBuilder":
         """Ajoute une option seulement si la condition est vraie.
@@ -109,9 +103,7 @@ class CommandBuilder:
             self._options.append(f"{key}={value}")
         return self
 
-    def with_args(
-        self, args: List[str]
-    ) -> "CommandBuilder":
+    def with_args(self, args: list[str]) -> "CommandBuilder":
         """Ajoute les arguments positionnels finaux.
 
         Args:
@@ -123,7 +115,7 @@ class CommandBuilder:
         self._args.extend(args)
         return self
 
-    def build(self) -> List[str]:
+    def build(self) -> list[str]:
         """Construit et retourne la commande sous forme de liste.
 
         Returns:
