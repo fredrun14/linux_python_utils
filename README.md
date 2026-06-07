@@ -894,7 +894,7 @@ cmd = (
 ```
   ┌──────────────────────────────────────────────────────────┐
   │                  CommandResult (frozen dataclass)        │
-  │  command: list[str]  │  return_code: int  │  stdout: str │
+  │  command: tuple[str,...]│ return_code: int │ stdout: str │
   │  stderr: str  │  success: bool  │  duration: float       │
   │  executed_as_root: bool                                  │
   └──────────────────────────────────────────────────────────┘
@@ -912,11 +912,11 @@ cmd = (
 
   ┌───────────────────────────────┐    ┌─────────────────────────────────┐
   │    CommandFormatter (ABC)     │    │      CommandExecutor (ABC)      │
-  │  + format_start()  [abstract] │    │  + run(cmd, env, cwd, timeout)  │
-  │  + format_dry_run()[abstract] │    │    [abstract] → CommandResult   │
-  │  + format_line()   [abstract] │    │  + run_streaming(cmd, ...)      │
-  └──────────────┬────────────────┘    │    [abstract]                   │
-                 │ hérite              └──────────────┬──────────────────┘
+  │  + format_start()             │    │  + run(cmd, env, cwd, timeout)  │
+  │  + format_dry_run()           │    │    [abstract] → CommandResult   │
+  │  + format_line()  ← Template  │    │  + run_streaming(cmd, ...)      │
+  │  + _decorate()    [abstract]  │    │    [abstract]                   │
+  └──────────────┬────────────────┘    └──────────────┬──────────────────┘
      ┌───────────┴───────────┐                        │ hérite
      ▼                       ▼                        ▼
 PlainCommand         AnsiCommand         ┌─────────────────────────────────┐
