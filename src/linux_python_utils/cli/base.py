@@ -7,7 +7,11 @@ CliApplication pour structurer les CLIs argparse selon SOLID.
 # stdlib
 import argparse
 from abc import ABC, abstractmethod
+# Any est inévitable : argparse._SubParsersAction est une API privée stdlib
 from typing import Any
+
+# local
+from linux_python_utils.logging.base import Logger
 
 
 class CliCommand(ABC):
@@ -81,6 +85,7 @@ class CliApplication:
         prog: str,
         description: str,
         commands: list[CliCommand],
+        logger: Logger | None = None,
     ) -> None:
         """Initialise l'application avec ses commandes.
 
@@ -88,10 +93,12 @@ class CliApplication:
             prog: Nom du programme pour --help.
             description: Description courte pour --help.
             commands: Liste des commandes disponibles.
+            logger: Logger optionnel pour tracer les erreurs de dispatch.
         """
         self._prog = prog
         self._description = description
         self._commands = commands
+        self._logger = logger
 
     def run(self) -> None:
         """Parse sys.argv et dispatche à la commande appropriée.

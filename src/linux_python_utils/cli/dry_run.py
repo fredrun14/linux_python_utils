@@ -3,6 +3,8 @@
 # stdlib
 import argparse
 
+_DRY_RUN_PREFIX = "[DRY-RUN]"
+
 
 class DryRunContext:
     """Contexte d'exécution simulée — aucune modification disque.
@@ -31,29 +33,41 @@ class DryRunContext:
     def would_write(self, path: str, content: str) -> None:
         """Affiche ce qui aurait été écrit sans modifier le disque.
 
+        N'affiche rien si dry_run est False.
+
         Args:
             path: Chemin du fichier cible.
             content: Contenu qui aurait été écrit.
         """
-        print(f"[DRY-RUN] Écriture dans {path} :")
+        if not self.dry_run:
+            return
+        print(f"{_DRY_RUN_PREFIX} Écriture dans {path} :")
         print(content)
 
     def would_create(self, path: str) -> None:
         """Annonce la création simulée d'un fichier.
 
+        N'affiche rien si dry_run est False.
+
         Args:
             path: Chemin du fichier qui aurait été créé.
         """
-        print(f"[DRY-RUN] Création du fichier {path}")
+        if not self.dry_run:
+            return
+        print(f"{_DRY_RUN_PREFIX} Création du fichier {path}")
 
     def would_modify(self, path: str, line: str) -> None:
         """Annonce la modification simulée d'une ligne.
+
+        N'affiche rien si dry_run est False.
 
         Args:
             path: Chemin du fichier cible.
             line: Ligne qui aurait été ajoutée ou modifiée.
         """
-        print(f"[DRY-RUN] Modification dans {path} : {line}")
+        if not self.dry_run:
+            return
+        print(f"{_DRY_RUN_PREFIX} Modification dans {path} : {line}")
 
 
 def add_dry_run_argument(parser: argparse.ArgumentParser) -> None:

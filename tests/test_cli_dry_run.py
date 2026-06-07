@@ -72,6 +72,37 @@ class TestDryRunContext:
         assert "max_parallel_downloads=5" in captured.out
 
 
+    def test_would_write_silencieux_si_dry_run_false(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Arrange
+        ctx = DryRunContext(dry_run=False)
+        # Act
+        ctx.would_write("/etc/foo.conf", "key=value")
+        # Assert
+        assert capsys.readouterr().out == ""
+
+    def test_would_create_silencieux_si_dry_run_false(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Arrange
+        ctx = DryRunContext(dry_run=False)
+        # Act
+        ctx.would_create("/tmp/new_file.conf")
+        # Assert
+        assert capsys.readouterr().out == ""
+
+    def test_would_modify_silencieux_si_dry_run_false(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Arrange
+        ctx = DryRunContext(dry_run=False)
+        # Act
+        ctx.would_modify("/etc/dnf/dnf.conf", "max_parallel_downloads=5")
+        # Assert
+        assert capsys.readouterr().out == ""
+
+
 class TestAddDryRunArgument:
     """Tests pour la fonction add_dry_run_argument."""
 
