@@ -1,7 +1,7 @@
 """Flux dupliqué vers le terminal et vers un fichier log (pattern tee Unix)."""
 
 # stdlib
-from typing import IO, Any
+from typing import TextIO
 
 
 class TeeStream:
@@ -39,7 +39,7 @@ class TeeStream:
         'hello'
     """
 
-    def __init__(self, original: IO[str], log_fh: IO[str]) -> None:
+    def __init__(self, original: TextIO, log_fh: TextIO) -> None:
         """Initialise le flux dupliqué.
 
         Args:
@@ -75,7 +75,7 @@ class TeeStream:
         except (OSError, ValueError):
             pass
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> object:
         """Délègue les attributs inconnus au flux original.
 
         Args:

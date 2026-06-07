@@ -1,6 +1,7 @@
 """Tests pour le module logging."""
 
 import io
+import json
 import os
 import stat
 import sys
@@ -184,6 +185,19 @@ class TestFileLoggerConsole:
         content = (tmp_path / "type_err.log").read_text(encoding="utf-8")
         assert "Test avec TypeError" in content
 
+    def test_config_sans_methode_get(self, tmp_path):
+        """FileLogger avec config sans get() utilise les valeurs par defaut."""
+        log_file = str(tmp_path / "test.log")
+
+        class ConfigSansGet:
+            """Config sans methode get()."""
+            pass
+
+        logger = FileLogger(log_file, config=ConfigSansGet())
+        logger.log_info("Test sans get")
+        content = (tmp_path / "test.log").read_text(encoding="utf-8")
+        assert "Test sans get" in content
+
 
 class TestSecurityLogger:
     """Tests pour SecurityLogger et SecurityEvent."""
@@ -240,7 +254,6 @@ class TestSecurityLogger:
 
     def test_log_event_avec_user_id(self):
         """log_event inclut user_id dans le payload JSON."""
-        import json
         mock_logger = MagicMock()
         sec_logger = SecurityLogger(mock_logger)
         event = SecurityEvent(
@@ -256,7 +269,6 @@ class TestSecurityLogger:
 
     def test_log_event_sans_user_id_pas_dans_payload(self):
         """log_event sans user_id n'inclut pas user_id dans le payload."""
-        import json
         mock_logger = MagicMock()
         sec_logger = SecurityLogger(mock_logger)
         event = SecurityEvent(
@@ -270,7 +282,6 @@ class TestSecurityLogger:
 
     def test_log_event_avec_details(self):
         """log_event inclut les détails dans le payload JSON."""
-        import json
         mock_logger = MagicMock()
         sec_logger = SecurityLogger(mock_logger)
         event = SecurityEvent(
@@ -286,7 +297,6 @@ class TestSecurityLogger:
 
     def test_security_logger_masque_les_cles_sensibles(self):
         """Les clés sensibles dans details sont remplacées par '***'."""
-        import json
         mock_logger = MagicMock()
         sec_logger = SecurityLogger(mock_logger)
         event = SecurityEvent(
@@ -306,19 +316,6 @@ class TestSecurityLogger:
         assert payload["details"]["token"] == "***"
         assert payload["details"]["api_key"] == "***"
         assert payload["details"]["user"] == "alice"
-
-    def test_config_sans_methode_get(self, tmp_path):
-        """FileLogger avec config sans methode get() utilise les valeurs par defaut."""
-        log_file = str(tmp_path / "test.log")
-
-        class ConfigSansGet:
-            """Config sans methode get()."""
-            pass
-
-        logger = FileLogger(log_file, config=ConfigSansGet())
-        logger.log_info("Test sans get")
-        content = (tmp_path / "test.log").read_text(encoding="utf-8")
-        assert "Test sans get" in content
 
 
 class TestConsoleLogger:
@@ -467,7 +464,7 @@ class TestTeeStream:
         assert tee.encoding == original.encoding
 
     def test_tee_stdout_capture_print(self, tmp_path: Path) -> None:
-        """Remplacer sys.stdout par TeeStream capture les print() dans le fichier."""
+        """TeeStream sur sys.stdout capture les print() dans le log."""
         log_file = tmp_path / "out.log"
         log_fh = log_file.open("a", encoding="utf-8")
         original_stdout = sys.stdout
@@ -494,7 +491,7 @@ class TestTeeStream:
         original.close.assert_not_called()
 
     def test_tee_stderr_capture_erreurs(self, tmp_path: Path) -> None:
-        """Remplacer sys.stderr par TeeStream capture stderr dans le fichier."""
+        """TeeStream sur sys.stderr capture les erreurs dans le log."""
         log_file = tmp_path / "err.log"
         log_fh = log_file.open("a", encoding="utf-8")
         original_stderr = sys.stderr

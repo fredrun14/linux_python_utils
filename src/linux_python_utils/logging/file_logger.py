@@ -3,7 +3,7 @@
 # stdlib
 import logging
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 # local
@@ -58,6 +58,7 @@ def _resolve_config(
 
 
 _LEVEL_COLORS = {
+    logging.DEBUG: AnsiColors.BLUE,
     logging.INFO: AnsiColors.BLUE,
     logging.WARNING: AnsiColors.ORANGE,
     logging.ERROR: AnsiColors.RED,
@@ -119,6 +120,7 @@ class FileLogger(Logger):
             raise ValueError(f"Niveau de log invalide : {log_level_str!r}")
         log_level = getattr(logging, niveau)
 
+        # Attribut public pour l'accès aux handlers (ex: tests, réutilisation)
         self.logger = logging.getLogger(log_file)
         self.logger.setLevel(log_level)
         self.handler: logging.Handler
@@ -155,7 +157,7 @@ class FileLogger(Logger):
         log_file: str,
         log_level: int,
         log_format: str,
-    ) -> logging.StreamHandler:  # type: ignore[type-arg]
+    ) -> logging.StreamHandler[str]:
         """Crée le handler fichier sécurisé (O_NOFOLLOW, 0o600).
 
         Args:
@@ -167,7 +169,7 @@ class FileLogger(Logger):
             StreamHandler configuré sur le fd sécurisé.
         """
         fd = _open_secure(log_file)
-        handler: logging.StreamHandler = logging.StreamHandler(  # type: ignore[type-arg]
+        handler: logging.StreamHandler[str] = logging.StreamHandler(
             os.fdopen(fd, "a", encoding="utf-8")
         )
         handler.setLevel(log_level)
@@ -179,7 +181,7 @@ class FileLogger(Logger):
         log_level: int,
         log_format: str,
         colored: bool,
-    ) -> logging.StreamHandler:  # type: ignore[type-arg]
+    ) -> logging.StreamHandler[str]:
         """Crée le handler console optionnel.
 
         Args:
@@ -190,7 +192,7 @@ class FileLogger(Logger):
         Returns:
             StreamHandler configuré pour la console.
         """
-        handler: logging.StreamHandler = logging.StreamHandler()  # type: ignore[type-arg]
+        handler: logging.StreamHandler[str] = logging.StreamHandler()
         handler.setLevel(log_level)
         formatter = (
             _ColoredFormatter(log_format)
@@ -204,20 +206,22 @@ class FileLogger(Logger):
         """Force l'écriture immédiate sur le disque."""
         self.handler.flush()
 
+    def _log(self, level: int, message: str) -> None:
+        """Émet un log au niveau donné et force le flush."""
+        self.logger.log(level, message)
+        self._flush()
+
     def log_info(self, message: str) -> None:
         """Log un message d'information."""
-        self.logger.info(message)
-        self._flush()
+        self._log(logging.INFO, message)
 
     def log_warning(self, message: str) -> None:
         """Log un avertissement."""
-        self.logger.warning(message)
-        self._flush()
+        self._log(logging.WARNING, message)
 
     def log_error(self, message: str) -> None:
         """Log une erreur."""
-        self.logger.error(message)
-        self._flush()
+        self._log(logging.ERROR, message)
 
     def log_to_file(self, message: str) -> None:
         """Écrit directement dans le fichier (sans passer par logging).
@@ -227,7 +231,7 @@ class FileLogger(Logger):
         Args:
             message: Message brut à écrire dans le fichier.
         """
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
         fd = _open_secure(self.log_file)
         with os.fdopen(fd, "a", encoding="utf-8") as f:
             f.write(f"{timestamp} - {message}\n")
