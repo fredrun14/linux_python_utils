@@ -5,8 +5,6 @@ pour allouer des adresses IP fixes et exporter la configuration
 dnsmasq.
 """
 
-import dataclasses
-from typing import List, Optional, Set
 
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.network.base import (
@@ -16,9 +14,7 @@ from linux_python_utils.network.config import (
     DhcpRange,
     NetworkConfig,
 )
-from linux_python_utils.network.ip_utils import (
-    _next_available_ip,
-)
+from linux_python_utils.network.ip_utils import _allocate_fixed_ips
 from linux_python_utils.network.models import NetworkDevice
 
 
@@ -33,7 +29,7 @@ class LinuxDhcpReservationManager(DhcpReservationManager):
     def __init__(
         self,
         config: NetworkConfig,
-        logger: Optional[Logger] = None,
+        logger: Logger | None = None,
     ) -> None:
         """Initialise le gestionnaire DHCP.
 
@@ -45,8 +41,8 @@ class LinuxDhcpReservationManager(DhcpReservationManager):
         self._logger = logger
 
     def generate_reservations(
-        self, devices: List[NetworkDevice]
-    ) -> List[NetworkDevice]:
+        self, devices: list[NetworkDevice]
+    ) -> list[NetworkDevice]:
         """Alloue des IP fixes aux peripheriques.
 
         Args:
@@ -63,30 +59,9 @@ class LinuxDhcpReservationManager(DhcpReservationManager):
             raise ValueError(
                 "Plage DHCP non configuree"
             )
-        used_ips: Set[str] = {
-            d.fixed_ip
-            for d in devices
-            if d.fixed_ip is not None
-        }
-        result: List[NetworkDevice] = []
-        for device in devices:
-            if device.fixed_ip is not None:
-                result.append(device)
-                continue
-            ip = _next_available_ip(
-                self._config.dhcp_range, used_ips
-            )
-            if ip is None:
-                raise ValueError(
-                    "Plage DHCP epuisee : plus d'IP "
-                    "disponibles"
-                )
-            used_ips.add(ip)
-            result.append(
-                dataclasses.replace(
-                    device, fixed_ip=ip
-                )
-            )
+        result = _allocate_fixed_ips(
+            devices, self._config.dhcp_range
+        )
         if self._logger:
             self._logger.log_info(
                 f"Reservations DHCP : {len(result)} "
@@ -95,7 +70,7 @@ class LinuxDhcpReservationManager(DhcpReservationManager):
         return result
 
     def export_reservations(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> str:
         """Exporte les reservations au format dnsmasq.
 

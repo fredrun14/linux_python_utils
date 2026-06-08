@@ -1,7 +1,8 @@
 """Utilitaires de conversion IPv4 et allocation DHCP."""
 
+import dataclasses
 import ipaddress
-from typing import Iterator, Optional, Set
+from collections.abc import Iterator
 
 from linux_python_utils.network.config import DhcpRange
 
@@ -39,7 +40,7 @@ def _int_to_ip(num: int) -> str:
 
 
 def _iter_free_ips(
-    start: str, end: str, used_ips: Set[str]
+    start: str, end: str, used_ips: set[str]
 ) -> Iterator[str]:
     """Itere sur les IP libres dans la plage [start, end].
 
@@ -60,8 +61,8 @@ def _iter_free_ips(
 
 
 def _next_available_ip(
-    dhcp_range: DhcpRange, used_ips: Set[str]
-) -> Optional[str]:
+    dhcp_range: DhcpRange, used_ips: set[str]
+) -> str | None:
     """Retourne la premiere IP libre dans la plage ou None.
 
     Args:
@@ -77,3 +78,41 @@ def _next_available_ip(
         ),
         None,
     )
+
+
+def _allocate_fixed_ips(
+    devices: list,
+    dhcp_range: DhcpRange,
+) -> list:
+    """Alloue des IP fixes aux peripheriques sans reservation.
+
+    Args:
+        devices: Liste de NetworkDevice.
+        dhcp_range: Plage DHCP d'allocation.
+
+    Returns:
+        Liste avec IP fixes assignees.
+
+    Raises:
+        ValueError: Si la plage DHCP est epuisee.
+    """
+    used_ips: set[str] = {
+        d.fixed_ip
+        for d in devices
+        if d.fixed_ip is not None
+    }
+    result = []
+    for device in devices:
+        if device.fixed_ip is not None:
+            result.append(device)
+            continue
+        ip = _next_available_ip(dhcp_range, used_ips)
+        if ip is None:
+            raise ValueError(
+                "Plage DHCP epuisee : plus d'IP disponibles"
+            )
+        used_ips.add(ip)
+        result.append(
+            dataclasses.replace(device, fixed_ip=ip)
+        )
+    return result

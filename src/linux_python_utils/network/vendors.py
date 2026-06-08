@@ -1,6 +1,6 @@
 """Table de correspondance vendeur → type de peripherique reseau."""
 
-_VENDOR_TYPES: tuple = (
+_VENDOR_TYPES: tuple[tuple[str, str], ...] = (
     ("synology", "NAS"),
     ("nvidia", "Media Player"),
     ("nintendo", "Console"),

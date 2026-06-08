@@ -6,16 +6,12 @@ utilisant arp-scan et nmap.
 
 import xml.etree.ElementTree as ET  # nosec B405
 from pathlib import Path
-from typing import List, Optional
 
 from linux_python_utils.commands.base import (
     CommandExecutor,
     CommandResult,
 )
 from linux_python_utils.commands.builder import CommandBuilder
-from linux_python_utils.network.vendors import (
-    _infer_type_from_vendor,
-)
 from linux_python_utils.commands.runner import (
     LinuxCommandExecutor,
 )
@@ -23,6 +19,15 @@ from linux_python_utils.logging.base import Logger
 from linux_python_utils.network.base import NetworkScanner
 from linux_python_utils.network.config import NetworkConfig
 from linux_python_utils.network.models import NetworkDevice
+from linux_python_utils.network.vendors import (
+    _infer_type_from_vendor,
+)
+
+
+_SKIP_PREFIXES: tuple[str, ...] = (
+    "lo", "docker", "br-", "virbr",
+    "veth", "tun", "tap",
+)
 
 
 def _detect_interface() -> str:
@@ -42,13 +47,8 @@ def _detect_interface() -> str:
     if not net_dir.exists():
         return ""
 
-    _SKIP_PREFIXES = (
-        "lo", "docker", "br-", "virbr",
-        "veth", "tun", "tap",
-    )
-
-    wired: List[str] = []
-    wireless: List[str] = []
+    wired: list[str] = []
+    wireless: list[str] = []
 
     for iface_path in sorted(net_dir.iterdir()):
         iface = iface_path.name
@@ -84,8 +84,8 @@ class LinuxArpScanner(NetworkScanner):
 
     def __init__(
         self,
-        logger: Optional[Logger] = None,
-        executor: Optional[CommandExecutor] = None,
+        logger: Logger | None = None,
+        executor: CommandExecutor | None = None,
     ) -> None:
         """Initialise le scanner arp-scan.
 
@@ -100,7 +100,7 @@ class LinuxArpScanner(NetworkScanner):
 
     def scan(
         self, config: NetworkConfig
-    ) -> List[NetworkDevice]:
+    ) -> list[NetworkDevice]:
         """Scanne le reseau via arp-scan.
 
         Args:
@@ -130,7 +130,7 @@ class LinuxArpScanner(NetworkScanner):
 
     def _build_command(
         self, config: NetworkConfig
-    ) -> List[str]:
+    ) -> list[str]:
         """Construit la commande arp-scan.
 
         Args:
@@ -152,7 +152,7 @@ class LinuxArpScanner(NetworkScanner):
 
     def _parse_output(
         self, stdout: str
-    ) -> List[NetworkDevice]:
+    ) -> list[NetworkDevice]:
         """Parse la sortie d'arp-scan.
 
         Args:
@@ -161,7 +161,7 @@ class LinuxArpScanner(NetworkScanner):
         Returns:
             Liste des peripheriques parses.
         """
-        devices: List[NetworkDevice] = []
+        devices: list[NetworkDevice] = []
         for line in stdout.strip().split("\n"):
             if not line or "\t" not in line:
                 continue
@@ -192,6 +192,25 @@ class LinuxArpScanner(NetworkScanner):
         return devices
 
 
+def _extract_hostname_from_host(
+    host: ET.Element,
+) -> str:
+    """Extrait le hostname depuis un element host nmap.
+
+    Args:
+        host: Element XML <host> de la sortie nmap.
+
+    Returns:
+        Hostname ou chaine vide si absent.
+    """
+    hostnames = host.find("hostnames")
+    if hostnames is not None:
+        hn = hostnames.find("hostname")
+        if hn is not None:
+            return hn.get("name", "")
+    return ""
+
+
 class LinuxNmapScanner(NetworkScanner):
     """Scanner reseau utilisant nmap.
 
@@ -202,8 +221,8 @@ class LinuxNmapScanner(NetworkScanner):
 
     def __init__(
         self,
-        logger: Optional[Logger] = None,
-        executor: Optional[CommandExecutor] = None,
+        logger: Logger | None = None,
+        executor: CommandExecutor | None = None,
     ) -> None:
         """Initialise le scanner nmap.
 
@@ -218,7 +237,7 @@ class LinuxNmapScanner(NetworkScanner):
 
     def scan(
         self, config: NetworkConfig
-    ) -> List[NetworkDevice]:
+    ) -> list[NetworkDevice]:
         """Scanne le reseau via nmap.
 
         Args:
@@ -248,7 +267,7 @@ class LinuxNmapScanner(NetworkScanner):
 
     def _build_command(
         self, config: NetworkConfig
-    ) -> List[str]:
+    ) -> list[str]:
         """Construit la commande nmap.
 
         Args:
@@ -266,7 +285,7 @@ class LinuxNmapScanner(NetworkScanner):
 
     def _parse_xml_output(
         self, stdout: str
-    ) -> List[NetworkDevice]:
+    ) -> list[NetworkDevice]:
         """Parse la sortie XML de nmap.
 
         Args:
@@ -275,7 +294,7 @@ class LinuxNmapScanner(NetworkScanner):
         Returns:
             Liste des peripheriques parses.
         """
-        devices: List[NetworkDevice] = []
+        devices: list[NetworkDevice] = []
         try:
             root = ET.fromstring(stdout)  # nosec B314
         except ET.ParseError as exc:
@@ -302,12 +321,7 @@ class LinuxNmapScanner(NetworkScanner):
             ip = ip_elem.get("addr", "")
             mac = mac_elem.get("addr", "")
             vendor = mac_elem.get("vendor", "")
-            hostname = ""
-            hostnames = host.find("hostnames")
-            if hostnames is not None:
-                hn = hostnames.find("hostname")
-                if hn is not None:
-                    hostname = hn.get("name", "")
+            hostname = _extract_hostname_from_host(host)
             try:
                 devices.append(
                     NetworkDevice(

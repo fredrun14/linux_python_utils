@@ -214,7 +214,6 @@ class TestDiffReporterIpChange:
 
     def test_rapport_inclut_ip_changee(self) -> None:
         """DiffReporter signale les appareils dont l'IP a change."""
-        from linux_python_utils.network.reporter import DiffReporter
         reporter = DiffReporter([], [])
         current = [
             _device("192.168.1.200", "aa:bb:cc:dd:ee:ff", fixed_ip="192.168.1.10")

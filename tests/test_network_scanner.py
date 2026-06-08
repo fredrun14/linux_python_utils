@@ -10,6 +10,7 @@ from linux_python_utils.commands.base import (
 )
 from linux_python_utils.network.config import NetworkConfig
 from linux_python_utils.network.scanner import (
+    _detect_interface,
     LinuxArpScanner,
     LinuxNmapScanner,
 )
@@ -228,8 +229,6 @@ class TestDetectInterface:
 
     def test_no_sys_net_returns_empty(self) -> None:
         """Retourne "" si /sys/class/net n'existe pas."""
-        from unittest.mock import patch
-        from linux_python_utils.network.scanner import _detect_interface
         with patch("linux_python_utils.network.scanner.Path") as mock_path:
             mock_net = mock_path.return_value
             mock_net.exists.return_value = False
@@ -238,8 +237,6 @@ class TestDetectInterface:
 
     def test_oserror_reading_operstate(self, tmp_path) -> None:
         """Ignore les interfaces dont operstate leve OSError."""
-        from unittest.mock import patch, MagicMock
-        from linux_python_utils.network.scanner import _detect_interface
 
         mock_iface = MagicMock()
         mock_iface.name = "eth99"
@@ -256,8 +253,6 @@ class TestDetectInterface:
 
     def test_state_not_up_ignored(self, tmp_path) -> None:
         """Ignore les interfaces dont l'etat n'est pas 'up'."""
-        from unittest.mock import patch, MagicMock
-        from linux_python_utils.network.scanner import _detect_interface
 
         mock_iface = MagicMock()
         mock_iface.name = "eth99"
@@ -278,7 +273,6 @@ class TestLinuxArpScannerAvecLogger:
 
     def test_scan_avec_logger_log_info(self) -> None:
         """scan() avec logger appelle log_info apres succes."""
-        from unittest.mock import MagicMock
         logger = MagicMock()
         executor = MagicMock(spec=CommandExecutor)
         executor.run.return_value = _make_result(stdout=ARP_OUTPUT)
@@ -290,7 +284,6 @@ class TestLinuxArpScannerAvecLogger:
 
     def test_arp_parse_value_error_ignore(self) -> None:
         """_parse_output() ignore les entrees qui levent ValueError."""
-        from unittest.mock import MagicMock, patch
         scanner = LinuxArpScanner()
         output = "bad-ip\t00:11:22:33:44:55\tVendor\n"
         with patch(
@@ -306,7 +299,6 @@ class TestLinuxNmapScannerAvecLogger:
 
     def test_scan_avec_logger_log_info(self) -> None:
         """scan() avec logger appelle log_info apres succes."""
-        from unittest.mock import MagicMock
         logger = MagicMock()
         executor = MagicMock(spec=CommandExecutor)
         executor.run.return_value = _make_result(stdout=NMAP_XML)
@@ -318,7 +310,6 @@ class TestLinuxNmapScannerAvecLogger:
 
     def test_nmap_parse_value_error_ignore(self) -> None:
         """_parse_xml_output() ignore les hotes qui levent ValueError."""
-        from unittest.mock import MagicMock, patch
         scanner = LinuxNmapScanner()
         with patch(
             "linux_python_utils.network.scanner.NetworkDevice",
@@ -337,7 +328,6 @@ class TestLinuxNmapScannerAvecLogger:
         self,
     ) -> None:
         """ParseError sur sortie nmap logue un warning si logger présent."""
-        from unittest.mock import MagicMock
         logger = MagicMock()
         scanner = LinuxNmapScanner(logger=logger)
         scanner._parse_xml_output("pas du xml {{{{")

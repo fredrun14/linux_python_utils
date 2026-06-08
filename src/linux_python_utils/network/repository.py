@@ -10,7 +10,6 @@ import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.network.base import DeviceRepository
@@ -28,7 +27,7 @@ class JsonDeviceRepository(DeviceRepository):
     def __init__(
         self,
         file_path: str,
-        logger: Optional[Logger] = None,
+        logger: Logger | None = None,
     ) -> None:
         """Initialise le repository JSON.
 
@@ -39,7 +38,7 @@ class JsonDeviceRepository(DeviceRepository):
         self._file_path = Path(file_path)
         self._logger = logger
 
-    def load(self) -> List[NetworkDevice]:
+    def load(self) -> list[NetworkDevice]:
         """Charge les peripheriques depuis le fichier JSON.
 
         Returns:
@@ -72,7 +71,7 @@ class JsonDeviceRepository(DeviceRepository):
         return devices
 
     def save(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> None:
         """Sauvegarde les peripheriques au format JSON.
 
@@ -103,7 +102,7 @@ class JsonDeviceRepository(DeviceRepository):
 
     def find_by_mac(
         self, mac: str
-    ) -> Optional[NetworkDevice]:
+    ) -> NetworkDevice | None:
         """Recherche un peripherique par adresse MAC.
 
         Args:
@@ -120,7 +119,7 @@ class JsonDeviceRepository(DeviceRepository):
 
     def find_by_ip(
         self, ip: str
-    ) -> Optional[NetworkDevice]:
+    ) -> NetworkDevice | None:
         """Recherche un peripherique par adresse IP.
 
         Args:
@@ -136,12 +135,12 @@ class JsonDeviceRepository(DeviceRepository):
 
     def merge_scan_results(
         self,
-        existing: List[NetworkDevice],
-        scanned: List[NetworkDevice],
-    ) -> Tuple[
-        List[NetworkDevice],
-        List[NetworkDevice],
-        List[NetworkDevice],
+        existing: list[NetworkDevice],
+        scanned: list[NetworkDevice],
+    ) -> tuple[
+        list[NetworkDevice],
+        list[NetworkDevice],
+        list[NetworkDevice],
     ]:
         """Fusionne les resultats d'un scan avec l'inventaire.
 
@@ -153,9 +152,9 @@ class JsonDeviceRepository(DeviceRepository):
             Tuple (merged, new_devices, disappeared_devices).
         """
         existing_by_mac = {d.mac: d for d in existing}
-        scanned_macs = set()
-        merged: List[NetworkDevice] = []
-        new_devices: List[NetworkDevice] = []
+        scanned_macs: set[str] = set()
+        merged: list[NetworkDevice] = []
+        new_devices: list[NetworkDevice] = []
 
         for device in scanned:
             scanned_macs.add(device.mac)

@@ -7,14 +7,11 @@ import socket
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.network.router._nvram import (
     _NVRAM_KEY_RE,
-    _parse_nvram_reservations,
 )
-
 
 _LAN_NETWORKS = [
     ipaddress.ip_network("10.0.0.0/8"),
@@ -72,7 +69,7 @@ def _validate_router_url(url: str) -> None:
                 raise ValueError(
                     f"Hostname {hostname!r} résolu en adresse "
                     f"non-LAN : {raw_ip!r}."
-                )
+                ) from None
         return
     if not any(addr in net for net in _LAN_NETWORKS):
         raise ValueError(
@@ -129,7 +126,7 @@ class AsusRouterClient:
         _token: Token de session asus_token.
     """
 
-    _HEADERS: Dict[str, str] = {
+    _HEADERS: dict[str, str] = {
         "User-Agent": (
             "asusrouter-Android-DUTUtil-1.0.0.245"
         ),
@@ -141,7 +138,7 @@ class AsusRouterClient:
     def __init__(
         self,
         config: RouterConfig,
-        logger: Optional[Logger] = None,
+        logger: Logger | None = None,
     ) -> None:
         """Initialise le client HTTP.
 
@@ -151,7 +148,7 @@ class AsusRouterClient:
         """
         self._config = config
         self._logger = logger
-        self._token: Optional[str] = None
+        self._token: str | None = None
 
     def login(
         self, username: str, password: str
@@ -290,7 +287,7 @@ class AsusRouterClient:
                 f"Echec requete hook '{hook}' : {exc}"
             ) from exc
 
-    def get_clients(self) -> List[dict]:
+    def get_clients(self) -> list[dict]:
         """Retourne tous les clients connus du routeur.
 
         Inclut les appareils actuellement connectes
@@ -312,7 +309,7 @@ class AsusRouterClient:
             and isinstance(info, dict)
         ]
 
-    def get_dhcp_leases(self) -> Dict[str, str]:
+    def get_dhcp_leases(self) -> dict[str, str]:
         """Retourne les baux DHCP actifs sous forme mac→ip.
 
         Returns:
@@ -320,7 +317,7 @@ class AsusRouterClient:
         """
         data = self._hook("dhcpLeaseMacList()")
         raw = data.get("dhcpLeaseMacList", "")
-        leases: Dict[str, str] = {}
+        leases: dict[str, str] = {}
         for line in str(raw).strip().split("\n"):
             parts = line.strip().split()
             # Format dnsmasq : timestamp mac ip hostname cid
@@ -331,7 +328,7 @@ class AsusRouterClient:
                     leases[mac] = ip
         return leases
 
-    def get_nvram(self, *keys: str) -> Dict[str, str]:
+    def get_nvram(self, *keys: str) -> dict[str, str]:
         """Lit des variables NVRAM du routeur.
 
         Args:
@@ -360,7 +357,7 @@ class AsusRouterClient:
         self,
         static_list: str,
         hostnames: str,
-        dhcp_cfg: Dict[str, str],
+        dhcp_cfg: dict[str, str],
     ) -> None:
         """Envoie les reservations DHCP statiques au routeur.
 

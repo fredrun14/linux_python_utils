@@ -38,8 +38,8 @@ class NetworkDevice:
     vendor: str = ""
     device_type: str = "unknown"
     is_known: bool = False
-    fixed_ip: Optional[str] = None
-    dns_name: Optional[str] = None
+    fixed_ip: str | None = None
+    dns_name: str | None = None
     first_seen: datetime = field(default_factory=datetime.now)
     last_seen: datetime = field(default_factory=datetime.now)
     notes: str = ""
@@ -77,7 +77,7 @@ class NetworkDevice:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "NetworkDevice":
+    def from_dict(cls, data: dict[str, Any]) -> "NetworkDevice":
         """Reconstruit un peripherique depuis un dictionnaire.
 
         Args:

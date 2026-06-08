@@ -6,7 +6,6 @@ rapports.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
 
 from linux_python_utils.network.config import NetworkConfig
 from linux_python_utils.network.models import NetworkDevice
@@ -18,7 +17,7 @@ class NetworkScanner(ABC):
     @abstractmethod
     def scan(
         self, config: NetworkConfig
-    ) -> List[NetworkDevice]:
+    ) -> list[NetworkDevice]:
         """Scanne le reseau et retourne les peripheriques.
 
         Args:
@@ -27,36 +26,36 @@ class NetworkScanner(ABC):
         Returns:
             Liste des peripheriques decouverts.
         """
-        pass
+        ...
 
 
 class DeviceRepository(ABC):
     """Interface pour la persistance des peripheriques."""
 
     @abstractmethod
-    def load(self) -> List[NetworkDevice]:
+    def load(self) -> list[NetworkDevice]:
         """Charge les peripheriques depuis le stockage.
 
         Returns:
             Liste des peripheriques.
         """
-        pass
+        ...
 
     @abstractmethod
     def save(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> None:
         """Sauvegarde les peripheriques.
 
         Args:
             devices: Liste des peripheriques a sauvegarder.
         """
-        pass
+        ...
 
     @abstractmethod
     def find_by_mac(
         self, mac: str
-    ) -> Optional[NetworkDevice]:
+    ) -> NetworkDevice | None:
         """Recherche un peripherique par adresse MAC.
 
         Args:
@@ -65,12 +64,12 @@ class DeviceRepository(ABC):
         Returns:
             Le peripherique trouve ou None.
         """
-        pass
+        ...
 
     @abstractmethod
     def find_by_ip(
         self, ip: str
-    ) -> Optional[NetworkDevice]:
+    ) -> NetworkDevice | None:
         """Recherche un peripherique par adresse IP.
 
         Args:
@@ -79,7 +78,7 @@ class DeviceRepository(ABC):
         Returns:
             Le peripherique trouve ou None.
         """
-        pass
+        ...
 
 
 class DhcpReservationManager(ABC):
@@ -87,8 +86,8 @@ class DhcpReservationManager(ABC):
 
     @abstractmethod
     def generate_reservations(
-        self, devices: List[NetworkDevice]
-    ) -> List[NetworkDevice]:
+        self, devices: list[NetworkDevice]
+    ) -> list[NetworkDevice]:
         """Genere les reservations DHCP pour les peripheriques.
 
         Args:
@@ -97,11 +96,11 @@ class DhcpReservationManager(ABC):
         Returns:
             Liste des peripheriques avec IP fixes assignees.
         """
-        pass
+        ...
 
     @abstractmethod
     def export_reservations(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> str:
         """Exporte les reservations au format texte.
 
@@ -111,7 +110,7 @@ class DhcpReservationManager(ABC):
         Returns:
             Reservations formatees.
         """
-        pass
+        ...
 
 
 class RouterDhcpManager(DhcpReservationManager):
@@ -119,23 +118,23 @@ class RouterDhcpManager(DhcpReservationManager):
 
     @abstractmethod
     def apply_reservations(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> None:
         """Envoie les reservations DHCP vers le routeur.
 
         Args:
             devices: Peripheriques avec IP fixes assignees.
         """
-        pass
+        ...
 
     @abstractmethod
-    def read_reservations(self) -> List[NetworkDevice]:
+    def read_reservations(self) -> list[NetworkDevice]:
         """Lit les reservations DHCP existantes du routeur.
 
         Returns:
             Liste des peripheriques reserves.
         """
-        pass
+        ...
 
 
 class DnsManager(ABC):
@@ -143,8 +142,8 @@ class DnsManager(ABC):
 
     @abstractmethod
     def generate_dns_names(
-        self, devices: List[NetworkDevice]
-    ) -> List[NetworkDevice]:
+        self, devices: list[NetworkDevice]
+    ) -> list[NetworkDevice]:
         """Genere les noms DNS pour les peripheriques.
 
         Args:
@@ -153,11 +152,11 @@ class DnsManager(ABC):
         Returns:
             Liste des peripheriques avec noms DNS.
         """
-        pass
+        ...
 
     @abstractmethod
     def generate_hosts_entries(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> str:
         """Genere les entrees pour le fichier hosts.
 
@@ -167,7 +166,7 @@ class DnsManager(ABC):
         Returns:
             Contenu du fichier hosts.
         """
-        pass
+        ...
 
 
 class DeviceReporter(ABC):
@@ -175,7 +174,7 @@ class DeviceReporter(ABC):
 
     @abstractmethod
     def report(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> str:
         """Genere un rapport des peripheriques.
 
@@ -185,4 +184,4 @@ class DeviceReporter(ABC):
         Returns:
             Rapport formate.
         """
-        pass
+        ...

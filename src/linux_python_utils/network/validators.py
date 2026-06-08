@@ -22,8 +22,8 @@ def validate_ipv4(ip: str) -> str:
     """
     try:
         ipaddress.IPv4Address(ip)
-    except ValueError:
-        raise ValueError(f"Adresse IPv4 invalide : {ip!r}")
+    except ValueError as exc:
+        raise ValueError(f"Adresse IPv4 invalide : {ip!r}") from exc
     return ip
 
 

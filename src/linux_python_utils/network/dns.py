@@ -8,7 +8,6 @@ import dataclasses
 import re
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import List, Optional
 
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.network.base import DnsManager
@@ -45,7 +44,7 @@ class _BaseDnsManager(DnsManager, ABC):
     def __init__(
         self,
         config: NetworkConfig,
-        logger: Optional[Logger] = None,
+        logger: Logger | None = None,
     ) -> None:
         """Initialise le gestionnaire DNS.
 
@@ -57,8 +56,8 @@ class _BaseDnsManager(DnsManager, ABC):
         self._logger = logger
 
     def generate_dns_names(
-        self, devices: List[NetworkDevice]
-    ) -> List[NetworkDevice]:
+        self, devices: list[NetworkDevice]
+    ) -> list[NetworkDevice]:
         """Genere les noms DNS pour les peripheriques.
 
         Args:
@@ -68,7 +67,7 @@ class _BaseDnsManager(DnsManager, ABC):
             Liste des peripheriques avec noms DNS.
         """
         domain = self._config.dns.domain
-        result: List[NetworkDevice] = []
+        result: list[NetworkDevice] = []
         for device in devices:
             if device.dns_name:
                 result.append(device)
@@ -83,7 +82,7 @@ class _BaseDnsManager(DnsManager, ABC):
 
     @abstractmethod
     def generate_hosts_entries(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> str:
         """Genere le contenu du fichier de configuration.
 
@@ -123,7 +122,7 @@ class LinuxHostsFileManager(_BaseDnsManager):
     """Gestionnaire DNS via le fichier /etc/hosts."""
 
     def generate_hosts_entries(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> str:
         """Genere le contenu du fichier hosts.
 
@@ -160,7 +159,7 @@ class LinuxDnsmasqConfigGenerator(_BaseDnsManager):
     """Generateur de configuration DNS pour dnsmasq."""
 
     def generate_hosts_entries(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> str:
         """Genere la configuration DNS dnsmasq.
 

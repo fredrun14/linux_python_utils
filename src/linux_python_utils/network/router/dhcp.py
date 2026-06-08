@@ -1,12 +1,11 @@
 """Gestionnaire DHCP avec push direct vers le routeur ASUS."""
 
 import dataclasses
-from typing import Dict, List, Optional, Set, Tuple
 
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.network.base import RouterDhcpManager
 from linux_python_utils.network.config import NetworkConfig
-from linux_python_utils.network.ip_utils import _next_available_ip
+from linux_python_utils.network.ip_utils import _allocate_fixed_ips
 from linux_python_utils.network.models import NetworkDevice
 from linux_python_utils.network.router._nvram import (
     _parse_nvram_reservations,
@@ -31,8 +30,8 @@ class AsusRouterDhcpManager(RouterDhcpManager):
         self,
         config: NetworkConfig,
         router_config: RouterConfig,
-        logger: Optional[Logger] = None,
-        client: Optional[AsusRouterClient] = None,
+        logger: Logger | None = None,
+        client: AsusRouterClient | None = None,
     ) -> None:
         """Initialise le gestionnaire DHCP routeur.
 
@@ -50,8 +49,8 @@ class AsusRouterDhcpManager(RouterDhcpManager):
         )
 
     def generate_reservations(
-        self, devices: List[NetworkDevice]
-    ) -> List[NetworkDevice]:
+        self, devices: list[NetworkDevice]
+    ) -> list[NetworkDevice]:
         """Alloue des IP fixes depuis la plage DHCP.
 
         Args:
@@ -68,27 +67,9 @@ class AsusRouterDhcpManager(RouterDhcpManager):
             raise ValueError(
                 "Plage DHCP non configuree"
             )
-        used_ips: Set[str] = {
-            d.fixed_ip
-            for d in devices
-            if d.fixed_ip is not None
-        }
-        result: List[NetworkDevice] = []
-        for device in devices:
-            if device.fixed_ip is not None:
-                result.append(device)
-                continue
-            ip = _next_available_ip(
-                self._config.dhcp_range, used_ips
-            )
-            if ip is None:
-                raise ValueError(
-                    "Plage DHCP epuisee"
-                )
-            used_ips.add(ip)
-            result.append(
-                dataclasses.replace(device, fixed_ip=ip)
-            )
+        result = _allocate_fixed_ips(
+            devices, self._config.dhcp_range
+        )
         if self._logger:
             self._logger.log_info(
                 f"Reservations DHCP : {len(result)} "
@@ -97,7 +78,7 @@ class AsusRouterDhcpManager(RouterDhcpManager):
         return result
 
     def export_reservations(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> str:
         """Exporte les reservations au format NVRAM ASUS.
 
@@ -119,7 +100,7 @@ class AsusRouterDhcpManager(RouterDhcpManager):
         return "".join(parts)
 
     def apply_reservations(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> None:
         """Envoie les reservations DHCP vers le routeur.
 
@@ -164,7 +145,7 @@ class AsusRouterDhcpManager(RouterDhcpManager):
                 f"appliquee(s) sur le routeur"
             )
 
-    def read_reservations(self) -> List[NetworkDevice]:
+    def read_reservations(self) -> list[NetworkDevice]:
         """Lit les reservations DHCP existantes du routeur.
 
         Returns:
@@ -190,8 +171,8 @@ class AsusRouterDhcpManager(RouterDhcpManager):
         )
 
     def _build_nvram_strings(
-        self, devices: List[NetworkDevice]
-    ) -> Tuple[str, str]:
+        self, devices: list[NetworkDevice]
+    ) -> tuple[str, str]:
         """Construit les chaines NVRAM dhcp_staticlist et
         dhcp_hostnames.
 
@@ -201,8 +182,8 @@ class AsusRouterDhcpManager(RouterDhcpManager):
         Returns:
             Tuple (static_list, hostnames).
         """
-        static_parts: List[str] = []
-        hostname_parts: List[str] = []
+        static_parts: list[str] = []
+        hostname_parts: list[str] = []
         for device in devices:
             if device.fixed_ip is None:
                 continue
@@ -222,7 +203,7 @@ class AsusRouterDhcpManager(RouterDhcpManager):
     def _parse_nvram_staticlist(
         static_list: str,
         hostnames_str: str,
-    ) -> List[NetworkDevice]:
+    ) -> list[NetworkDevice]:
         """Parse la chaine NVRAM dhcp_staticlist.
 
         Args:
@@ -235,7 +216,7 @@ class AsusRouterDhcpManager(RouterDhcpManager):
         reservations = _parse_nvram_reservations(
             static_list, hostnames_str
         )
-        devices: List[NetworkDevice] = []
+        devices: list[NetworkDevice] = []
         for mac, (ip, hostname) in reservations.items():
             try:
                 devices.append(

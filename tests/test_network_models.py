@@ -171,7 +171,6 @@ class TestNetworkDevice:
 
     def test_roundtrip_ip_vide(self) -> None:
         """to_dict / from_dict conserve ip vide."""
-        from datetime import datetime
         now = datetime(2026, 1, 15, 10, 30, 0)
         device = NetworkDevice(
             ip="",

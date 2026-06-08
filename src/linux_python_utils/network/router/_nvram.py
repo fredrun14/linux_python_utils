@@ -1,15 +1,13 @@
 """Parseurs NVRAM pour le routeur ASUS."""
 
 import re
-from typing import Dict, Tuple
-
 
 _NVRAM_KEY_RE = re.compile(r'^[a-zA-Z0-9_]{1,64}$')
 
 
 def _parse_custom_clientlist(
     raw: str,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Parse la chaine NVRAM custom_clientlist.
 
     Extrait tous les appareils memorises par le routeur,
@@ -33,7 +31,7 @@ def _parse_custom_clientlist(
     # &#627C serait decode en ɳC au lieu de >7C.
     # On substitue directement les deux entites connues.
     decoded = raw.replace("&#60", "<").replace("&#62", ">")
-    result: Dict[str, str] = {}
+    result: dict[str, str] = {}
     pattern = re.compile(
         r"<([^>]*)>"
         r"([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})"
@@ -50,7 +48,7 @@ def _parse_custom_clientlist(
 def _parse_nvram_reservations(
     static_list: str,
     hostnames_str: str,
-) -> Dict[str, Tuple[str, str]]:
+) -> dict[str, tuple[str, str]]:
     """Parse les chaines NVRAM en dict de reservations.
 
     Supporte les formats ancien et nouveau firmware :
@@ -64,13 +62,13 @@ def _parse_nvram_reservations(
     Returns:
         Dict {mac_lowercase: (fixed_ip, dns_name)}.
     """
-    hostnames: Dict[str, str] = {
+    hostnames: dict[str, str] = {
         m.group(1).lower(): m.group(2).split(">")[0]
         for m in re.finditer(
             r"<([^>]+)>([^<]*)", hostnames_str
         )
     }
-    result: Dict[str, Tuple[str, str]] = {}
+    result: dict[str, tuple[str, str]] = {}
     for match in re.finditer(
         r"<([^>]+)>([^<]*)", static_list
     ):

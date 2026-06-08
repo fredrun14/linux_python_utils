@@ -1,8 +1,8 @@
 """Tests pour le repository JSON de peripheriques."""
 
 from datetime import datetime
+from unittest.mock import MagicMock
 
-import pytest
 
 from linux_python_utils.network.models import NetworkDevice
 from linux_python_utils.network.repository import (
@@ -239,7 +239,6 @@ class TestJsonDeviceRepositoryAvecLogger:
 
     def test_load_avec_logger(self, tmp_path) -> None:
         """load() appelle logger.log_info si logger present."""
-        from unittest.mock import MagicMock
         path = tmp_path / "devices.json"
         repo_sans_logger = JsonDeviceRepository(str(path))
         devices = [_device("192.168.1.1", "aa:bb:cc:dd:ee:01")]
@@ -253,7 +252,6 @@ class TestJsonDeviceRepositoryAvecLogger:
 
     def test_save_avec_logger(self, tmp_path) -> None:
         """save() appelle logger.log_info si logger present."""
-        from unittest.mock import MagicMock
         path = tmp_path / "devices.json"
         logger = MagicMock()
         repo = JsonDeviceRepository(str(path), logger=logger)
@@ -289,7 +287,6 @@ class TestJsonDeviceRepositoryRobustesse:
         self, tmp_path
     ) -> None:
         """Fichier JSON corrompu logue un warning si logger présent."""
-        from unittest.mock import MagicMock
         path = tmp_path / "corrupt.json"
         path.write_text("{invalide json{{", encoding="utf-8")
         logger = MagicMock()

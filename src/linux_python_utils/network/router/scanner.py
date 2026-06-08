@@ -1,6 +1,5 @@
 """Scanner reseau via l'API locale du routeur ASUS."""
 
-from typing import Dict, List, Optional, Tuple
 
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.network.base import NetworkScanner
@@ -19,6 +18,68 @@ from linux_python_utils.network.vendors import (
 )
 
 
+def _resolve_ip(
+    client: dict,
+    mac: str,
+    leases: dict[str, str],
+    reservations: dict[str, tuple[str, str]],
+) -> str:
+    """Resout l'IP d'un client depuis les baux et reservations.
+
+    Args:
+        client: Dict client brut du routeur.
+        mac: Adresse MAC normalisee.
+        leases: Dict {mac: ip} des baux DHCP.
+        reservations: Dict {mac: (fixed_ip, dns_name)}.
+
+    Returns:
+        Adresse IP ou chaine vide.
+    """
+    ip = client.get("ip", "")
+    if not ip or ip == "0.0.0.0":  # nosec B104
+        ip = leases.get(mac, "")
+    if not ip:
+        fixed_ip_fallback, _ = reservations.get(
+            mac, (None, None)
+        )
+        ip = fixed_ip_fallback or ""
+    return ip
+
+
+def _resolve_hostname(client: dict) -> str:
+    """Resout le hostname depuis nickName ou name DHCP.
+
+    nickName = nom personnalise dans l'UI routeur ;
+    name = hostname DHCP envoye par l'appareil.
+
+    Args:
+        client: Dict client brut du routeur.
+
+    Returns:
+        Hostname ou chaine vide.
+    """
+    return (
+        client.get("nickName", "").strip()
+        or client.get("name", "").strip()
+    )
+
+
+def _resolve_device_type(client: dict, vendor: str) -> str:
+    """Resout le type de peripherique depuis dpiDevice ou vendor.
+
+    Args:
+        client: Dict client brut du routeur.
+        vendor: Chaine vendeur OUI.
+
+    Returns:
+        Type de peripherique.
+    """
+    return (
+        client.get("dpiDevice", "").strip()
+        or _infer_type_from_vendor(vendor)
+    )
+
+
 class AsusRouterScanner(NetworkScanner):
     """Scanner reseau via l'API locale du routeur ASUS.
 
@@ -34,8 +95,8 @@ class AsusRouterScanner(NetworkScanner):
     def __init__(
         self,
         router_config: RouterConfig,
-        logger: Optional[Logger] = None,
-        client: Optional[AsusRouterClient] = None,
+        logger: Logger | None = None,
+        client: AsusRouterClient | None = None,
     ) -> None:
         """Initialise le scanner routeur.
 
@@ -52,7 +113,7 @@ class AsusRouterScanner(NetworkScanner):
 
     def scan(
         self, config: NetworkConfig
-    ) -> List[NetworkDevice]:
+    ) -> list[NetworkDevice]:
         """Scanne le reseau via l'API du routeur.
 
         Args:
@@ -105,11 +166,11 @@ class AsusRouterScanner(NetworkScanner):
 
     def _merge_offline_clients(
         self,
-        raw_clients: List[dict],
-        custom_clients: Dict[str, str],
-        leases: Dict[str, str],
-        reservations: Dict[str, Tuple[str, str]],
-    ) -> List[dict]:
+        raw_clients: list[dict],
+        custom_clients: dict[str, str],
+        leases: dict[str, str],
+        reservations: dict[str, tuple[str, str]],
+    ) -> list[dict]:
         """Ajoute les clients offline depuis custom_clientlist.
 
         Les clients deja presents dans raw_clients (online)
@@ -130,7 +191,7 @@ class AsusRouterScanner(NetworkScanner):
         Returns:
             Liste etendue incluant les clients offline.
         """
-        online_macs: set = {
+        online_macs: set[str] = {
             c.get("mac", "").lower()
             for c in raw_clients
         }
@@ -163,12 +224,10 @@ class AsusRouterScanner(NetworkScanner):
 
     def _parse_clients(
         self,
-        raw: List[dict],
-        leases: Dict[str, str],
-        reservations: Optional[
-            Dict[str, Tuple[str, str]]
-        ] = None,
-    ) -> List[NetworkDevice]:
+        raw: list[dict],
+        leases: dict[str, str],
+        reservations: dict[str, tuple[str, str]] | None = None,
+    ) -> list[NetworkDevice]:
         """Parse les clients bruts en NetworkDevice.
 
         Utilise nickName > name pour le hostname,
@@ -186,38 +245,18 @@ class AsusRouterScanner(NetworkScanner):
         """
         if reservations is None:
             reservations = {}
-        devices: List[NetworkDevice] = []
+        devices: list[NetworkDevice] = []
         for client in raw:
             mac = client.get("mac", "").lower()
             if len(mac) != 17:
                 continue
-            ip = client.get("ip", "")
-            if not ip or ip == "0.0.0.0":  # nosec B104
-                ip = leases.get(mac, "")
-            if not ip:
-                # Dernier recours : IP fixe de la
-                # reservation statique (appareils offline
-                # sans bail DHCP actif)
-                fixed_ip_fallback, _ = reservations.get(
-                    mac, (None, None)
-                )
-                ip = fixed_ip_fallback or ""
-            # nickName = nom personnalise dans l'UI routeur
-            # name = hostname DHCP envoye par l'appareil
-            hostname = (
-                client.get("nickName", "").strip()
-                or client.get("name", "").strip()
-            )
+            ip = _resolve_ip(client, mac, leases, reservations)
+            hostname = _resolve_hostname(client)
             vendor = client.get("vendor", "")
-            # dpiDevice = type DPI du routeur, sinon vendor
-            device_type = (
-                client.get("dpiDevice", "").strip()
-                or _infer_type_from_vendor(vendor)
-            )
+            device_type = _resolve_device_type(client, vendor)
             fixed_ip, dns_name = reservations.get(
                 mac, (None, None)
             )
-            # ipMethod=="Manual" : IP fixee dans le routeur
             if not fixed_ip and (
                 client.get("ipMethod", "") == "Manual"
             ):

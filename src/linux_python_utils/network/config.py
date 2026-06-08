@@ -68,7 +68,7 @@ class NetworkConfig:
 
     cidr: str
     interface: str = ""
-    dhcp_range: Optional[DhcpRange] = None
+    dhcp_range: DhcpRange | None = None
     dns: DnsConfig = field(default_factory=DnsConfig)
     inventory_path: str = "devices.json"
     scan_timeout: int = 30

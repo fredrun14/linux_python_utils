@@ -7,7 +7,6 @@ pour generer des rapports en console, CSV, JSON et diff.
 import csv
 import io
 import json
-from typing import List, Optional
 
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.network.base import DeviceReporter
@@ -15,8 +14,8 @@ from linux_python_utils.network.models import NetworkDevice
 
 
 def _sort_by_ip(
-    devices: List[NetworkDevice],
-) -> List[NetworkDevice]:
+    devices: list[NetworkDevice],
+) -> list[NetworkDevice]:
     """Trie les peripheriques par IP (octet par octet).
 
     Les appareils sans IP (hors ligne) sont places en fin
@@ -46,7 +45,7 @@ class ConsoleTableReporter(DeviceReporter):
     """
 
     def __init__(
-        self, logger: Optional[Logger] = None
+        self, logger: Logger | None = None
     ) -> None:
         """Initialise le reporter console.
 
@@ -56,7 +55,7 @@ class ConsoleTableReporter(DeviceReporter):
         self._logger = logger
 
     def report(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> str:
         """Genere un tableau formate des peripheriques.
 
@@ -125,7 +124,7 @@ class CsvReporter(DeviceReporter):
     ]
 
     def __init__(
-        self, logger: Optional[Logger] = None
+        self, logger: Logger | None = None
     ) -> None:
         """Initialise le reporter CSV.
 
@@ -135,7 +134,7 @@ class CsvReporter(DeviceReporter):
         self._logger = logger
 
     def report(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> str:
         """Genere un rapport CSV des peripheriques.
 
@@ -173,7 +172,7 @@ class JsonReporter(DeviceReporter):
     """
 
     def __init__(
-        self, logger: Optional[Logger] = None
+        self, logger: Logger | None = None
     ) -> None:
         """Initialise le reporter JSON.
 
@@ -183,7 +182,7 @@ class JsonReporter(DeviceReporter):
         self._logger = logger
 
     def report(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> str:
         """Genere un rapport JSON des peripheriques.
 
@@ -200,6 +199,21 @@ class JsonReporter(DeviceReporter):
         )
 
 
+def _format_device_line(d: "NetworkDevice", prefix: str) -> str:
+    """Formate une ligne de diff pour un peripherique.
+
+    Args:
+        d: Peripherique a afficher.
+        prefix: Prefixe de ligne ('+' ou '-').
+
+    Returns:
+        Ligne formatee.
+    """
+    ip_str = d.ip if d.ip else "(hors ligne)"
+    label = d.hostname or d.vendor
+    return f"  {prefix} {ip_str:<16} {d.mac:<18} {label}"
+
+
 class DiffReporter(DeviceReporter):
     """Rapport de differences entre scan et inventaire.
 
@@ -211,9 +225,9 @@ class DiffReporter(DeviceReporter):
 
     def __init__(
         self,
-        new_devices: List[NetworkDevice],
-        disappeared: List[NetworkDevice],
-        logger: Optional[Logger] = None,
+        new_devices: list[NetworkDevice],
+        disappeared: list[NetworkDevice],
+        logger: Logger | None = None,
     ) -> None:
         """Initialise le reporter de differences.
 
@@ -227,7 +241,7 @@ class DiffReporter(DeviceReporter):
         self._logger = logger
 
     def report(
-        self, devices: List[NetworkDevice]
+        self, devices: list[NetworkDevice]
     ) -> str:
         """Genere un rapport des differences.
 
@@ -239,20 +253,17 @@ class DiffReporter(DeviceReporter):
         Returns:
             Rapport de differences formate.
         """
-        lines: List[str] = []
+        lines: list[str] = []
 
         if self._new_devices:
             lines.append(
                 f"=== Nouveaux peripheriques "
                 f"({len(self._new_devices)}) ==="
             )
-            for d in self._new_devices:
-                ip_str = d.ip if d.ip else "(hors ligne)"
-                label = d.hostname or d.vendor
-                lines.append(
-                    f"  + {ip_str:<16} {d.mac:<18} "
-                    f"{label}"
-                )
+            lines.extend(
+                _format_device_line(d, "+")
+                for d in self._new_devices
+            )
             lines.append("")
 
         if self._disappeared:
@@ -260,13 +271,10 @@ class DiffReporter(DeviceReporter):
                 f"=== Peripheriques disparus "
                 f"({len(self._disappeared)}) ==="
             )
-            for d in self._disappeared:
-                ip_str = d.ip if d.ip else "(hors ligne)"
-                label = d.hostname or d.vendor
-                lines.append(
-                    f"  - {ip_str:<16} {d.mac:<18} "
-                    f"{label}"
-                )
+            lines.extend(
+                _format_device_line(d, "-")
+                for d in self._disappeared
+            )
             lines.append("")
 
         ip_changed = [
