@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class ConfigManager(ABC):
@@ -26,10 +26,10 @@ class ConfigManager(ABC):
         Returns:
             La valeur trouvée ou la valeur par défaut
         """
-        pass
+        ...
 
     @abstractmethod
-    def get_section(self, section: str) -> Dict[str, Any]:
+    def get_section(self, section: str) -> dict[str, Any]:
         """
         Récupère une section complète de la configuration.
 
@@ -39,10 +39,10 @@ class ConfigManager(ABC):
         Returns:
             Dictionnaire de la section ou dict vide
         """
-        pass
+        ...
 
     @abstractmethod
-    def get_profile(self, profile_name: str) -> Dict[str, Any]:
+    def get_profile(self, profile_name: str) -> dict[str, Any]:
         """
         Récupère un profil de la configuration.
 
@@ -55,22 +55,22 @@ class ConfigManager(ABC):
         Raises:
             ValueError: Si le profil n'existe pas
         """
-        pass
+        ...
 
     @abstractmethod
-    def list_profiles(self) -> List[str]:
+    def list_profiles(self) -> list[str]:
         """
         Liste tous les profils disponibles.
 
         Returns:
             Liste des noms de profils
         """
-        pass
+        ...
 
     @abstractmethod
     def create_default_config(
         self,
-        output_path: Optional[Path] = None
+        output_path: Path | None = None
     ) -> None:
         """
         Crée un fichier de configuration par défaut.
@@ -81,4 +81,4 @@ class ConfigManager(ABC):
         Raises:
             ValueError: Si aucun chemin n'est spécifié
         """
-        pass
+        ...

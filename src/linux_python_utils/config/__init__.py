@@ -2,18 +2,18 @@
 
 from linux_python_utils.config.base import ConfigManager
 from linux_python_utils.config.loader import (
+    ConfigFileLoader,
     ConfigLoader,
     FileConfigLoader,
-    ConfigFileLoader,
 )
 from linux_python_utils.config.manager import ConfigurationManager
 from linux_python_utils.config.xdg import XdgAppConfig
 
 __all__ = [
-    "ConfigManager",
-    "ConfigLoader",
-    "FileConfigLoader",
     "ConfigFileLoader",
+    "ConfigLoader",
+    "ConfigManager",
     "ConfigurationManager",
+    "FileConfigLoader",
     "XdgAppConfig",
 ]

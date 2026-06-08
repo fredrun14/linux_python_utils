@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Generic, TypeVar
 
-# Type générique pour la dataclass de configuration
+# T représente une dataclass de configuration retournée par load()
 T = TypeVar("T")
 
 
@@ -211,7 +211,8 @@ class ConfigFileLoader(ABC, Generic[T]):
                 f"Section '{section}' non trouvée dans le fichier. "
                 f"Sections disponibles: {available}"
             )
-        return self._config[section]
+        result: dict[str, Any] = self._config[section]
+        return result
 
     def _get_nested_value(
         self,

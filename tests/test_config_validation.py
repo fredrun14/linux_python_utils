@@ -3,7 +3,6 @@
 import json
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 from pydantic import BaseModel, field_validator

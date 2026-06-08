@@ -1,9 +1,8 @@
 """Tests pour le module config."""
 
 import json
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock
+import tomllib
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -203,7 +202,7 @@ class TestConfigurationManagerLogger:
     def test_load_config_logue_warning_si_fichier_introuvable(
         self, tmp_path
     ):
-        """ConfigurationManager logue un warning si le fichier est introuvable."""
+        """ConfigurationManager logue un warning si fichier introuvable."""
         logger = MagicMock()
         chemin_inexistant = tmp_path / "inexistant.json"
 
@@ -219,7 +218,6 @@ class TestConfigurationManagerLogger:
         self, tmp_path
     ):
         """ConfigurationManager logue un warning si le chargement échoue."""
-        from unittest.mock import patch
         logger = MagicMock()
         config_file = tmp_path / "config.json"
         config_file.write_text('{"key": "value"}')
@@ -264,20 +262,18 @@ class TestTomlSerialiseur:
 
     def test_write_toml_liste_produit_tableau_valide(self, tmp_path):
         """Liste Python → tableau TOML parseable par tomllib (round-trip)."""
-        import tomllib
         default = {"tags": ["alpha", "beta", "gamma"]}
         manager = ConfigurationManager(default_config=default)
         output_file = tmp_path / "output.toml"
 
         manager.create_default_config(output_file)
 
-        with open(output_file, "rb") as f:
+        with output_file.open("rb") as f:
             result = tomllib.load(f)
         assert result["tags"] == ["alpha", "beta", "gamma"]
 
     def test_write_toml_echappe_guillemets_et_newline(self, tmp_path):
         """Caractères spéciaux dans une chaîne : round-trip TOML correct."""
-        import tomllib
         valeur = 'avec "guillemets" et\nnewline'
         default = {"description": valeur}
         manager = ConfigurationManager(default_config=default)
@@ -285,7 +281,7 @@ class TestTomlSerialiseur:
 
         manager.create_default_config(output_file)
 
-        with open(output_file, "rb") as f:
+        with output_file.open("rb") as f:
             result = tomllib.load(f)
         assert result["description"] == valeur
 

@@ -118,12 +118,12 @@ class XdgAppConfig:
             config_file.write_text(template, encoding="utf-8")
             return config_file
         try:
-            with open(config_file, "x", encoding="utf-8") as f:
+            with config_file.open("x", encoding="utf-8") as f:
                 f.write(template)
-        except FileExistsError:
+        except FileExistsError as exc:
             raise FileExistsError(
                 f"Le fichier de configuration existe déjà : "
                 f"{config_file}. "
                 f"Utilisez force=True pour l'écraser."
-            )
+            ) from exc
         return config_file

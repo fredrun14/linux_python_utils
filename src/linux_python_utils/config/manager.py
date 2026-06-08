@@ -3,11 +3,13 @@
 import json
 import tomllib
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from linux_python_utils.config.base import ConfigManager
 from linux_python_utils.config.loader import ConfigLoader, FileConfigLoader
 from linux_python_utils.logging.base import Logger
+
+_PATH_KEYS = ("source", "destination", "path")
 
 
 class ConfigurationManager(ConfigManager):
@@ -27,11 +29,11 @@ class ConfigurationManager(ConfigManager):
 
     def __init__(
         self,
-        config_path: Optional[Union[str, Path]] = None,
-        default_config: Optional[Dict[str, Any]] = None,
-        search_paths: Optional[List[Union[str, Path]]] = None,
-        config_loader: Optional[ConfigLoader] = None,
-        logger: Optional[Logger] = None,
+        config_path: str | Path | None = None,
+        default_config: dict[str, Any] | None = None,
+        search_paths: list[str | Path] | None = None,
+        config_loader: ConfigLoader | None = None,
+        logger: Logger | None = None,
     ) -> None:
         """
         Initialise le gestionnaire de configuration.
@@ -53,6 +55,7 @@ class ConfigurationManager(ConfigManager):
         if config_path is None and self.search_paths:
             config_path = self._find_config_file()
 
+        self.config_path: Path | None
         if config_path:
             self.config_path = Path(config_path).expanduser()
         else:
@@ -78,7 +81,7 @@ class ConfigurationManager(ConfigManager):
         if self._logger:
             self._logger.log_info(message)
 
-    def _find_config_file(self) -> Optional[Path]:
+    def _find_config_file(self) -> Path | None:
         """Cherche le fichier de config dans les emplacements définis."""
         for path in self.search_paths:
             path = Path(path).expanduser()
@@ -86,7 +89,7 @@ class ConfigurationManager(ConfigManager):
                 return path
         return None
 
-    def _load_config(self) -> Dict[str, Any]:
+    def _load_config(self) -> dict[str, Any]:
         """Charge la configuration depuis le fichier via le loader injecté."""
         if self.config_path and self.config_path.exists():
             try:
@@ -116,9 +119,9 @@ class ConfigurationManager(ConfigManager):
 
     def _deep_merge(
         self,
-        base: Dict[str, Any],
-        override: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        base: dict[str, Any],
+        override: dict[str, Any],
+    ) -> dict[str, Any]:
         """Fusionne récursivement deux dictionnaires."""
         result = base.copy()
         for key, value in override.items():
@@ -143,7 +146,7 @@ class ConfigurationManager(ConfigManager):
         Returns:
             La valeur trouvée ou la valeur par défaut
         """
-        keys = key_path.split('.')
+        keys = key_path.split(".")
         value = self.config
 
         for key in keys:
@@ -154,7 +157,7 @@ class ConfigurationManager(ConfigManager):
 
         return value
 
-    def get_section(self, section: str) -> Dict[str, Any]:
+    def get_section(self, section: str) -> dict[str, Any]:
         """
         Récupère une section complète de la configuration.
 
@@ -164,9 +167,10 @@ class ConfigurationManager(ConfigManager):
         Returns:
             Dictionnaire de la section ou dict vide
         """
-        return self.config.get(section, {})
+        result: dict[str, Any] = self.config.get(section, {})
+        return result
 
-    def get_profile(self, profile_name: str) -> Dict[str, Any]:
+    def get_profile(self, profile_name: str) -> dict[str, Any]:
         """
         Récupère un profil de la configuration.
 
@@ -179,38 +183,36 @@ class ConfigurationManager(ConfigManager):
         Raises:
             ValueError: Si le profil n'existe pas
         """
-        profiles = self.get('profiles', {})
+        profiles: dict[str, Any] = self.get("profiles", {})
 
         if profile_name not in profiles:
             available = list(profiles.keys())
-            if available:
-                profiles_list = ", ".join(f"'{p}'" for p in available)
-                raise ValueError(
-                    f"Profil '{profile_name}' non trouvé. "
-                    f"Disponibles: {profiles_list}"
+            detail = (
+                "Disponibles : " + ", ".join(
+                    f"'{p}'" for p in available
                 )
-            else:
-                raise ValueError(
-                    f"Profil '{profile_name}' non trouvé. "
-                    "Aucun profil défini."
-                )
+                if available else "Aucun profil défini."
+            )
+            raise ValueError(
+                f"Profil '{profile_name}' non trouvé. {detail}"
+            )
 
         profile = profiles[profile_name].copy()
 
-        # Expander les chemins
-        for key in ['source', 'destination', 'path']:
+        for key in _PATH_KEYS:
             if key in profile:
                 profile[key] = str(Path(profile[key]).expanduser())
 
         return profile
 
-    def list_profiles(self) -> List[str]:
+    def list_profiles(self) -> list[str]:
         """Liste tous les profils disponibles."""
-        return list(self.get('profiles', {}).keys())
+        profiles: dict[str, Any] = self.get("profiles", {})
+        return list(profiles.keys())
 
     def create_default_config(
         self,
-        output_path: Optional[Path] = None
+        output_path: Path | None = None,
     ) -> None:
         """
         Crée un fichier de configuration par défaut.
@@ -240,7 +242,7 @@ class ConfigurationManager(ConfigManager):
     def _write_toml(
         self,
         path: Path,
-        data: Dict[str, Any],
+        data: dict[str, Any],
     ) -> None:
         """Écrit un dict en TOML valide via ConfTomlExporter."""
         from linux_python_utils.dotconf.conf_toml_exporter import (
