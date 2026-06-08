@@ -5,7 +5,6 @@ et stocker des credentials via une chaine de providers.
 """
 
 from pathlib import Path
-from typing import Optional, Union
 
 from linux_python_utils.credentials.base import CredentialStore
 from linux_python_utils.credentials.chain import CredentialChain
@@ -45,8 +44,8 @@ class CredentialManager:
         self,
         service: str,
         chain: CredentialChain,
-        store: Optional[CredentialStore] = None,
-        logger: Optional[Logger] = None,
+        store: CredentialStore | None = None,
+        logger: Logger | None = None,
     ) -> None:
         """Initialise le manager de credentials.
 
@@ -111,10 +110,8 @@ class CredentialManager:
         if value is None:
             if self._logger:
                 self._logger.log_warning(
-                    f"Credential introuvable dans toute "
-                    f"la chaine : "
-                    f"service={self._service!r}, "
-                    f"key={key!r}"
+                    f"Credential introuvable dans toute la chaine : "
+                    f"service={self._service!r}, key={key!r}"
                 )
             raise CredentialNotFoundError(
                 f"Credential introuvable : "
@@ -154,8 +151,8 @@ class CredentialManager:
     def from_dotenv(
         cls,
         service: str,
-        dotenv_path: Optional[Union[str, Path]] = None,
-        logger: Optional[Logger] = None,
+        dotenv_path: str | Path | None = None,
+        logger: Logger | None = None,
     ) -> "CredentialManager":
         """Cree un manager avec la chaine standard et le keyring store.
 

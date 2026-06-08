@@ -7,7 +7,6 @@ credentials depuis un dictionnaire interne, sans polluer os.environ.
 
 import stat
 from pathlib import Path
-from typing import Optional, Union
 
 from linux_python_utils.credentials.base import CredentialProvider
 from linux_python_utils.logging.base import Logger
@@ -33,8 +32,8 @@ class DotEnvCredentialProvider(CredentialProvider):
 
     def __init__(
         self,
-        dotenv_path: Union[str, Path],
-        logger: Optional[Logger] = None,
+        dotenv_path: str | Path,
+        logger: Logger | None = None,
     ) -> None:
         """Initialise le provider de fichier .env.
 
@@ -85,7 +84,7 @@ class DotEnvCredentialProvider(CredentialProvider):
         self,
         service: str,
         key: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Charge le .env si nécessaire puis lit la clé depuis le dict interne.
 
         Les clés sont normalisées en majuscules (key.upper()).

@@ -6,7 +6,6 @@ et CredentialStore (lecture + ecriture) selon le principe ISP
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 
 class CredentialProvider(ABC):
@@ -17,7 +16,7 @@ class CredentialProvider(ABC):
         self,
         service: str,
         key: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Retourne la valeur du credential ou None si absent.
 
         Args:
@@ -27,7 +26,7 @@ class CredentialProvider(ABC):
         Returns:
             Valeur du credential ou None si absent.
         """
-        pass  # pragma: no cover
+        ...
 
     @abstractmethod
     def is_available(self) -> bool:
@@ -36,7 +35,7 @@ class CredentialProvider(ABC):
         Returns:
             True si le provider peut etre utilise.
         """
-        pass  # pragma: no cover
+        ...
 
     @property
     @abstractmethod
@@ -46,7 +45,7 @@ class CredentialProvider(ABC):
         Returns:
             Nom de la source (ex: "env", "dotenv", "keyring").
         """
-        pass  # pragma: no cover
+        ...
 
 
 class CredentialStore(CredentialProvider):
@@ -74,7 +73,7 @@ class CredentialStore(CredentialProvider):
         Raises:
             CredentialStoreError: si le stockage echoue.
         """
-        pass  # pragma: no cover
+        ...
 
     @abstractmethod
     def delete(
@@ -90,4 +89,4 @@ class CredentialStore(CredentialProvider):
             service: Nom du service applicatif.
             key: Nom de la cle.
         """
-        pass  # pragma: no cover
+        ...

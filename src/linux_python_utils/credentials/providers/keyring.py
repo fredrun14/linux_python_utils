@@ -9,7 +9,7 @@ Compatibilites :
 - GNOME Keyring
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from linux_python_utils.credentials.base import CredentialStore
 from linux_python_utils.credentials.exceptions import (
@@ -33,8 +33,8 @@ class KeyringCredentialProvider(CredentialStore):
 
     def __init__(
         self,
-        logger: Optional[Logger] = None,
-        keyring_backend: Optional[Any] = None,
+        logger: Logger | None = None,
+        keyring_backend: Any | None = None,
     ) -> None:
         """Initialise le provider keyring.
 
@@ -47,7 +47,8 @@ class KeyringCredentialProvider(CredentialStore):
         self._logger = logger
         self._backend = keyring_backend
 
-    def _keyring_importable(self) -> bool:
+    @staticmethod
+    def _keyring_importable() -> bool:
         """Retourne True si le module keyring est importable.
 
         Returns:
@@ -78,13 +79,13 @@ class KeyringCredentialProvider(CredentialStore):
             raise CredentialProviderUnavailableError(
                 "Le module 'keyring' n'est pas installé. "
                 "Installez-le avec : pip install keyring"
-            )
+            ) from None
 
     def get(
         self,
         service: str,
         key: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Lit un credential depuis le keyring systeme.
 
         Args:
@@ -135,7 +136,9 @@ class KeyringCredentialProvider(CredentialStore):
                     f"service={service!r}, key={key!r}"
                 )
         except CredentialProviderUnavailableError as exc:
-            raise CredentialStoreError(str(exc)) from exc
+            raise CredentialStoreError(
+                f"Keyring indisponible : {exc}"
+            ) from exc
         except Exception as exc:
             raise CredentialStoreError(
                 f"Erreur lors du stockage keyring : {exc}"

@@ -6,7 +6,6 @@ un credential.
 """
 
 from pathlib import Path
-from typing import List, Optional, Union
 
 from linux_python_utils.credentials.base import CredentialProvider
 from linux_python_utils.credentials.models import Credential
@@ -41,8 +40,8 @@ class CredentialChain(CredentialProvider):
 
     def __init__(
         self,
-        providers: List[CredentialProvider],
-        logger: Optional[Logger] = None,
+        providers: list[CredentialProvider],
+        logger: Logger | None = None,
     ) -> None:
         """Initialise la chaine de providers.
 
@@ -57,7 +56,7 @@ class CredentialChain(CredentialProvider):
         self,
         service: str,
         key: str,
-    ) -> tuple[Optional[CredentialProvider], Optional[str]]:
+    ) -> "tuple[CredentialProvider, str] | tuple[None, None]":
         """Retourne le premier (provider, valeur) trouvé, sinon (None, None).
 
         Parcourt les providers disponibles dans l'ordre. Log les escalades.
@@ -77,10 +76,8 @@ class CredentialChain(CredentialProvider):
                 return provider, value
             if self._logger:
                 self._logger.log_info(
-                    f"Credential absent de "
-                    f"{provider.source_name!r} : "
-                    f"service={service!r}, "
-                    f"key={key!r} — escalade"
+                    f"Credential absent de {provider.source_name!r} : "
+                    f"service={service!r}, key={key!r} — escalade"
                 )
         return None, None
 
@@ -88,7 +85,7 @@ class CredentialChain(CredentialProvider):
         self,
         service: str,
         key: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Retourne le premier credential trouvé dans la chaîne.
 
         Les providers indisponibles (is_available() == False)
@@ -106,8 +103,7 @@ class CredentialChain(CredentialProvider):
         if value is not None:
             if self._logger:
                 self._logger.log_info(
-                    f"Credential trouvé via "
-                    f"{provider.source_name!r} : "
+                    f"Credential trouvé via {provider.source_name!r} : "
                     f"service={service!r}, key={key!r}"
                 )
             return value
@@ -117,7 +113,7 @@ class CredentialChain(CredentialProvider):
         self,
         service: str,
         key: str,
-    ) -> Optional[Credential]:
+    ) -> Credential | None:
         """Retourne le credential avec la source d'origine.
 
         Args:
@@ -160,8 +156,8 @@ class CredentialChain(CredentialProvider):
     @classmethod
     def default(
         cls,
-        dotenv_path: Optional[Union[str, Path]] = None,
-        logger: Optional[Logger] = None,
+        dotenv_path: str | Path | None = None,
+        logger: Logger | None = None,
     ) -> "CredentialChain":
         """Cree la chaine standard env -> dotenv -> keyring.
 
@@ -174,7 +170,7 @@ class CredentialChain(CredentialProvider):
             Instance de CredentialChain avec les providers
             standards dans l'ordre de priorite.
         """
-        providers: List[CredentialProvider] = [
+        providers: list[CredentialProvider] = [
             EnvCredentialProvider(logger=logger),
         ]
         if dotenv_path is not None:

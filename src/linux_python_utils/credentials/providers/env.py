@@ -5,7 +5,6 @@ depuis os.environ sans aucune dependance externe.
 """
 
 import os
-from typing import Optional
 
 from linux_python_utils.credentials.base import CredentialProvider
 from linux_python_utils.logging.base import Logger
@@ -24,7 +23,7 @@ class EnvCredentialProvider(CredentialProvider):
 
     def __init__(
         self,
-        logger: Optional[Logger] = None,
+        logger: Logger | None = None,
     ) -> None:
         """Initialise le provider de variables d'environnement.
 
@@ -37,7 +36,7 @@ class EnvCredentialProvider(CredentialProvider):
         self,
         service: str,
         key: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Lit os.environ[key.upper()] ou None si absent.
 
         Args:

@@ -8,6 +8,14 @@ applicatifs.
 from dataclasses import dataclass, field
 
 
+def _validate_non_empty(field_name: str, value: str) -> None:
+    """Leve ValueError si value est vide ou ne contient que des espaces."""
+    if not value or not value.strip():
+        raise ValueError(
+            f"Le champ '{field_name}' ne peut pas etre vide."
+        )
+
+
 @dataclass(frozen=True)
 class CredentialKey:
     """Cle d'identification d'un credential.
@@ -22,14 +30,8 @@ class CredentialKey:
 
     def __post_init__(self) -> None:
         """Valide les champs apres initialisation."""
-        if not self.service or not self.service.strip():
-            raise ValueError(
-                "Le champ 'service' ne peut pas etre vide."
-            )
-        if not self.key or not self.key.strip():
-            raise ValueError(
-                "Le champ 'key' ne peut pas etre vide."
-            )
+        _validate_non_empty("service", self.service)
+        _validate_non_empty("key", self.key)
 
 
 @dataclass(frozen=True)
@@ -51,14 +53,8 @@ class Credential:
 
     def __post_init__(self) -> None:
         """Valide les champs apres initialisation."""
-        if not self.service or not self.service.strip():
-            raise ValueError(
-                "Le champ 'service' ne peut pas etre vide."
-            )
-        if not self.key or not self.key.strip():
-            raise ValueError(
-                "Le champ 'key' ne peut pas etre vide."
-            )
+        _validate_non_empty("service", self.service)
+        _validate_non_empty("key", self.key)
 
     @property
     def credential_key(self) -> CredentialKey:
