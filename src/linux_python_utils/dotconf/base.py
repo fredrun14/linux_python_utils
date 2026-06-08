@@ -26,7 +26,7 @@ class IniSection(ABC):
         Returns:
             Nom de la section (ex: "commands", "main").
         """
-        pass
+        ...
 
     @abstractmethod
     def to_dict(self) -> dict[str, str]:
@@ -35,7 +35,7 @@ class IniSection(ABC):
         Returns:
             Dictionnaire des paires clé=valeur de la section.
         """
-        pass
+        ...
 
     @classmethod
     @abstractmethod
@@ -48,7 +48,7 @@ class IniSection(ABC):
         Returns:
             Instance de la section.
         """
-        pass
+        ...
 
 
 class IniConfig(ABC):
@@ -64,7 +64,7 @@ class IniConfig(ABC):
         Returns:
             Liste des sections IniSection.
         """
-        pass
+        ...
 
     @abstractmethod
     def to_ini(self) -> str:
@@ -73,7 +73,7 @@ class IniConfig(ABC):
         Returns:
             Contenu formaté du fichier INI.
         """
-        pass
+        ...
 
     @classmethod
     @abstractmethod
@@ -90,7 +90,7 @@ class IniConfig(ABC):
             FileNotFoundError: Si le fichier n'existe pas.
             ValueError: Si le fichier est mal formaté.
         """
-        pass
+        ...
 
 
 class IniConfigManager(ABC):
@@ -113,7 +113,7 @@ class IniConfigManager(ABC):
         Raises:
             FileNotFoundError: Si le fichier n'existe pas.
         """
-        pass
+        ...
 
     @abstractmethod
     def write(self, path: Path, config: IniConfig) -> None:
@@ -123,7 +123,7 @@ class IniConfigManager(ABC):
             path: Chemin du fichier de destination.
             config: Configuration à écrire.
         """
-        pass
+        ...
 
     @abstractmethod
     def update_section(
@@ -145,7 +145,7 @@ class IniConfigManager(ABC):
         Raises:
             ValueError: Si la validation échoue.
         """
-        pass
+        ...
 
     @abstractmethod
     def is_section_configured(
@@ -168,4 +168,4 @@ class IniConfigManager(ABC):
             attendues, False si le fichier est absent, si la section
             manque, ou si au moins une valeur diffère.
         """
-        pass
+        ...

@@ -1,8 +1,11 @@
 """Tests unitaires pour le module dotconf."""
 
+import configparser
+import os
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -12,6 +15,7 @@ from linux_python_utils.dotconf import (
     build_validators,
     parse_validator,
 )
+from linux_python_utils.dotconf.base import IniConfig
 from linux_python_utils.logging import FileLogger
 
 
@@ -295,9 +299,6 @@ class TestLinuxIniConfigManager:
 
     def test_write_config(self, manager, temp_ini_file):
         """Teste write() avec un IniConfig complet."""
-        from linux_python_utils.dotconf.base import IniConfig
-        from dataclasses import dataclass
-
         path = Path(temp_ini_file)
 
         class SimpleConfig(IniConfig):
@@ -319,8 +320,6 @@ class TestLinuxIniConfigManager:
 
     def test_config_to_ini(self, manager):
         """Teste config_to_ini() avec plusieurs sections."""
-        from linux_python_utils.dotconf.base import IniConfig
-
         class SimpleConfig(IniConfig):
             def sections(self):
                 return [
@@ -358,7 +357,6 @@ class TestUpdateSectionLogSansValeur:
         self, manager, temp_ini_file
     ):
         """update_section() logue le nom de la clé mais pas sa valeur."""
-        from unittest.mock import MagicMock
         mock_logger = MagicMock()
         mgr = LinuxIniConfigManager(mock_logger)
         section = CommandsSectionFixture(upgrade_type="security")
@@ -375,9 +373,6 @@ class TestUpdateSectionLogSansValeur:
         self, temp_ini_file
     ):
         """update_section() ne logue pas la valeur d'une clé sensible."""
-        from unittest.mock import MagicMock
-        from dataclasses import dataclass
-
         mock_logger = MagicMock()
         mgr = LinuxIniConfigManager(mock_logger)
 
@@ -405,10 +400,6 @@ class TestLinuxIniConfigManagerChmod:
 
     def test_write_section_cree_fichier_en_0644(self, tmp_path):
         """write_section() positionne les permissions à 0o644."""
-        import os
-        from unittest.mock import MagicMock
-        from linux_python_utils.dotconf.manager import LinuxIniConfigManager
-
         mgr = LinuxIniConfigManager(MagicMock())
         path = tmp_path / "out.conf"
         mgr.write_section(
@@ -418,10 +409,6 @@ class TestLinuxIniConfigManagerChmod:
 
     def test_update_section_cree_fichier_en_0644(self, tmp_path):
         """update_section() positionne les permissions à 0o644."""
-        import os
-        from unittest.mock import MagicMock
-        from linux_python_utils.dotconf.manager import LinuxIniConfigManager
-
         mgr = LinuxIniConfigManager(MagicMock())
         path = tmp_path / "out.conf"
         mgr.update_section(
@@ -435,14 +422,11 @@ class TestValidatedSectionEdgeCases:
 
     def test_section_name_not_implemented(self):
         """section_name() leve NotImplementedError si non redefini."""
-        import pytest
         with pytest.raises(NotImplementedError):
             ValidatedSection.section_name()
 
     def test_private_field_skipped_in_validation(self):
         """Les champs prives (commencant par _) sont ignores."""
-        from dataclasses import dataclass, field as dataclass_field
-
         @dataclass(frozen=True)
         class SectionWithPrivate(ValidatedSection):
             public: str = "val"
@@ -479,7 +463,6 @@ class TestIsSectionConfigured:
         self, manager: LinuxIniConfigManager, tmp_path: Path
     ) -> None:
         """Retourne False si la section est absente du fichier."""
-        import configparser
         conf = tmp_path / "test.conf"
         parser = configparser.ConfigParser()
         parser["autre_section"] = {"key": "value"}
@@ -494,7 +477,6 @@ class TestIsSectionConfigured:
         self, manager: LinuxIniConfigManager, tmp_path: Path
     ) -> None:
         """Retourne True si toutes les valeurs attendues sont présentes."""
-        import configparser
         section = CommandsSectionFixture()
         conf = tmp_path / "test.conf"
         parser = configparser.ConfigParser()
@@ -510,7 +492,6 @@ class TestIsSectionConfigured:
         self, manager: LinuxIniConfigManager, tmp_path: Path
     ) -> None:
         """Retourne False si au moins une valeur diffère."""
-        import configparser
         section = CommandsSectionFixture()
         conf = tmp_path / "test.conf"
         values = section.to_dict()

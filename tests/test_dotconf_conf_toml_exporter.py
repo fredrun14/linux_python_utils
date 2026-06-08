@@ -1,5 +1,6 @@
 """Tests unitaires pour ConfTomlExporter."""
 
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -239,7 +240,7 @@ class TestTomlEscape:
         assert ConfTomlExporter._toml_escape("\x08") == "\\u0008"
         assert ConfTomlExporter._toml_escape("\x0c") == "\\u000c"
 
-    def test_tab_newline_non_traites_comme_uXXXX(self) -> None:
+    def test_tab_newline_non_traites_comme_unicode_sequence(self) -> None:
         # \t et \n restent en séquences courtes
         assert ConfTomlExporter._toml_escape("\t\n") == "\\t\\n"
 
@@ -250,8 +251,6 @@ class TestExportAnsiRoundTrip:
     def test_export_ansi_produit_toml_parseable(
         self, exporter: ConfTomlExporter, tmp_path: Path
     ) -> None:
-        import tomllib
-
         src = tmp_path / "prompt.zsh"
         src.write_text("PROMPT='\x1b[32m%n\x1b[0m'\n", encoding="utf-8")
         dest = tmp_path / "prompt.toml"
@@ -284,7 +283,6 @@ class TestConfTomlExporterUnicode:
         src.write_text("  [main]  \nkey = value\n", encoding="utf-8")
         dest = tmp_path / "test.toml"
         exporter.export(src, dest)
-        import tomllib
         data = tomllib.loads(dest.read_text(encoding="utf-8"))
         blocks = data["target"]["content"]
         assert any(b.get("section") == "main" for b in blocks)

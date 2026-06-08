@@ -39,9 +39,11 @@ class SectionAwareEditor:
         content: str,
         section: str | None,
         predicate: Callable[[str, str], bool],
+        lines: list[str] | None = None,
     ) -> bool:
         """Vérifie si toutes les lignes du bloc satisfont le prédicat."""
-        lines = self._read_lines()
+        if lines is None:
+            lines = self._read_lines()
         if not lines:
             return False
         block_lines = self._block_lines(content)
@@ -121,13 +123,16 @@ class SectionAwareEditor:
         if not content.strip():
             return False
 
-        if self.is_block_present(content, section):
+        lines = self._read_lines()
+
+        if self._block_matches(content, section, self._is_active_line, lines):
             return False
 
-        lines = self._read_lines()
         block_lines = self._block_lines(content)
 
-        if self.is_block_commented(content, section):
+        if self._block_matches(
+            content, section, self._is_commented_line, lines
+        ):
             lines = self._uncomment_block_lines(lines, block_lines, section)
             self._write_lines(lines)
             return True
@@ -159,12 +164,11 @@ class SectionAwareEditor:
             Liste des noms de sections dans leur ordre d'apparition.
             Liste vide si le fichier n'existe pas ou sans sections.
         """
-        sections = []
-        for line in self._read_lines():
-            match = self._SECTION_RE.match(line.strip())
-            if match:
-                sections.append(match.group(1))
-        return sections
+        return [
+            m.group(1)
+            for line in self._read_lines()
+            if (m := self._SECTION_RE.match(line.strip()))
+        ]
 
     def _read_lines(self) -> list[str]:
         """Lit le fichier et retourne ses lignes avec fins de ligne.

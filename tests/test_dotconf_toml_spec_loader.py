@@ -1,6 +1,5 @@
 """Tests unitaires pour dotconf.toml_spec_loader (TomlSpecLoader)."""
 
-import os
 from pathlib import Path
 
 import pytest

@@ -60,12 +60,12 @@ Example:
 """
 
 from linux_python_utils.dotconf.applier import ConfigApplier
-from linux_python_utils.dotconf.conf_toml_exporter import ConfTomlExporter
 from linux_python_utils.dotconf.base import (
     IniConfig,
     IniConfigManager,
     IniSection,
 )
+from linux_python_utils.dotconf.conf_toml_exporter import ConfTomlExporter
 from linux_python_utils.dotconf.line_editor import SectionAwareEditor
 from linux_python_utils.dotconf.manager import LinuxIniConfigManager
 from linux_python_utils.dotconf.section import (
@@ -77,22 +77,17 @@ from linux_python_utils.dotconf.spec import ConfigBlock, ConfigSpec
 from linux_python_utils.dotconf.toml_spec_loader import TomlSpecLoader
 
 __all__ = [
-    # Interfaces abstraites
-    "IniSection",
-    "IniConfig",
-    "IniConfigManager",
-    # Implémentations
-    "ValidatedSection",
-    "LinuxIniConfigManager",
-    "SectionAwareEditor",
-    # Spec TOML + applier
+    "ConfigApplier",
     "ConfigBlock",
     "ConfigSpec",
-    "TomlSpecLoader",
-    "ConfigApplier",
-    # Fonctions utilitaires
-    "parse_validator",
-    "build_validators",
-    # Export conf → TOML
     "ConfTomlExporter",
+    "IniConfig",
+    "IniConfigManager",
+    "IniSection",
+    "LinuxIniConfigManager",
+    "SectionAwareEditor",
+    "TomlSpecLoader",
+    "ValidatedSection",
+    "build_validators",
+    "parse_validator",
 ]

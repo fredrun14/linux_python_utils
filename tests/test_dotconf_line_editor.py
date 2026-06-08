@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-import pytest
-
 from linux_python_utils.dotconf import SectionAwareEditor
 
 

@@ -25,7 +25,7 @@ class LinuxIniConfigManager(IniConfigManager):
     avec support de logging et validation optionnelle.
 
     Attributes:
-        logger: Instance de Logger pour tracer les opérations.
+        _logger: Instance de Logger pour tracer les opérations.
 
     Example:
         >>> from linux_python_utils import FileLogger
@@ -35,13 +35,13 @@ class LinuxIniConfigManager(IniConfigManager):
         >>> print(config["main"]["fastestmirror"])
     """
 
-    def __init__(self, logger: Logger) -> None:
-        """Initialise le gestionnaire avec un logger.
+    def __init__(self, logger: Logger | None = None) -> None:
+        """Initialise le gestionnaire avec un logger optionnel.
 
         Args:
-            logger: Instance de Logger pour les messages.
+            logger: Instance de Logger pour les messages (optionnel).
         """
-        self.logger = logger
+        self._logger = logger
 
     @staticmethod
     def _load_parser(path: Path) -> configparser.ConfigParser:
@@ -82,7 +82,8 @@ class LinuxIniConfigManager(IniConfigManager):
         for section in parser.sections():
             result[section] = dict(parser[section])
 
-        self.logger.log_info(f"Fichier {path} lu avec succès.")
+        if self._logger:
+            self._logger.log_info(f"Fichier {path} lu avec succès.")
         return result
 
     def write(self, path: Path, config: IniConfig) -> None:
@@ -96,7 +97,8 @@ class LinuxIniConfigManager(IniConfigManager):
         for section in config.sections():
             parser[section.section_name()] = section.to_dict()
         self._save_parser(parser, path)
-        self.logger.log_info(f"Fichier {path} écrit avec succès.")
+        if self._logger:
+            self._logger.log_info(f"Fichier {path} écrit avec succès.")
 
     def write_section(self, path: Path, section: IniSection) -> None:
         """Écrit ou met à jour une section dans un fichier INI.
@@ -111,9 +113,10 @@ class LinuxIniConfigManager(IniConfigManager):
         parser = self._load_parser(path)
         parser[section.section_name()] = section.to_dict()
         self._save_parser(parser, path)
-        self.logger.log_info(
-            f"Section [{section.section_name()}] écrite dans {path}."
-        )
+        if self._logger:
+            self._logger.log_info(
+                f"Section [{section.section_name()}] écrite dans {path}."
+            )
 
     def update_section(
         self,
@@ -148,17 +151,20 @@ class LinuxIniConfigManager(IniConfigManager):
             if current_value != new_value:
                 parser[section_name][key] = new_value
                 updated = True
-                self.logger.log_info(
-                    f"Modification : {key} mis à jour"
-                )
+                if self._logger:
+                    self._logger.log_info(
+                        f"Modification : {key} mis à jour"
+                    )
 
         if updated:
             self._save_parser(parser, path)
-            self.logger.log_info(f"Fichier {path} mis à jour.")
+            if self._logger:
+                self._logger.log_info(f"Fichier {path} mis à jour.")
         else:
-            self.logger.log_info(
-                f"Fichier {path} déjà configuré avec les valeurs cibles."
-            )
+            if self._logger:
+                self._logger.log_info(
+                    f"Fichier {path} déjà configuré avec les valeurs cibles."
+                )
 
         return updated
 
@@ -186,7 +192,7 @@ class LinuxIniConfigManager(IniConfigManager):
             return False
 
         parser = configparser.ConfigParser()
-        parser.read(str(path), encoding="utf-8")
+        parser.read(path, encoding="utf-8")
 
         section_name = section.section_name()
         if not parser.has_section(section_name):
@@ -197,6 +203,13 @@ class LinuxIniConfigManager(IniConfigManager):
         return all(
             current.get(key) == value for key, value in expected.items()
         )
+
+    @staticmethod
+    def _parser_to_string(parser: configparser.ConfigParser) -> str:
+        """Sérialise un ConfigParser en chaîne INI."""
+        output = StringIO()
+        parser.write(output)
+        return output.getvalue()
 
     def section_to_ini(self, section: IniSection) -> str:
         """Génère le contenu INI d'une section.
@@ -209,10 +222,7 @@ class LinuxIniConfigManager(IniConfigManager):
         """
         parser = configparser.ConfigParser()
         parser[section.section_name()] = section.to_dict()
-
-        output = StringIO()
-        parser.write(output)
-        return output.getvalue()
+        return self._parser_to_string(parser)
 
     def config_to_ini(self, config: IniConfig) -> str:
         """Génère le contenu INI d'une configuration complète.
@@ -224,10 +234,6 @@ class LinuxIniConfigManager(IniConfigManager):
             Contenu INI formaté complet.
         """
         parser = configparser.ConfigParser()
-
         for section in config.sections():
             parser[section.section_name()] = section.to_dict()
-
-        output = StringIO()
-        parser.write(output)
-        return output.getvalue()
+        return self._parser_to_string(parser)

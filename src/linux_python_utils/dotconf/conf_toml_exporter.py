@@ -174,18 +174,18 @@ class ConfTomlExporter:
         Returns:
             Texte TOML (sans saut de ligne final).
         """
-        parts: list[str] = []
-        for key, value in data.items():
-            if not isinstance(value, dict):
-                parts.append(f"{key} = {self._toml_scalar(value)}")
+        scalars: list[str] = []
+        subtables: list[str] = []
         for key, value in data.items():
             if isinstance(value, dict):
                 section = f"{prefix}.{key}" if prefix else key
-                parts.append(f"\n[{section}]")
+                subtables.append(f"\n[{section}]")
                 sub = self.export_mapping(value, prefix=section)
                 if sub:
-                    parts.append(sub)
-        return "\n".join(parts)
+                    subtables.append(sub)
+            else:
+                scalars.append(f"{key} = {self._toml_scalar(value)}")
+        return "\n".join(scalars + subtables)
 
     def _toml_scalar(self, value: Any) -> str:
         """Sérialise une valeur scalaire Python en littéral TOML.
@@ -198,7 +198,7 @@ class ConfTomlExporter:
         """
         if isinstance(value, bool):
             return "true" if value else "false"
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return str(value)
         if isinstance(value, str):
             return f'"{self._toml_escape(value)}"'
