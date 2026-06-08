@@ -1,12 +1,14 @@
 """Gestion idempotente des groupes Unix."""
 
 import grp
-from typing import Optional
 
 from linux_python_utils.commands import CommandBuilder, LinuxCommandExecutor
 from linux_python_utils.commands.base import CommandExecutor
-from linux_python_utils.errors import CommandExecutionError
-from linux_python_utils.identity.base import GroupManagerBase, _valider_nom
+from linux_python_utils.identity.base import (
+    GroupManagerBase,
+    _run_or_raise,
+    _valider_nom,
+)
 from linux_python_utils.logging import Logger
 
 
@@ -15,8 +17,8 @@ class LinuxGroupManager(GroupManagerBase):
 
     def __init__(
         self,
-        logger: Optional[Logger] = None,
-        executor: Optional[CommandExecutor] = None,
+        logger: Logger | None = None,
+        executor: CommandExecutor | None = None,
     ) -> None:
         """Initialise le gestionnaire avec ses dépendances.
 
@@ -46,41 +48,42 @@ class LinuxGroupManager(GroupManagerBase):
         try:
             existing = grp.getgrnam(name)
             if existing.gr_gid != gid:
-                self._logger.log_info(
-                    f"{self._prefix} Groupe '{name}' "
-                    f"a le GID {existing.gr_gid} "
-                    f"(attendu {gid}) — correction"
-                )
+                if self._logger:
+                    self._logger.log_info(
+                        f"{self._prefix} Groupe '{name}' "
+                        f"a le GID {existing.gr_gid} "
+                        f"(attendu {gid}) — correction"
+                    )
                 cmd = (
                     CommandBuilder("groupmod")
                     .with_options(["--gid", str(gid)])
                     .with_args([name])
                     .build()
                 )
-                result = self._executor.run(cmd)
-                if not result.success:
-                    raise CommandExecutionError(
-                        f"{self._prefix} groupmod '{name}' "
-                        f"a échoué (code {result.return_code})"
-                    )
-            else:
-                self._logger.log_info(
-                    f"{self._prefix} Groupe '{name}' "
-                    f"(GID {gid}) déjà présent — skip"
+                _run_or_raise(
+                    self._executor,
+                    cmd,
+                    f"{self._prefix} groupmod '{name}' a échoué",
                 )
+            else:
+                if self._logger:
+                    self._logger.log_info(
+                        f"{self._prefix} Groupe '{name}' "
+                        f"(GID {gid}) déjà présent — skip"
+                    )
         except KeyError:
-            self._logger.log_info(
-                f"{self._prefix} Création du groupe '{name}' (GID {gid})"
-            )
+            if self._logger:
+                self._logger.log_info(
+                    f"{self._prefix} Création du groupe '{name}' (GID {gid})"
+                )
             cmd = (
                 CommandBuilder("groupadd")
                 .with_options(["--gid", str(gid)])
                 .with_args([name])
                 .build()
             )
-            result = self._executor.run(cmd)
-            if not result.success:
-                raise CommandExecutionError(
-                    f"{self._prefix} groupadd '{name}' "
-                    f"a échoué (code {result.return_code})"
-                )
+            _run_or_raise(
+                self._executor,
+                cmd,
+                f"{self._prefix} groupadd '{name}' a échoué",
+            )

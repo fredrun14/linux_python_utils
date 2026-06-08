@@ -100,7 +100,9 @@ class TestLinuxUserManagerEnsureUser:
             "linux_python_utils.identity.user.pwd.getpwnam",
             side_effect=KeyError("frederic"),
         ):
-            manager.ensure_user("frederic", 1000, "/bin/zsh", "Frédéric", False)
+            manager.ensure_user(
+                "frederic", 1000, "/bin/zsh", "Frédéric", False
+            )
 
         # Assert
         executor.run.assert_called_once()
@@ -189,7 +191,8 @@ class TestLinuxUserManagerEnsureUserGroups:
         executor: MagicMock,
         logger: MagicMock,
     ) -> None:
-        """Groupe inconnu → warning loggé, pas de crash, pas d'appel executor."""
+        """Groupe inconnu → warning loggé, pas de crash,
+        pas d'appel executor."""
         # Act
         with patch(
             "linux_python_utils.identity.user.grp.getgrnam",
@@ -245,7 +248,8 @@ class TestLinuxUserManagerValidation:
         self,
         manager: LinuxUserManager,
     ) -> None:
-        """ensure_user_groups lève ValueError si le username commence par '-'."""
+        """ensure_user_groups lève ValueError si le username
+        commence par '-'."""
         with pytest.raises(ValueError, match="Nom Unix invalide"):
             manager.ensure_user_groups("-malicieux", ["audio"])
 
@@ -253,7 +257,8 @@ class TestLinuxUserManagerValidation:
         self,
         manager: LinuxUserManager,
     ) -> None:
-        """ensure_user_groups lève ValueError si un nom de groupe est invalide."""
+        """ensure_user_groups lève ValueError si un nom de groupe
+        est invalide."""
         with pytest.raises(ValueError, match="Nom Unix invalide"):
             manager.ensure_user_groups("frederic", ["-badgroup"])
 

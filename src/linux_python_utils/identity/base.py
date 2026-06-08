@@ -3,6 +3,9 @@
 import re
 from abc import ABC, abstractmethod
 
+from linux_python_utils.commands.base import CommandExecutor
+from linux_python_utils.errors import CommandExecutionError
+
 # Convention useradd/groupadd : minuscules, chiffres, tiret, underscore.
 # Premier caractère : lettre minuscule ou underscore (pas de tiret).
 # Le tiret initial passerait comme option à useradd/groupadd.
@@ -25,6 +28,28 @@ def _valider_nom(nom: str) -> str:
     if not _NOM_UNIX.match(nom):
         raise ValueError(f"Nom Unix invalide : {nom!r}")
     return nom
+
+
+def _run_or_raise(
+    executor: CommandExecutor,
+    cmd: list[str],
+    error_msg: str,
+) -> None:
+    """Exécute une commande et lève CommandExecutionError si elle échoue.
+
+    Args:
+        executor: Exécuteur de commandes.
+        cmd: Commande à exécuter.
+        error_msg: Préfixe du message d'exception en cas d'échec.
+
+    Raises:
+        CommandExecutionError: Si la commande retourne un code non nul.
+    """
+    result = executor.run(cmd)
+    if not result.success:
+        raise CommandExecutionError(
+            f"{error_msg} (code {result.return_code})"
+        ) from None
 
 
 class GroupManagerBase(ABC):

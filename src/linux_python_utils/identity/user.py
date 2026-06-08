@@ -2,12 +2,14 @@
 
 import grp
 import pwd
-from typing import Optional
 
 from linux_python_utils.commands import CommandBuilder, LinuxCommandExecutor
 from linux_python_utils.commands.base import CommandExecutor
-from linux_python_utils.errors import CommandExecutionError
-from linux_python_utils.identity.base import UserManagerBase, _valider_nom
+from linux_python_utils.identity.base import (
+    UserManagerBase,
+    _run_or_raise,
+    _valider_nom,
+)
 from linux_python_utils.logging import Logger
 
 
@@ -16,8 +18,8 @@ class LinuxUserManager(UserManagerBase):
 
     def __init__(
         self,
-        logger: Optional[Logger] = None,
-        executor: Optional[CommandExecutor] = None,
+        logger: Logger | None = None,
+        executor: CommandExecutor | None = None,
     ) -> None:
         """Initialise le gestionnaire avec ses dépendances.
 
@@ -57,47 +59,48 @@ class LinuxUserManager(UserManagerBase):
         try:
             existing = pwd.getpwnam(name)
             if existing.pw_uid != uid:
-                self._logger.log_info(
-                    f"{self._prefix} Utilisateur '{name}' "
-                    f"a l'UID {existing.pw_uid} "
-                    f"(attendu {uid}) — correction"
-                )
+                if self._logger:
+                    self._logger.log_info(
+                        f"{self._prefix} Utilisateur '{name}' "
+                        f"a l'UID {existing.pw_uid} "
+                        f"(attendu {uid}) — correction"
+                    )
                 cmd = (
                     CommandBuilder("usermod")
                     .with_options(["--uid", str(uid)])
                     .with_args([name])
                     .build()
                 )
-                result = self._executor.run(cmd)
-                if not result.success:
-                    raise CommandExecutionError(
-                        f"{self._prefix} usermod '{name}' "
-                        f"a échoué (code {result.return_code})"
-                    )
-            else:
-                self._logger.log_info(
-                    f"{self._prefix} Utilisateur '{name}' "
-                    f"(UID {uid}) déjà présent — skip"
+                _run_or_raise(
+                    self._executor,
+                    cmd,
+                    f"{self._prefix} usermod '{name}' a échoué",
                 )
+            else:
+                if self._logger:
+                    self._logger.log_info(
+                        f"{self._prefix} Utilisateur '{name}' "
+                        f"(UID {uid}) déjà présent — skip"
+                    )
         except KeyError:
-            self._logger.log_info(
-                f"{self._prefix} Création de l'utilisateur"
-                f" '{name}' (UID {uid})"
-            )
+            if self._logger:
+                self._logger.log_info(
+                    f"{self._prefix} Création de l'utilisateur"
+                    f" '{name}' (UID {uid})"
+                )
             builder = (
                 CommandBuilder("useradd")
-                .with_options(["--uid", str(uid)])
-                .with_options(["--shell", shell])
-                .with_options(["--comment", comment])
+                .with_options(
+                    ["--uid", str(uid), "--shell", shell, "--comment", comment]
+                )
             )
             if create_home:
                 builder = builder.with_flag("--create-home")
-            result = self._executor.run(builder.with_args([name]).build())
-            if not result.success:
-                raise CommandExecutionError(
-                    f"{self._prefix} useradd '{name}' "
-                    f"a échoué (code {result.return_code})"
-                )
+            _run_or_raise(
+                self._executor,
+                builder.with_args([name]).build(),
+                f"{self._prefix} useradd '{name}' a échoué",
+            )
 
     def ensure_user_groups(
         self,
@@ -120,32 +123,35 @@ class LinuxUserManager(UserManagerBase):
             CommandExecutionError: Si usermod retourne un code non nul.
         """
         _valider_nom(username)
-        for group_name in groups:
-            _valider_nom(group_name)
         missing: list[str] = []
         for group_name in groups:
+            _valider_nom(group_name)
             try:
                 group = grp.getgrnam(group_name)
             except KeyError:
-                self._logger.log_warning(
-                    f"{self._prefix} Groupe '{group_name}' "
-                    f"introuvable pour '{username}' — skip"
-                )
+                if self._logger:
+                    self._logger.log_warning(
+                        f"{self._prefix} Groupe '{group_name}' "
+                        f"introuvable pour '{username}' — skip"
+                    )
                 continue
             if username not in group.gr_mem:
                 missing.append(group_name)
 
         if not missing:
-            self._logger.log_info(
-                f"{self._prefix} Utilisateur '{username}' "
-                f"déjà membre de tous les groupes — skip"
-            )
+            if self._logger:
+                self._logger.log_info(
+                    f"{self._prefix} Utilisateur '{username}' "
+                    f"déjà membre de tous les groupes — skip"
+                )
             return
 
         groups_str = ",".join(missing)
-        self._logger.log_info(
-            f"{self._prefix} Ajout de '{username}' aux groupes : {groups_str}"
-        )
+        if self._logger:
+            self._logger.log_info(
+                f"{self._prefix} Ajout de '{username}'"
+                f" aux groupes : {groups_str}"
+            )
         cmd = (
             CommandBuilder("usermod")
             .with_flag("--append")
@@ -153,9 +159,8 @@ class LinuxUserManager(UserManagerBase):
             .with_args([username])
             .build()
         )
-        result = self._executor.run(cmd)
-        if not result.success:
-            raise CommandExecutionError(
-                f"{self._prefix} usermod --append '{username}' "
-                f"a échoué (code {result.return_code})"
-            )
+        _run_or_raise(
+            self._executor,
+            cmd,
+            f"{self._prefix} usermod --append '{username}' a échoué",
+        )

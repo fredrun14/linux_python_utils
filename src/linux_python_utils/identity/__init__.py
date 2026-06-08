@@ -6,7 +6,7 @@ from linux_python_utils.identity.user import LinuxUserManager
 
 __all__ = [
     "GroupManagerBase",
-    "UserManagerBase",
     "LinuxGroupManager",
     "LinuxUserManager",
+    "UserManagerBase",
 ]

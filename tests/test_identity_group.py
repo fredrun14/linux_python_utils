@@ -179,7 +179,7 @@ class TestLinuxGroupManagerValidation:
         manager: LinuxGroupManager,
         executor: MagicMock,
     ) -> None:
-        """Un nom Unix valide (tiret interne, underscore) passe la validation."""
+        """Nom Unix valide (tiret interne, underscore) passe la validation."""
         with patch(
             "linux_python_utils.identity.group.grp.getgrnam",
             side_effect=KeyError("partage-lan"),
