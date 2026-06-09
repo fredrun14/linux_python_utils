@@ -15,6 +15,7 @@ from linux_python_utils.logging import (
     ConsoleLogger,
     FileLogger,
     Logger,
+    RotatingFileLogger,
     TeeStream,
 )
 from linux_python_utils.logging.security_logger import (
@@ -544,3 +545,92 @@ class TestTeeStream:
             log_fh.close()
 
         assert "erreur capturée" in log_file.read_text(encoding="utf-8")
+
+
+class TestRotatingFileLogger:
+    """Tests pour RotatingFileLogger."""
+
+    def test_cree_fichier_log(self, tmp_path: Path) -> None:
+        """RotatingFileLogger crée le fichier et y écrit."""
+        log_file = tmp_path / "run.log"
+        logger = RotatingFileLogger(log_file)
+        logger.log_info("démarrage")
+        assert log_file.exists()
+        assert "démarrage" in log_file.read_text(encoding="utf-8")
+
+    def test_accepte_str_et_path(self, tmp_path: Path) -> None:
+        """RotatingFileLogger accepte str et Path pour log_file."""
+        for arg in [str(tmp_path / "a.log"), tmp_path / "b.log"]:
+            logger = RotatingFileLogger(arg)
+            logger.log_info("ok")
+
+    def test_implemente_interface_logger(self, tmp_path: Path) -> None:
+        """RotatingFileLogger est une instance de Logger."""
+        logger = RotatingFileLogger(tmp_path / "run.log")
+        assert isinstance(logger, Logger)
+
+    def test_niveau_invalide_leve_valueerror(self, tmp_path: Path) -> None:
+        """Un niveau de log invalide lève ValueError."""
+        with pytest.raises(ValueError, match="Niveau de log invalide"):
+            RotatingFileLogger(
+                tmp_path / "run.log",
+                config={"logging": {"level": "VERBOSE"}},
+            )
+
+    def test_log_success_prefixe_success(self, tmp_path: Path) -> None:
+        """log_success écrit un message avec préfixe SUCCESS."""
+        log_file = tmp_path / "run.log"
+        logger = RotatingFileLogger(log_file)
+        logger.log_success("opération réussie")
+        assert "SUCCESS: opération réussie" in log_file.read_text(encoding="utf-8")
+
+    def test_log_to_file_ecrit_horodatage(self, tmp_path: Path) -> None:
+        """log_to_file écrit un message horodaté brut."""
+        log_file = tmp_path / "run.log"
+        logger = RotatingFileLogger(log_file)
+        logger.log_to_file("message brut")
+        content = log_file.read_text(encoding="utf-8")
+        assert "message brut" in content
+
+    def test_rotation_cree_archive(self, tmp_path: Path) -> None:
+        """La rotation crée un fichier archivé quand max_bytes est dépassé."""
+        log_file = tmp_path / "run.log"
+        logger = RotatingFileLogger(log_file, max_bytes=100, backup_count=2)
+        for i in range(20):
+            logger.log_info(f"ligne suffisamment longue pour déclencher la rotation {i}")
+        assert (tmp_path / "run.log.1").exists()
+
+    def test_rotation_limite_backup_count(self, tmp_path: Path) -> None:
+        """Le nombre d'archives est limité à backup_count."""
+        log_file = tmp_path / "run.log"
+        logger = RotatingFileLogger(log_file, max_bytes=100, backup_count=2)
+        for i in range(50):
+            logger.log_info(f"ligne suffisamment longue pour déclencher la rotation {i}")
+        assert not (tmp_path / "run.log.3").exists()
+
+    def test_permissions_fichier_securisees(self, tmp_path: Path) -> None:
+        """Le fichier de log est créé avec les permissions 0o600."""
+        log_file = tmp_path / "run.log"
+        logger = RotatingFileLogger(log_file)
+        logger.log_info("test permissions")
+        mode = stat.S_IMODE(os.stat(str(log_file)).st_mode)
+        assert mode == 0o600
+
+    def test_cree_repertoire_parent(self, tmp_path: Path) -> None:
+        """RotatingFileLogger crée le répertoire parent s'il n'existe pas."""
+        log_file = tmp_path / "sous" / "dossier" / "run.log"
+        logger = RotatingFileLogger(log_file)
+        logger.log_info("test")
+        assert log_file.exists()
+
+    def test_config_dict_niveau_warning(self, tmp_path: Path) -> None:
+        """La config dict est respectée pour le niveau de log."""
+        log_file = tmp_path / "run.log"
+        logger = RotatingFileLogger(
+            log_file, config={"logging": {"level": "WARNING"}}
+        )
+        logger.log_info("ne doit pas apparaître")
+        logger.log_warning("doit apparaître")
+        content = log_file.read_text(encoding="utf-8")
+        assert "ne doit pas apparaître" not in content
+        assert "doit apparaître" in content
