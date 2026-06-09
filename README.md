@@ -648,6 +648,7 @@ except ApplicationError as e:
 | `ApplicationError` | `AppPermissionError` | Permission refusée |
 | `ApplicationError` | `RollbackError` | Échec du rollback |
 | `ApplicationError` | `IntegrityError` | Violation d'intégrité |
+| `ApplicationError` | `CommandExecutionError` | Commande système avec code non nul |
 
 ### Architecture des Classes
 
@@ -668,9 +669,11 @@ except ApplicationError as e:
 
   ┌────────────────────────────────────┐
   │         ErrorHandlerChain          │  ← pas un ABC : orchestrateur
-  │  - handlers: list[ErrorHandler]    │
+  │  - _handlers: list[ErrorHandler]   │
   │  + add_handler(h)                  │
-  │  + handle(error) → tous handlers   │
+  │  + handle(error) → best-effort     │
+  │    (chaque handler isolé par       │
+  │     try/except, fallback stderr)   │
   │  + handle_and_exit(error, code)    │
   └────────────────────────────────────┘
 
@@ -686,6 +689,7 @@ except ApplicationError as e:
       ├── AppPermissionError
       ├── RollbackError
       ├── IntegrityError
+      ├── CommandExecutionError
       └── CredentialError            (définie dans credentials/exceptions.py)
           ├── CredentialNotFoundError
           ├── CredentialStoreError
