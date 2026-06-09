@@ -328,7 +328,7 @@ linux-python-utils/
 │   ├── validation/
 │   │   ├── __init__.py
 │   │   ├── base.py                        # ABC Validator
-│   │   ├── path_checker_Exist.py          # PathChecker
+│   │   ├── path_checker_exist.py          # PathChecker
 │   │   ├── path_checker_permission.py     # PathCheckerPermission
 │   │   └── path_checker_world_writable.py # PathCheckerWorldWritable
 │   ├── errors/
@@ -2597,7 +2597,7 @@ print(config.name)  # Instance AppConfig validée
   ┌──────────────┐ ┌──────────────────┐ ┌────────────────────┐ ┌──────────────────────┐
   │ PathChecker  │ │PathCheckerPermis-│ │PathCheckerWorld-   │ │SystemCommandValidator│
   │              │ │sion              │ │Writable            │ │                      │
-  │ - paths:     │ │ - paths:         │ │ - _path: Path      │ │ - _requirements:     │
+  │ - _paths:    │ │ - _paths:        │ │ - _path: Path      │ │ - _requirements:     │
   │   list[str]  │ │   list[str]      │ │   (non résolu —    │ │   dict[str, str]     │
   │ + validate() │ │ + validate()     │ │   pas de suivi de  │ │ + validate()         │
   │   (.resolve  │ │   (vérifie       │ │   symlink)         │ │   [raises Missing-   │
@@ -2769,7 +2769,8 @@ make all
 | `test_commands.py` | 74 | CommandBuilder, formatters, exécution, streaming, dry-run, root/user |
 | `test_scripts.py` | 19 | BashScriptConfig, installation scripts |
 | `test_notification.py` | 13 | NotificationConfig, génération bash |
-| `test_validation.py` | 5 | PathChecker, PathCheckerPermission, PathCheckerWorldWritable |
+| `test_validation.py` | 11 | PathChecker, PathCheckerPermission, PathCheckerWorldWritable |
+| `test_validation_system.py` | 7 | SystemCommandValidator (validate, missing_commands) |
 | `test_identity_group.py` | — | LinuxGroupManager, ensure_group (create/correct/skip) |
 | `test_identity_user.py` | — | LinuxUserManager, ensure_user, ensure_user_groups |
 | `test_cli.py` | 15 | CliCommand (ABC, register, execute, sous-classes partielles), CliApplication (dispatch, flags, args, edge cases) |
