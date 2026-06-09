@@ -8,12 +8,16 @@ from linux_python_utils.validation.path_checker_permission import (
 from linux_python_utils.validation.path_checker_world_writable import (
     PathCheckerWorldWritable,
 )
+from linux_python_utils.validation.path_checker_group_access import (
+    PathCheckerGroupAccess,
+)
 from linux_python_utils.validation.system import SystemCommandValidator
 
 __all__ = [
     "PathChecker",
     "PathCheckerPermission",
     "PathCheckerWorldWritable",
+    "PathCheckerGroupAccess",
     "SystemCommandValidator",
     "Validator",
 ]

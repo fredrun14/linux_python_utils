@@ -127,6 +127,7 @@ from linux_python_utils.validation import (
     PathChecker,
     PathCheckerPermission,
     PathCheckerWorldWritable,
+    PathCheckerGroupAccess,
     SystemCommandValidator,
 )
 from linux_python_utils.credentials import (
@@ -294,6 +295,7 @@ __all__ = [
     "PathChecker",
     "PathCheckerPermission",
     "PathCheckerWorldWritable",
+    "PathCheckerGroupAccess",
     "SystemCommandValidator",
     # Credentials - ABCs
     "CredentialProvider",

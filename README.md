@@ -2513,13 +2513,15 @@ pip install keyring        # pour KeyringCredentialProvider
 
 Validation de chemins et données avec support optionnel Pydantic.
 
-Trois validateurs de chemins couvrent des besoins distincts :
+Cinq validateurs couvrent des besoins distincts :
 
 | Classe | Vérifie | Usage typique |
 |--------|---------|---------------|
 | `PathChecker` | Répertoires parents existent | Log files, config files |
 | `PathCheckerPermission` | Répertoires parents accessibles en écriture | Backup, sauvegardes |
 | `PathCheckerWorldWritable` | Fichiers non modifiables par tous | Scripts exécutés en root |
+| `PathCheckerGroupAccess` | Appartenance groupe + rwx + setgid | Montages NFS partagés |
+| `SystemCommandValidator` | Présence d'exécutables dans le PATH | Scripts dépendant d'outils externes |
 
 ### Utilisation
 
@@ -2558,6 +2560,22 @@ sys_checker.validate()  # Lève MissingDependencyError si absentes,
                         # message listant les instructions d'installation
 manquantes = sys_checker.missing_commands()  # → list[str], sans lever
 
+# Vérifie l'appartenance groupe + rwx + setgid (typique : montage NFS)
+from linux_python_utils import PathCheckerGroupAccess
+
+nfs_checker = PathCheckerGroupAccess(
+    "/media/nas/keepass",
+    "ff_home",
+    require_setgid=True,   # héritage de groupe pour les nouveaux fichiers
+)
+nfs_checker.validate()
+# Lève FileNotFoundError si le chemin n'existe pas
+# Lève KeyError si le groupe 'ff_home' est inconnu du système
+# Lève PermissionError avec commande corrective si :
+#   - le répertoire n'appartient pas à 'ff_home'
+#   - les bits rwx groupe sont incomplets
+#   - le bit setgid est absent
+
 # Validation de configuration avec Pydantic (optionnel)
 # pip install linux-python-utils[validation]
 from pydantic import BaseModel
@@ -2580,6 +2598,7 @@ print(config.name)  # Instance AppConfig validée
 | `Validator` | `PathChecker` | Répertoires parents existent (`paths: list[str]`) |
 | `Validator` | `PathCheckerPermission` | Répertoires parents accessibles en écriture (`paths: list[str]`) |
 | `Validator` | `PathCheckerWorldWritable` | Fichier non world-writable, anti-symlink (`path: str \| Path`, unique) |
+| `Validator` | `PathCheckerGroupAccess` | Appartenance groupe + rwx + setgid (`path`, `group: str`, `require_setgid: bool = True`) |
 | `Validator` | `SystemCommandValidator` | Présence de commandes système dans le `PATH` (`requirements: dict[str, str]`) |
 
 ### Architecture des Classes
@@ -2591,34 +2610,31 @@ print(config.name)  # Instance AppConfig validée
   │    raises: ValueError | PermissionError | ...        │
   │    (chaque implémentation documente ses propres      │
   │     exceptions concrètes — voir liste ci-dessous)    │
-  └───────┬──────────┬───────────┬────────────┬──────────┘
-          │ hérite   │ hérite    │ hérite     │ hérite
-          ▼          ▼           ▼            ▼
-  ┌──────────────┐ ┌──────────────────┐ ┌────────────────────┐ ┌──────────────────────┐
-  │ PathChecker  │ │PathCheckerPermis-│ │PathCheckerWorld-   │ │SystemCommandValidator│
-  │              │ │sion              │ │Writable            │ │                      │
-  │ - _paths:    │ │ - _paths:        │ │ - _path: Path      │ │ - _requirements:     │
-  │   list[str]  │ │   list[str]      │ │   (non résolu —    │ │   dict[str, str]     │
-  │ + validate() │ │ + validate()     │ │   pas de suivi de  │ │ + validate()         │
-  │   (.resolve  │ │   (vérifie       │ │   symlink)         │ │   [raises Missing-   │
-  │   anti path  │ │   l'existence    │ │ + validate()       │ │   DependencyError]   │
-  │   traversal) │ │   AVANT le       │ │   (os.lstat —      │ │ + missing_commands() │
-  │   [raises    │ │   droit d'écri-  │ │   TOCTOU-safe,     │ │   → list[str]        │
-  │   ValueError]│ │   ture, pour un  │ │   rejette aussi    │ │   (sans lever — via  │
-  │              │ │   message non    │ │   les symlinks)    │ │   shutil.which)      │
-  │              │ │   ambigu)        │ │   [raises File-    │ │                      │
-  │              │ │   [raises Value- │ │   NotFoundError |  │ │                      │
-  │              │ │   Error |        │ │   PermissionError] │ │                      │
-  │              │ │   PermissionEr-  │ │                    │ │                      │
-  │              │ │   ror]           │ │                    │ │                      │
-  └──────────────┘ └──────────────────┘ └────────────────────┘ └──────────────────────┘
+  └──┬───────────┬───────────┬────────────┬──────────────┘
+     │ hérite    │ hérite    │ hérite     │ hérite    │ hérite
+     ▼           ▼           ▼            ▼           ▼
+  ┌───────────┐ ┌──────────────────┐ ┌───────────────┐ ┌─────────────────────┐ ┌──────────────────┐
+  │PathChecker│ │PathCheckerPermis-│ │PathChecker-   │ │PathCheckerGroup-    │ │SystemCommand-    │
+  │           │ │sion              │ │WorldWritable  │ │Access               │ │Validator         │
+  │ - _paths: │ │ - _paths:        │ │ - _path: Path │ │ - _path: Path       │ │ - _requirements: │
+  │  list[str]│ │   list[str]      │ │  (non résolu) │ │ - _group: str       │ │   dict[str, str] │
+  │ + validate│ │ + validate()     │ │ + validate()  │ │ - _require_setgid   │ │ + validate()     │
+  │   (.resolve│ │  (existence AVANT│ │  (os.lstat — │ │ + validate()        │ │  [MissingDep-    │
+  │   anti     │ │  permission,     │ │  TOCTOU-safe, │ │  1. groupe correct? │ │  endencyError]   │
+  │   traversal│ │  message précis) │ │  rejette les  │ │  2. rwx groupe?     │ │ + missing_       │
+  │   [Value-  │ │  [ValueError |   │ │  symlinks)    │ │  3. setgid? (opt.)  │ │   commands()     │
+  │   Error]   │ │  PermissionError]│ │  [FileNotFound│ │  (os.stat — suit    │ │   → list[str]    │
+  │            │ │                  │ │  PermissionEr]│ │  les liens, NFS OK) │ │                  │
+  │            │ │                  │ │               │ │  [FileNotFound |    │ │                  │
+  │            │ │                  │ │               │ │  KeyError |         │ │                  │
+  │            │ │                  │ │               │ │  PermissionError]   │ │                  │
+  └───────────┘ └──────────────────┘ └───────────────┘ └─────────────────────┘ └──────────────────┘
 ```
 
-> Les quatre implémentations héritent **directement** de `Validator` — il
-> n'existe pas de hiérarchie intermédiaire entre elles (`PathCheckerPermission`
-> et `PathCheckerWorldWritable` ne dérivent PAS de `PathChecker` : ce sont
-> des stratégies sœurs, chacune avec sa propre forme de constructeur et son
-> propre jeu d'exceptions).
+> Les cinq implémentations héritent **directement** de `Validator` — il
+> n'existe pas de hiérarchie intermédiaire entre elles. Ce sont cinq
+> stratégies sœurs, chacune avec sa propre forme de constructeur et son
+> propre jeu d'exceptions.
 
 ---
 
@@ -2771,6 +2787,7 @@ make all
 | `test_notification.py` | 13 | NotificationConfig, génération bash |
 | `test_validation.py` | 11 | PathChecker, PathCheckerPermission, PathCheckerWorldWritable |
 | `test_validation_system.py` | 7 | SystemCommandValidator (validate, missing_commands) |
+| `test_validation_group_access.py` | 15 | PathCheckerGroupAccess (groupe, rwx, setgid, messages d'erreur) |
 | `test_identity_group.py` | — | LinuxGroupManager, ensure_group (create/correct/skip) |
 | `test_identity_user.py` | — | LinuxUserManager, ensure_user, ensure_user_groups |
 | `test_cli.py` | 15 | CliCommand (ABC, register, execute, sous-classes partielles), CliApplication (dispatch, flags, args, edge cases) |
