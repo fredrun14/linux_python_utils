@@ -6,7 +6,7 @@ import os
 import shlex
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from linux_python_utils.systemd.base_config import (
     AutomountConfig,
@@ -23,7 +23,10 @@ from linux_python_utils.systemd.validators import (
 
 if TYPE_CHECKING:
     from linux_python_utils.logging.base import Logger
-    from linux_python_utils.systemd.executor import SystemdExecutor
+    from linux_python_utils.systemd.executor import (
+        SystemdExecutor,
+        UserSystemdExecutor,
+    )
 
 # Re-exports pour compatibilité des imports existants
 __all__ = [
@@ -42,7 +45,9 @@ __all__ = [
     "UserUnitManager",
     "UserTimerUnitManager",
     "UserServiceUnitManager",
+    "_ServiceOperationsHost",
     "_ServiceOperationsMixin",
+    "_TimerOperationsHost",
     "_TimerOperationsMixin",
 ]
 
@@ -146,6 +151,40 @@ def _remove_unit_content(
 # Mixins de comportement partagé système ↔ utilisateur
 # =============================================================================
 
+class _ServiceOperationsHost(Protocol):
+    """Contrat d'interface requis par _ServiceOperationsMixin.
+
+    Déclare les attributs et méthodes que la classe hôte concrète doit
+    fournir pour que _ServiceOperationsMixin puisse fonctionner.
+    Utilisé uniquement pour la vérification statique (TYPE_CHECKING).
+    """
+
+    logger: "Logger"
+    executor: "SystemdExecutor"
+
+    def enable(self, unit_name: str) -> bool:
+        ...
+
+    def disable(
+        self, unit_name: str, ignore_errors: bool = False
+    ) -> bool:
+        ...
+
+    def get_status(self, unit_name: str) -> "str | None":
+        ...
+
+    def reload_systemd(self) -> bool:
+        ...
+
+    def _write_unit_file(
+        self, unit_name: str, content: str
+    ) -> bool:
+        ...
+
+    def _remove_unit_file(self, unit_name: str) -> bool:
+        ...
+
+
 class _ServiceOperationsMixin:
     """Mixin d'opérations service communes aux managers systemd.
 
@@ -156,6 +195,34 @@ class _ServiceOperationsMixin:
     """
 
     _service_label: str = "Service"
+
+    if TYPE_CHECKING:
+        logger: "Logger"
+        executor: "SystemdExecutor"
+
+        def enable(self, unit_name: str) -> bool:
+            ...
+
+        def disable(
+            self, unit_name: str, ignore_errors: bool = False
+        ) -> bool:
+            ...
+
+        def get_status(
+            self, unit_name: str
+        ) -> "str | None":
+            ...
+
+        def reload_systemd(self) -> bool:
+            ...
+
+        def _write_unit_file(
+            self, unit_name: str, content: str
+        ) -> bool:
+            ...
+
+        def _remove_unit_file(self, unit_name: str) -> bool:
+            ...
 
     @staticmethod
     def _extract_service_name_from_config(config: ServiceConfig) -> str:
@@ -185,7 +252,7 @@ class _ServiceOperationsMixin:
         try:
             validate_service_name(service_name)
         except ValueError as e:
-            self.logger.log_error(  # type: ignore[attr-defined]
+            self.logger.log_error(
                 f"Nom de service invalide : {e}"
             )
             return None
@@ -204,13 +271,13 @@ class _ServiceOperationsMixin:
         service_file = self._validated_service_file(service_name)
         if service_file is None:
             return False
-        if not self._write_unit_file(  # type: ignore[attr-defined]
+        if not self._write_unit_file(
             service_file, config.to_unit_file()
         ):
             return False
-        if not self.reload_systemd():  # type: ignore[attr-defined]
+        if not self.reload_systemd():
             return False
-        self.logger.log_info(  # type: ignore[attr-defined]
+        self.logger.log_info(
             f"{self._service_label} {service_file} installé"
         )
         return True
@@ -230,13 +297,13 @@ class _ServiceOperationsMixin:
         service_file = self._validated_service_file(service_name)
         if service_file is None:
             return False
-        if not self._write_unit_file(  # type: ignore[attr-defined]
+        if not self._write_unit_file(
             service_file, config.to_unit_file()
         ):
             return False
-        if not self.reload_systemd():  # type: ignore[attr-defined]
+        if not self.reload_systemd():
             return False
-        self.logger.log_info(  # type: ignore[attr-defined]
+        self.logger.log_info(
             f"{self._service_label} {service_file} installé"
         )
         return True
@@ -251,7 +318,7 @@ class _ServiceOperationsMixin:
             True si succès, False sinon.
         """
         validate_service_name(service_name)
-        return self.executor.start_unit(  # type: ignore[attr-defined]
+        return self.executor.start_unit(
             f"{service_name}.service"
         )
 
@@ -265,7 +332,7 @@ class _ServiceOperationsMixin:
             True si succès, False sinon.
         """
         validate_service_name(service_name)
-        return self.executor.stop_unit(  # type: ignore[attr-defined]
+        return self.executor.stop_unit(
             f"{service_name}.service"
         )
 
@@ -279,7 +346,7 @@ class _ServiceOperationsMixin:
             True si succès, False sinon.
         """
         validate_service_name(service_name)
-        return self.executor.restart_unit(  # type: ignore[attr-defined]
+        return self.executor.restart_unit(
             f"{service_name}.service"
         )
 
@@ -293,7 +360,7 @@ class _ServiceOperationsMixin:
             True si succès, False sinon.
         """
         validate_service_name(service_name)
-        return self.enable(  # type: ignore[attr-defined]
+        return self.enable(
             f"{service_name}.service"
         )
 
@@ -307,7 +374,7 @@ class _ServiceOperationsMixin:
             True si succès, False sinon.
         """
         validate_service_name(service_name)
-        return self.disable(  # type: ignore[attr-defined]
+        return self.disable(
             f"{service_name}.service"
         )
 
@@ -322,17 +389,17 @@ class _ServiceOperationsMixin:
         """
         validate_service_name(service_name)
         if not self.disable_service(service_name):
-            self.logger.log_warning(  # type: ignore[attr-defined]
+            self.logger.log_warning(
                 f"disable_service échoué pour {service_name!r} "
                 "(service peut-être déjà inactif) — "
                 "suppression du fichier unit quand même"
             )
-        if not self._remove_unit_file(  # type: ignore[attr-defined]
+        if not self._remove_unit_file(
             f"{service_name}.service"
         ):
             return False
-        self.reload_systemd()  # type: ignore[attr-defined]
-        self.logger.log_info(  # type: ignore[attr-defined]
+        self.reload_systemd()
+        self.logger.log_info(
             f"{self._service_label} {service_name}.service supprimé"
         )
         return True
@@ -347,7 +414,7 @@ class _ServiceOperationsMixin:
             Statut du service ou None si erreur.
         """
         validate_service_name(service_name)
-        return self.get_status(  # type: ignore[attr-defined]
+        return self.get_status(
             f"{service_name}.service"
         )
 
@@ -372,9 +439,43 @@ class _ServiceOperationsMixin:
             True si activé, False sinon.
         """
         validate_service_name(service_name)
-        return self.executor.is_enabled(  # type: ignore[attr-defined]
+        return self.executor.is_enabled(
             f"{service_name}.service"
         )
+
+
+class _TimerOperationsHost(Protocol):
+    """Contrat d'interface requis par _TimerOperationsMixin.
+
+    Déclare les attributs et méthodes que la classe hôte concrète doit
+    fournir pour que _TimerOperationsMixin puisse fonctionner.
+    Utilisé uniquement pour la vérification statique (TYPE_CHECKING).
+    """
+
+    logger: "Logger"
+    executor: "SystemdExecutor"
+
+    def enable(self, unit_name: str) -> bool:
+        ...
+
+    def disable(
+        self, unit_name: str, ignore_errors: bool = False
+    ) -> bool:
+        ...
+
+    def get_status(self, unit_name: str) -> "str | None":
+        ...
+
+    def reload_systemd(self) -> bool:
+        ...
+
+    def _write_unit_file(
+        self, unit_name: str, content: str
+    ) -> bool:
+        ...
+
+    def _remove_unit_file(self, unit_name: str) -> bool:
+        ...
 
 
 class _TimerOperationsMixin:
@@ -388,6 +489,34 @@ class _TimerOperationsMixin:
 
     _timer_label: str = "Timer"
 
+    if TYPE_CHECKING:
+        logger: "Logger"
+        executor: "SystemdExecutor"
+
+        def enable(self, unit_name: str) -> bool:
+            ...
+
+        def disable(
+            self, unit_name: str, ignore_errors: bool = False
+        ) -> bool:
+            ...
+
+        def get_status(
+            self, unit_name: str
+        ) -> "str | None":
+            ...
+
+        def reload_systemd(self) -> bool:
+            ...
+
+        def _write_unit_file(
+            self, unit_name: str, content: str
+        ) -> bool:
+            ...
+
+        def _remove_unit_file(self, unit_name: str) -> bool:
+            ...
+
     def install_timer_unit(self, config: TimerConfig) -> bool:
         """Installe une unité .timer.
 
@@ -398,13 +527,13 @@ class _TimerOperationsMixin:
             True si succès, False sinon.
         """
         timer_file = f"{config.timer_name}.timer"
-        if not self._write_unit_file(  # type: ignore[attr-defined]
+        if not self._write_unit_file(
             timer_file, config.to_unit_file()
         ):
             return False
-        if not self.reload_systemd():  # type: ignore[attr-defined]
+        if not self.reload_systemd():
             return False
-        self.logger.log_info(  # type: ignore[attr-defined]
+        self.logger.log_info(
             f"{self._timer_label} {timer_file} installé pour {config.unit}"
         )
         return True
@@ -419,7 +548,7 @@ class _TimerOperationsMixin:
             True si succès, False sinon.
         """
         validate_unit_name(timer_name)
-        return self.enable(  # type: ignore[attr-defined]
+        return self.enable(
             f"{timer_name}.timer"
         )
 
@@ -433,7 +562,7 @@ class _TimerOperationsMixin:
             True si succès, False sinon.
         """
         validate_unit_name(timer_name)
-        return self.disable(  # type: ignore[attr-defined]
+        return self.disable(
             f"{timer_name}.timer"
         )
 
@@ -448,17 +577,17 @@ class _TimerOperationsMixin:
         """
         validate_unit_name(timer_name)
         if not self.disable_timer(timer_name):
-            self.logger.log_warning(  # type: ignore[attr-defined]
+            self.logger.log_warning(
                 f"disable_timer échoué pour {timer_name!r} "
                 "(unité peut-être déjà inactive) — "
                 "suppression du fichier unit quand même"
             )
-        if not self._remove_unit_file(  # type: ignore[attr-defined]
+        if not self._remove_unit_file(
             f"{timer_name}.timer"
         ):
             return False
-        self.reload_systemd()  # type: ignore[attr-defined]
-        self.logger.log_info(  # type: ignore[attr-defined]
+        self.reload_systemd()
+        self.logger.log_info(
             f"{self._timer_label} {timer_name}.timer supprimé"
         )
         return True
@@ -473,7 +602,7 @@ class _TimerOperationsMixin:
             Statut du timer ou None si erreur.
         """
         validate_unit_name(timer_name)
-        return self.get_status(  # type: ignore[attr-defined]
+        return self.get_status(
             f"{timer_name}.timer"
         )
 
@@ -1060,7 +1189,7 @@ class UserUnitManager(_BaseUnitManagerMixin):
     def __init__(
         self,
         logger: "Logger",
-        executor: "SystemdExecutor"
+        executor: "UserSystemdExecutor"
     ) -> None:
         """
         Initialise le gestionnaire d'unités utilisateur.
