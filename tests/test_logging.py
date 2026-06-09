@@ -12,6 +12,7 @@ import pytest
 
 from linux_python_utils.logging import (
     AnsiColors,
+    build_logger,
     ConsoleLogger,
     FileLogger,
     Logger,
@@ -634,3 +635,91 @@ class TestRotatingFileLogger:
         content = log_file.read_text(encoding="utf-8")
         assert "ne doit pas apparaître" not in content
         assert "doit apparaître" in content
+
+
+class TestBuildLogger:
+    """Tests pour la factory build_logger."""
+
+    def test_none_retourne_console_logger(self) -> None:
+        """Sans config, build_logger retourne un ConsoleLogger."""
+        logger = build_logger(None)
+        assert isinstance(logger, ConsoleLogger)
+
+    def test_type_console_retourne_console_logger(self) -> None:
+        """type='console' retourne un ConsoleLogger."""
+        logger = build_logger({"type": "console"})
+        assert isinstance(logger, ConsoleLogger)
+
+    def test_type_file_retourne_file_logger(self, tmp_path: Path) -> None:
+        """type='file' retourne un FileLogger."""
+        logger = build_logger({
+            "type": "file",
+            "file": str(tmp_path / "app.log"),
+        })
+        assert isinstance(logger, FileLogger)
+
+    def test_type_rotating_retourne_rotating_file_logger(
+        self, tmp_path: Path
+    ) -> None:
+        """type='rotating' retourne un RotatingFileLogger."""
+        logger = build_logger({
+            "type": "rotating",
+            "file": str(tmp_path / "app.log"),
+        })
+        assert isinstance(logger, RotatingFileLogger)
+
+    def test_type_inconnu_leve_valueerror(self) -> None:
+        """Un type inconnu lève ValueError."""
+        with pytest.raises(ValueError, match="Type de logger inconnu"):
+            build_logger({"type": "syslog"})
+
+    def test_file_absent_pour_type_file_leve_valueerror(self) -> None:
+        """type='file' sans clé 'file' lève ValueError."""
+        with pytest.raises(ValueError, match="clé 'file' est obligatoire"):
+            build_logger({"type": "file"})
+
+    def test_file_absent_pour_type_rotating_leve_valueerror(self) -> None:
+        """type='rotating' sans clé 'file' lève ValueError."""
+        with pytest.raises(ValueError, match="clé 'file' est obligatoire"):
+            build_logger({"type": "rotating"})
+
+    def test_level_transmis_au_file_logger(self, tmp_path: Path) -> None:
+        """Le niveau de log est transmis au FileLogger."""
+        log_file = tmp_path / "app.log"
+        logger = build_logger({
+            "type": "file",
+            "file": str(log_file),
+            "level": "WARNING",
+        })
+        logger.log_info("filtré")
+        logger.log_warning("visible")
+        content = log_file.read_text(encoding="utf-8")
+        assert "filtré" not in content
+        assert "visible" in content
+
+    def test_max_bytes_transmis_au_rotating_logger(
+        self, tmp_path: Path
+    ) -> None:
+        """max_bytes et backup_count sont transmis au RotatingFileLogger."""
+        log_file = tmp_path / "app.log"
+        logger = build_logger({
+            "type": "rotating",
+            "file": str(log_file),
+            "max_bytes": 100,
+            "backup_count": 2,
+        })
+        for i in range(20):
+            logger.log_info(f"ligne suffisamment longue pour tourner {i}")
+        assert (tmp_path / "app.log.1").exists()
+
+    def test_logger_retourne_est_instance_de_logger(
+        self, tmp_path: Path
+    ) -> None:
+        """Tous les types retournés implémentent l'interface Logger."""
+        configs = [
+            {"type": "console"},
+            {"type": "file", "file": str(tmp_path / "a.log")},
+            {"type": "rotating", "file": str(tmp_path / "b.log")},
+        ]
+        for cfg in configs:
+            assert isinstance(build_logger(cfg), Logger)
