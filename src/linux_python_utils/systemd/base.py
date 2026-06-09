@@ -1,7 +1,9 @@
 """Interfaces abstraites pour la gestion des unités systemd."""
 
+import errno as _errno
 import json
 import os
+import shlex
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -30,9 +32,12 @@ __all__ = [
     "AutomountConfig",
     "TimerConfig",
     "ServiceConfig",
+    "_BaseUnitManagerMixin",
     "UnitManager",
     "MountUnitManager",
+    "_TimerUnitContract",
     "TimerUnitManager",
+    "_ServiceUnitContract",
     "ServiceUnitManager",
     "UserUnitManager",
     "UserTimerUnitManager",
@@ -75,7 +80,7 @@ def _write_unit_content(
             0o644,
         )
     except OSError as e:
-        if e.errno == 40:  # errno.ELOOP — lien symbolique
+        if e.errno == _errno.ELOOP:  # lien symbolique
             logger.log_error(
                 f"Refus d'écrire {unit_path} : lien symbolique détecté"
             )
@@ -146,10 +151,95 @@ class _ServiceOperationsMixin:
 
     Requiert que la classe héritante fournisse :
     ``logger``, ``executor``, ``enable()``, ``disable()``,
-    ``get_status()``, ``reload_systemd()``, ``_remove_unit_file()``.
+    ``get_status()``, ``reload_systemd()``, ``_write_unit_file()``,
+    ``_remove_unit_file()``.
     """
 
     _service_label: str = "Service"
+
+    @staticmethod
+    def _extract_service_name_from_config(config: ServiceConfig) -> str:
+        """Extrait le nom du service depuis exec_start.
+
+        Args:
+            config: Configuration du service.
+
+        Returns:
+            Nom du service dérivé du binaire exec_start.
+        """
+        return os.path.basename(
+            shlex.split(config.exec_start)[0]
+        ).replace(".", "-")
+
+    def _validated_service_file(
+        self, service_name: str
+    ) -> "str | None":
+        """Valide le nom de service et retourne le nom de fichier unit.
+
+        Args:
+            service_name: Nom du service (sans extension).
+
+        Returns:
+            ``"{service_name}.service"`` ou None si le nom est invalide.
+        """
+        try:
+            validate_service_name(service_name)
+        except ValueError as e:
+            self.logger.log_error(  # type: ignore[attr-defined]
+                f"Nom de service invalide : {e}"
+            )
+            return None
+        return f"{service_name}.service"
+
+    def install_service_unit(self, config: ServiceConfig) -> bool:
+        """Installe une unité .service en dérivant le nom depuis exec_start.
+
+        Args:
+            config: Configuration du service.
+
+        Returns:
+            True si succès, False sinon.
+        """
+        service_name = self._extract_service_name_from_config(config)
+        service_file = self._validated_service_file(service_name)
+        if service_file is None:
+            return False
+        if not self._write_unit_file(  # type: ignore[attr-defined]
+            service_file, config.to_unit_file()
+        ):
+            return False
+        if not self.reload_systemd():  # type: ignore[attr-defined]
+            return False
+        self.logger.log_info(  # type: ignore[attr-defined]
+            f"{self._service_label} {service_file} installé"
+        )
+        return True
+
+    def install_service_unit_with_name(
+        self, service_name: str, config: ServiceConfig
+    ) -> bool:
+        """Installe une unité .service avec un nom spécifique.
+
+        Args:
+            service_name: Nom du service (sans extension).
+            config: Configuration du service.
+
+        Returns:
+            True si succès, False sinon.
+        """
+        service_file = self._validated_service_file(service_name)
+        if service_file is None:
+            return False
+        if not self._write_unit_file(  # type: ignore[attr-defined]
+            service_file, config.to_unit_file()
+        ):
+            return False
+        if not self.reload_systemd():  # type: ignore[attr-defined]
+            return False
+        self.logger.log_info(  # type: ignore[attr-defined]
+            f"{self._service_label} {service_file} installé"
+        )
+        return True
 
     def start_service(self, service_name: str) -> bool:
         """Démarre un service.
@@ -292,10 +382,32 @@ class _TimerOperationsMixin:
 
     Requiert que la classe héritante fournisse :
     ``logger``, ``executor``, ``enable()``, ``disable()``,
-    ``get_status()``, ``reload_systemd()``, ``_remove_unit_file()``.
+    ``get_status()``, ``reload_systemd()``, ``_write_unit_file()``,
+    ``_remove_unit_file()``.
     """
 
     _timer_label: str = "Timer"
+
+    def install_timer_unit(self, config: TimerConfig) -> bool:
+        """Installe une unité .timer.
+
+        Args:
+            config: Configuration du timer.
+
+        Returns:
+            True si succès, False sinon.
+        """
+        timer_file = f"{config.timer_name}.timer"
+        if not self._write_unit_file(  # type: ignore[attr-defined]
+            timer_file, config.to_unit_file()
+        ):
+            return False
+        if not self.reload_systemd():  # type: ignore[attr-defined]
+            return False
+        self.logger.log_info(  # type: ignore[attr-defined]
+            f"{self._timer_label} {timer_file} installé pour {config.unit}"
+        )
+        return True
 
     def enable_timer(self, timer_name: str) -> bool:
         """Active un timer.
@@ -463,64 +575,33 @@ class _TimerOperationsMixin:
 
 
 # =============================================================================
-# Classes abstraites
+# Mixin de base commun UnitManager / UserUnitManager
 # =============================================================================
 
-class UnitManager(ABC):
-    """Classe de base abstraite pour tous les gestionnaires d'unités systemd.
+class _BaseUnitManagerMixin:
+    """Mixin portant les méthodes communes aux managers système et utilisateur.
 
-    Fournit les opérations communes à tous les types d'unités via
-    l'injection d'un SystemdExecutor.
+    Factorise __init__, reload_systemd, enable, disable, get_status et
+    is_active qui sont identiques entre UnitManager et UserUnitManager.
 
     Attributes:
         logger: Instance de Logger pour le logging.
         executor: Instance de SystemdExecutor pour les opérations systemctl.
-        SYSTEMD_UNIT_PATH: Chemin du répertoire des unités systemd.
     """
-
-    SYSTEMD_UNIT_PATH: str = "/etc/systemd/system"
 
     def __init__(
         self,
         logger: "Logger",
-        executor: "SystemdExecutor"
+        executor: "SystemdExecutor",
     ) -> None:
-        """
-        Initialise le gestionnaire d'unités.
+        """Initialise le gestionnaire avec logger et executor.
 
         Args:
-            logger: Instance de Logger pour le logging
-            executor: Instance de SystemdExecutor pour les opérations systemctl
+            logger: Instance de Logger pour le logging.
+            executor: Instance de SystemdExecutor pour les opérations.
         """
         self.logger = logger
         self.executor = executor
-
-    def _write_unit_file(
-        self, unit_name: str, content: str
-    ) -> bool:
-        """Écrit un fichier unit dans le répertoire systemd (O_NOFOLLOW).
-
-        Args:
-            unit_name: Nom du fichier (avec extension).
-            content: Contenu du fichier.
-
-        Returns:
-            True si succès, False sinon.
-        """
-        unit_path = os.path.join(self.SYSTEMD_UNIT_PATH, unit_name)
-        return _write_unit_content(unit_path, content, self.logger)
-
-    def _remove_unit_file(self, unit_name: str) -> bool:
-        """Supprime un fichier unit du répertoire systemd (TOCTOU-safe).
-
-        Args:
-            unit_name: Nom du fichier (avec extension).
-
-        Returns:
-            True si succès ou fichier inexistant, False si erreur.
-        """
-        unit_path = os.path.join(self.SYSTEMD_UNIT_PATH, unit_name)
-        return _remove_unit_content(unit_path, self.logger)
 
     def reload_systemd(self) -> bool:
         """
@@ -543,7 +624,9 @@ class UnitManager(ABC):
         """
         return self.executor.enable_unit(unit_name)
 
-    def disable(self, unit_name: str, ignore_errors: bool = False) -> bool:
+    def disable(
+        self, unit_name: str, ignore_errors: bool = False
+    ) -> bool:
         """
         Désactive une unité systemd.
 
@@ -583,7 +666,53 @@ class UnitManager(ABC):
         return self.executor.is_active(unit_name)
 
 
-class MountUnitManager(UnitManager):
+# =============================================================================
+# Classes abstraites — gestionnaires système
+# =============================================================================
+
+class UnitManager(_BaseUnitManagerMixin):
+    """Classe de base pour tous les gestionnaires d'unités systemd.
+
+    Fournit les opérations communes via l'injection d'un SystemdExecutor
+    et les helpers d'écriture/suppression TOCTOU-safe.
+
+    Attributes:
+        logger: Instance de Logger pour le logging.
+        executor: Instance de SystemdExecutor pour les opérations systemctl.
+        SYSTEMD_UNIT_PATH: Chemin du répertoire des unités systemd.
+    """
+
+    SYSTEMD_UNIT_PATH: str = "/etc/systemd/system"
+
+    def _write_unit_file(
+        self, unit_name: str, content: str
+    ) -> bool:
+        """Écrit un fichier unit dans le répertoire systemd (O_NOFOLLOW).
+
+        Args:
+            unit_name: Nom du fichier (avec extension).
+            content: Contenu du fichier.
+
+        Returns:
+            True si succès, False sinon.
+        """
+        unit_path = os.path.join(self.SYSTEMD_UNIT_PATH, unit_name)
+        return _write_unit_content(unit_path, content, self.logger)
+
+    def _remove_unit_file(self, unit_name: str) -> bool:
+        """Supprime un fichier unit du répertoire systemd (TOCTOU-safe).
+
+        Args:
+            unit_name: Nom du fichier (avec extension).
+
+        Returns:
+            True si succès ou fichier inexistant, False si erreur.
+        """
+        unit_path = os.path.join(self.SYSTEMD_UNIT_PATH, unit_name)
+        return _remove_unit_content(unit_path, self.logger)
+
+
+class MountUnitManager(ABC, UnitManager):
     """Interface pour la gestion des unités .mount et .automount systemd."""
 
     @staticmethod
@@ -618,7 +747,7 @@ class MountUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
 
     @abstractmethod
     def enable_mount(
@@ -634,7 +763,7 @@ class MountUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
 
     @abstractmethod
     def disable_mount(self, mount_path: str) -> bool:
@@ -647,7 +776,7 @@ class MountUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
 
     @abstractmethod
     def remove_mount_unit(self, mount_path: str) -> bool:
@@ -660,7 +789,7 @@ class MountUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
 
     @abstractmethod
     def get_mount_status(self, mount_path: str) -> str | None:
@@ -673,7 +802,7 @@ class MountUnitManager(UnitManager):
         Returns:
             Statut de l'unité ou None si erreur
         """
-        pass
+        ...
 
     @abstractmethod
     def is_mounted(self, mount_path: str) -> bool:
@@ -686,11 +815,15 @@ class MountUnitManager(UnitManager):
         Returns:
             True si monté, False sinon
         """
-        pass
+        ...
 
 
-class TimerUnitManager(UnitManager):
-    """Interface pour la gestion des unités .timer systemd."""
+class _TimerUnitContract(ABC):
+    """Contrat abstrait partagé par TimerUnitManager et UserTimerUnitManager.
+
+    Élimine la duplication des 6 signatures abstraites entre les deux
+    familles système et utilisateur.
+    """
 
     @abstractmethod
     def install_timer_unit(self, config: TimerConfig) -> bool:
@@ -703,7 +836,7 @@ class TimerUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
 
     @abstractmethod
     def enable_timer(self, timer_name: str) -> bool:
@@ -716,7 +849,7 @@ class TimerUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
 
     @abstractmethod
     def disable_timer(self, timer_name: str) -> bool:
@@ -729,7 +862,7 @@ class TimerUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
 
     @abstractmethod
     def remove_timer_unit(self, timer_name: str) -> bool:
@@ -742,7 +875,7 @@ class TimerUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
 
     @abstractmethod
     def get_timer_status(self, timer_name: str) -> str | None:
@@ -755,7 +888,7 @@ class TimerUnitManager(UnitManager):
         Returns:
             Statut du timer ou None si erreur
         """
-        pass
+        ...
 
     @abstractmethod
     def list_timers(self) -> list[dict[str, str]]:
@@ -765,11 +898,17 @@ class TimerUnitManager(UnitManager):
         Returns:
             Liste de dictionnaires avec les infos des timers
         """
-        pass
+        ...
 
 
-class ServiceUnitManager(UnitManager):
-    """Interface pour la gestion des unités .service systemd."""
+class _ServiceUnitContract(ABC):
+    """Contrat abstrait partagé par ServiceUnitManager/UserServiceUnitManager.
+
+    Élimine la duplication des 9 signatures abstraites entre les deux
+    familles système et utilisateur. Inclut install_service_unit_with_name
+    pour permettre l'injection d'abstractions dans
+    SystemdScheduledTaskInstaller.
+    """
 
     @abstractmethod
     def install_service_unit(self, config: ServiceConfig) -> bool:
@@ -782,7 +921,23 @@ class ServiceUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
+
+    @abstractmethod
+    def install_service_unit_with_name(
+        self, service_name: str, config: ServiceConfig
+    ) -> bool:
+        """
+        Installe une unité .service avec un nom spécifique.
+
+        Args:
+            service_name: Nom du service (sans extension)
+            config: Configuration du service
+
+        Returns:
+            True si succès, False sinon
+        """
+        ...
 
     @abstractmethod
     def start_service(self, service_name: str) -> bool:
@@ -795,7 +950,7 @@ class ServiceUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
 
     @abstractmethod
     def stop_service(self, service_name: str) -> bool:
@@ -808,7 +963,7 @@ class ServiceUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
 
     @abstractmethod
     def restart_service(self, service_name: str) -> bool:
@@ -821,7 +976,7 @@ class ServiceUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
 
     @abstractmethod
     def enable_service(self, service_name: str) -> bool:
@@ -834,7 +989,7 @@ class ServiceUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
 
     @abstractmethod
     def disable_service(self, service_name: str) -> bool:
@@ -847,7 +1002,7 @@ class ServiceUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
 
     @abstractmethod
     def remove_service_unit(self, service_name: str) -> bool:
@@ -860,7 +1015,7 @@ class ServiceUnitManager(UnitManager):
         Returns:
             True si succès, False sinon
         """
-        pass
+        ...
 
     @abstractmethod
     def get_service_status(self, service_name: str) -> str | None:
@@ -873,14 +1028,22 @@ class ServiceUnitManager(UnitManager):
         Returns:
             Statut du service ou None si erreur
         """
-        pass
+        ...
+
+
+class TimerUnitManager(_TimerUnitContract, UnitManager):
+    """Interface pour la gestion des unités .timer systemd."""
+
+
+class ServiceUnitManager(_ServiceUnitContract, UnitManager):
+    """Interface pour la gestion des unités .service systemd."""
 
 
 # =============================================================================
-# Classes abstraites pour les unités utilisateur
+# Classes abstraites — gestionnaires utilisateur
 # =============================================================================
 
-class UserUnitManager(ABC):
+class UserUnitManager(_BaseUnitManagerMixin):
     """Classe de base pour les gestionnaires d'unités systemd utilisateur.
 
     Les unités utilisateur sont stockées dans ~/.config/systemd/user/
@@ -906,8 +1069,7 @@ class UserUnitManager(ABC):
             logger: Instance de Logger pour le logging
             executor: Instance de UserSystemdExecutor pour les opérations
         """
-        self.logger = logger
-        self.executor = executor
+        super().__init__(logger, executor)
         self._unit_path = os.path.expanduser(self.SYSTEMD_USER_UNIT_PATH)
 
     @property
@@ -964,249 +1126,10 @@ class UserUnitManager(ABC):
             unit_path, self.logger, log_label=" utilisateur"
         )
 
-    def reload_systemd(self) -> bool:
-        """
-        Recharge la configuration systemd utilisateur (daemon-reload).
 
-        Returns:
-            True si succès, False sinon
-        """
-        return self.executor.reload_systemd()
-
-    def enable(self, unit_name: str) -> bool:
-        """
-        Active une unité systemd utilisateur.
-
-        Args:
-            unit_name: Nom de l'unité (ex: "backup.timer")
-
-        Returns:
-            True si succès, False sinon
-        """
-        return self.executor.enable_unit(unit_name)
-
-    def disable(self, unit_name: str, ignore_errors: bool = False) -> bool:
-        """
-        Désactive une unité systemd utilisateur.
-
-        Args:
-            unit_name: Nom de l'unité
-            ignore_errors: Ignorer les erreurs (unité inexistante, etc.)
-
-        Returns:
-            True si succès, False sinon
-        """
-        return self.executor.disable_unit(
-            unit_name, ignore_errors=ignore_errors
-        )
-
-    def get_status(self, unit_name: str) -> str | None:
-        """
-        Récupère le statut d'une unité utilisateur.
-
-        Args:
-            unit_name: Nom de l'unité
-
-        Returns:
-            Statut de l'unité ou None si erreur
-        """
-        return self.executor.get_status(unit_name)
-
-    def is_active(self, unit_name: str) -> bool:
-        """
-        Vérifie si une unité utilisateur est active.
-
-        Args:
-            unit_name: Nom de l'unité
-
-        Returns:
-            True si active, False sinon
-        """
-        return self.executor.is_active(unit_name)
-
-
-class UserTimerUnitManager(UserUnitManager):
+class UserTimerUnitManager(_TimerUnitContract, UserUnitManager):
     """Interface pour la gestion des unités .timer utilisateur."""
 
-    @abstractmethod
-    def install_timer_unit(self, config: TimerConfig) -> bool:
-        """
-        Installe une unité .timer utilisateur.
 
-        Args:
-            config: Configuration du timer
-
-        Returns:
-            True si succès, False sinon
-        """
-        pass
-
-    @abstractmethod
-    def enable_timer(self, timer_name: str) -> bool:
-        """
-        Active un timer utilisateur.
-
-        Args:
-            timer_name: Nom du timer (sans extension .timer)
-
-        Returns:
-            True si succès, False sinon
-        """
-        pass
-
-    @abstractmethod
-    def disable_timer(self, timer_name: str) -> bool:
-        """
-        Désactive un timer utilisateur.
-
-        Args:
-            timer_name: Nom du timer (sans extension .timer)
-
-        Returns:
-            True si succès, False sinon
-        """
-        pass
-
-    @abstractmethod
-    def remove_timer_unit(self, timer_name: str) -> bool:
-        """
-        Supprime un fichier .timer utilisateur.
-
-        Args:
-            timer_name: Nom du timer (sans extension)
-
-        Returns:
-            True si succès, False sinon
-        """
-        pass
-
-    @abstractmethod
-    def get_timer_status(self, timer_name: str) -> str | None:
-        """
-        Récupère le statut d'un timer utilisateur.
-
-        Args:
-            timer_name: Nom du timer (sans extension)
-
-        Returns:
-            Statut du timer ou None si erreur
-        """
-        pass
-
-    @abstractmethod
-    def list_timers(self) -> list[dict[str, str]]:
-        """
-        Liste tous les timers utilisateur actifs.
-
-        Returns:
-            Liste de dictionnaires avec les infos des timers
-        """
-        pass
-
-
-class UserServiceUnitManager(UserUnitManager):
+class UserServiceUnitManager(_ServiceUnitContract, UserUnitManager):
     """Interface pour la gestion des unités .service utilisateur."""
-
-    @abstractmethod
-    def install_service_unit(self, config: ServiceConfig) -> bool:
-        """
-        Installe une unité .service utilisateur.
-
-        Args:
-            config: Configuration du service
-
-        Returns:
-            True si succès, False sinon
-        """
-        pass
-
-    @abstractmethod
-    def start_service(self, service_name: str) -> bool:
-        """
-        Démarre un service utilisateur.
-
-        Args:
-            service_name: Nom du service (sans extension .service)
-
-        Returns:
-            True si succès, False sinon
-        """
-        pass
-
-    @abstractmethod
-    def stop_service(self, service_name: str) -> bool:
-        """
-        Arrête un service utilisateur.
-
-        Args:
-            service_name: Nom du service (sans extension .service)
-
-        Returns:
-            True si succès, False sinon
-        """
-        pass
-
-    @abstractmethod
-    def restart_service(self, service_name: str) -> bool:
-        """
-        Redémarre un service utilisateur.
-
-        Args:
-            service_name: Nom du service (sans extension .service)
-
-        Returns:
-            True si succès, False sinon
-        """
-        pass
-
-    @abstractmethod
-    def enable_service(self, service_name: str) -> bool:
-        """
-        Active un service utilisateur.
-
-        Args:
-            service_name: Nom du service (sans extension .service)
-
-        Returns:
-            True si succès, False sinon
-        """
-        pass
-
-    @abstractmethod
-    def disable_service(self, service_name: str) -> bool:
-        """
-        Désactive un service utilisateur.
-
-        Args:
-            service_name: Nom du service (sans extension .service)
-
-        Returns:
-            True si succès, False sinon
-        """
-        pass
-
-    @abstractmethod
-    def remove_service_unit(self, service_name: str) -> bool:
-        """
-        Supprime un fichier .service utilisateur.
-
-        Args:
-            service_name: Nom du service (sans extension)
-
-        Returns:
-            True si succès, False sinon
-        """
-        pass
-
-    @abstractmethod
-    def get_service_status(self, service_name: str) -> str | None:
-        """
-        Récupère le statut d'un service utilisateur.
-
-        Args:
-            service_name: Nom du service (sans extension)
-
-        Returns:
-            Statut du service ou None si erreur
-        """
-        pass

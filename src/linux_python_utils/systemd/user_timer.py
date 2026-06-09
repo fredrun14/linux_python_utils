@@ -4,7 +4,6 @@ from linux_python_utils.logging.base import Logger
 from linux_python_utils.systemd.base import (
     _TimerOperationsMixin,
     UserTimerUnitManager,
-    TimerConfig,
 )
 from linux_python_utils.systemd.executor import UserSystemdExecutor
 
@@ -39,30 +38,3 @@ class LinuxUserTimerUnitManager(_TimerOperationsMixin, UserTimerUnitManager):
             executor: Instance de UserSystemdExecutor pour les opérations
         """
         super().__init__(logger, executor)
-
-    def install_timer_unit(self, config: TimerConfig) -> bool:
-        """
-        Installe une unité .timer utilisateur.
-
-        Args:
-            config: Configuration du timer
-
-        Returns:
-            True si succès, False sinon
-
-        Raises:
-            ValueError: Si un champ de config contient un caractère de contrôle.
-        """
-        timer_file = f"{config.timer_name}.timer"
-        timer_content = config.to_unit_file()
-
-        if not self._write_unit_file(timer_file, timer_content):
-            return False
-
-        if not self.reload_systemd():
-            return False
-
-        self.logger.log_info(
-            f"Timer utilisateur {timer_file} installé pour {config.unit}"
-        )
-        return True

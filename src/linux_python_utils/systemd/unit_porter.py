@@ -263,40 +263,13 @@ class SystemdUnitRestorer:
             Tuple (succès, nom_unit). nom_unit est vide en cas d'échec
             ou de dry_run.
         """
-        try:
-            data = tomllib.loads(
-                toml_path.read_text(encoding="utf-8")
-            )
-        except (OSError, tomllib.TOMLDecodeError) as exc:
-            self._logger.log_error(
-                f"{toml_path.name} illisible : {exc}"
-            )
+        parsed = self._parse_meta(toml_path)
+        if parsed is None:
             return (False, "")
+        data, unit_type, enabled, requires_exec = parsed
 
-        meta = data.get("meta", {})
-        unit_type = str(meta.get("unit_type", ""))
-        if unit_type not in _SUPPORTED_UNIT_TYPES:
-            self._logger.log_error(
-                f"{toml_path.name} — unit_type invalide : {unit_type!r}"
-            )
-            return (False, "")
-        enabled = bool(meta.get("enabled", False))
-        requires_exec = str(meta.get("requires_exec", ""))
-
-        stem = toml_path.stem
-        if not stem.endswith(f"-{unit_type}"):
-            self._logger.log_error(
-                f"{toml_path.name} — stem {stem!r} incohérent "
-                f"avec unit_type {unit_type!r}"
-            )
-            return (False, "")
-        unit_name = stem[: -len(unit_type) - 1] + "." + unit_type
-        try:
-            validate_full_unit_name(unit_name)
-        except ValueError as exc:
-            self._logger.log_error(
-                f"{toml_path.name} — nom d'unité invalide : {exc}"
-            )
+        unit_name = self._resolve_unit_name(toml_path, unit_type)
+        if unit_name is None:
             return (False, "")
 
         if requires_exec and not self._exec_present(requires_exec):
@@ -328,6 +301,68 @@ class SystemdUnitRestorer:
             self._enable(unit_name, user=user)
         self._daemon_reload(user=user)
         return (True, unit_name)
+
+    def _parse_meta(
+        self, toml_path: Path
+    ) -> "tuple[dict, str, bool, str] | None":
+        """Parse le fichier TOML et extrait les métadonnées.
+
+        Args:
+            toml_path: Chemin du fichier TOML source.
+
+        Returns:
+            Tuple (data, unit_type, enabled, requires_exec) ou None si erreur.
+        """
+        try:
+            data = tomllib.loads(
+                toml_path.read_text(encoding="utf-8")
+            )
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            self._logger.log_error(
+                f"{toml_path.name} illisible : {exc}"
+            )
+            return None
+        meta = data.get("meta", {})
+        unit_type = str(meta.get("unit_type", ""))
+        if unit_type not in _SUPPORTED_UNIT_TYPES:
+            self._logger.log_error(
+                f"{toml_path.name} — unit_type invalide : {unit_type!r}"
+            )
+            return None
+        enabled = bool(meta.get("enabled", False))
+        requires_exec = str(meta.get("requires_exec", ""))
+        return data, unit_type, enabled, requires_exec
+
+    def _resolve_unit_name(
+        self, toml_path: Path, unit_type: str
+    ) -> str | None:
+        """Déduit et valide le nom d'unité depuis le stem du fichier TOML.
+
+        Convention : ``{nom}-{type}.toml`` → ``{nom}.{type}``.
+
+        Args:
+            toml_path: Chemin du fichier TOML.
+            unit_type: Type d'unit extrait des métadonnées.
+
+        Returns:
+            Nom d'unité validé ou None si incohérent/invalide.
+        """
+        stem = toml_path.stem
+        if not stem.endswith(f"-{unit_type}"):
+            self._logger.log_error(
+                f"{toml_path.name} — stem {stem!r} incohérent "
+                f"avec unit_type {unit_type!r}"
+            )
+            return None
+        unit_name = stem[: -len(unit_type) - 1] + "." + unit_type
+        try:
+            validate_full_unit_name(unit_name)
+        except ValueError as exc:
+            self._logger.log_error(
+                f"{toml_path.name} — nom d'unité invalide : {exc}"
+            )
+            return None
+        return unit_name
 
     @staticmethod
     def to_ini(
@@ -380,6 +415,21 @@ class SystemdUnitRestorer:
             return p.exists()
         return shutil.which(path_or_name) is not None
 
+    def _run_systemctl_fallback(
+        self, *args: str, user: bool = False
+    ) -> None:
+        """Exécute systemctl en fallback sans executor injecté.
+
+        Args:
+            *args: Arguments systemctl (ex: "enable", "unit-name").
+            user: Si True, ajoute --user.
+        """
+        cmd = ["systemctl"]
+        if user:
+            cmd.append("--user")
+        cmd.extend(args)
+        subprocess.run(cmd, check=False)  # nosec B603
+
     def _enable(self, unit_name: str, user: bool = False) -> None:
         """Active une unit via l'exécuteur injecté ou subprocess.
 
@@ -390,11 +440,7 @@ class SystemdUnitRestorer:
         if self._executor is not None:
             self._executor.enable_unit(unit_name)
         else:
-            cmd = ["systemctl"]
-            if user:
-                cmd.append("--user")
-            cmd += ["enable", unit_name]
-            subprocess.run(cmd, check=False)  # nosec B603
+            self._run_systemctl_fallback("enable", unit_name, user=user)
 
     def _daemon_reload(self, user: bool = False) -> None:
         """Recharge le daemon systemd via l'exécuteur ou subprocess.
@@ -405,8 +451,4 @@ class SystemdUnitRestorer:
         if self._executor is not None:
             self._executor.reload_systemd()
         else:
-            cmd = ["systemctl"]
-            if user:
-                cmd.append("--user")
-            cmd.append("daemon-reload")
-            subprocess.run(cmd, check=False)  # nosec B603
+            self._run_systemctl_fallback("daemon-reload", user=user)

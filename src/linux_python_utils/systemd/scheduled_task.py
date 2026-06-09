@@ -22,9 +22,12 @@ from abc import ABC, abstractmethod
 
 from linux_python_utils.logging import Logger
 from linux_python_utils.scripts import BashScriptInstaller, BashScriptConfig
-from linux_python_utils.systemd.base import ServiceConfig, TimerConfig
-from linux_python_utils.systemd.service import LinuxServiceUnitManager
-from linux_python_utils.systemd.timer import LinuxTimerUnitManager
+from linux_python_utils.systemd.base import (
+    ServiceConfig,
+    ServiceUnitManager,
+    TimerConfig,
+    TimerUnitManager,
+)
 
 
 class ScheduledTaskInstaller(ABC):
@@ -71,8 +74,8 @@ class SystemdScheduledTaskInstaller(ScheduledTaskInstaller):
     Attributes:
         logger: Instance de Logger pour la journalisation.
         script_installer: Installateur de scripts bash.
-        service_manager: Gestionnaire d'unités .service systemd.
-        timer_manager: Gestionnaire d'unités .timer systemd.
+        service_manager: Gestionnaire d'unités .service (ServiceUnitManager).
+        timer_manager: Gestionnaire d'unités .timer (TimerUnitManager).
 
     Example:
         >>> installer = SystemdScheduledTaskInstaller(
@@ -86,8 +89,8 @@ class SystemdScheduledTaskInstaller(ScheduledTaskInstaller):
         self,
         logger: Logger,
         script_installer: BashScriptInstaller,
-        service_manager: LinuxServiceUnitManager,
-        timer_manager: LinuxTimerUnitManager,
+        service_manager: ServiceUnitManager,
+        timer_manager: TimerUnitManager,
     ) -> None:
         """Initialise l'installateur avec ses dépendances.
 
@@ -99,8 +102,8 @@ class SystemdScheduledTaskInstaller(ScheduledTaskInstaller):
         """
         self._logger: Logger = logger
         self._script_installer: BashScriptInstaller = script_installer
-        self._service_manager: LinuxServiceUnitManager = service_manager
-        self._timer_manager: LinuxTimerUnitManager = timer_manager
+        self._service_manager: ServiceUnitManager = service_manager
+        self._timer_manager: TimerUnitManager = timer_manager
 
     def install(
         self,

@@ -1,6 +1,7 @@
 """Exécuteur de commandes systemctl."""
 
 import subprocess  # nosec B404
+from typing import ClassVar
 
 from linux_python_utils.logging.base import Logger
 from linux_python_utils.systemd.validators import validate_full_unit_name
@@ -15,6 +16,8 @@ class SystemdExecutor:
     Attributes:
         logger: Instance de Logger pour le logging.
     """
+
+    _label: ClassVar[str] = ""
 
     def __init__(self, logger: Logger) -> None:
         """
@@ -54,11 +57,13 @@ class SystemdExecutor:
         """
         try:
             self._run_systemctl(["daemon-reload"])
-            self.logger.log_info("Systemd rechargé avec succès.")
+            self.logger.log_info(
+                f"Systemd{self._label} rechargé avec succès."
+            )
             return True
         except subprocess.CalledProcessError as e:
             self.logger.log_error(
-                f"Erreur lors du rechargement de systemd: {e}"
+                f"Erreur lors du rechargement de systemd{self._label}: {e}"
             )
             return False
 
@@ -280,6 +285,8 @@ class UserSystemdExecutor(SystemdExecutor):
         logger: Instance de Logger pour le logging.
     """
 
+    _label = " utilisateur"
+
     def _run_systemctl(
         self,
         args: list[str],
@@ -299,22 +306,3 @@ class UserSystemdExecutor(SystemdExecutor):
         return subprocess.run(  # nosec B603
             cmd, check=check, capture_output=True, text=True
         )
-
-    def reload_systemd(self) -> bool:
-        """
-        Recharge la configuration systemd utilisateur (daemon-reload).
-
-        Returns:
-            True si succès, False sinon
-        """
-        try:
-            self._run_systemctl(["daemon-reload"])
-            self.logger.log_info(
-                "Systemd utilisateur rechargé avec succès."
-            )
-            return True
-        except subprocess.CalledProcessError as e:
-            self.logger.log_error(
-                f"Erreur lors du rechargement de systemd utilisateur: {e}"
-            )
-            return False

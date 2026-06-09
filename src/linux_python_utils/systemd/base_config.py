@@ -10,6 +10,25 @@ from linux_python_utils.systemd.validators import (
 )
 
 
+def _optional_line(label: str, value: str, field_name: str) -> str | None:
+    """Retourne une ligne INI optionnelle ou None si la valeur est vide.
+
+    Args:
+        label: Clé INI (ex: ``OnCalendar``).
+        value: Valeur du champ ; ignorée si vide.
+        field_name: Nom du champ pour reject_control_chars.
+
+    Returns:
+        ``"label=value"`` ou None.
+
+    Raises:
+        ValueError: Si value contient un caractère de contrôle.
+    """
+    if not value:
+        return None
+    return f"{label}={reject_control_chars(value, field_name)}"
+
+
 @dataclass(frozen=True)
 class BaseSystemdConfig:
     """Configuration de base pour une unité systemd.
@@ -35,6 +54,10 @@ class MountConfig(BaseSystemdConfig):
         type: Type de système de fichiers (nfs, cifs, sshfs, ext4, etc.).
         options: Options de montage (défaut: chaîne vide).
     """
+
+    _DEVICE_FS: ClassVar[frozenset[str]] = frozenset({
+        "ext4", "ext3", "xfs", "btrfs", "vfat", "ntfs"
+    })
 
     what: str
     where: str
@@ -66,9 +89,7 @@ class MountConfig(BaseSystemdConfig):
                     f"Format CIFS invalide pour 'what' : {self.what!r}"
                     " (attendu : //host/share)"
                 )
-        elif fs_type in (
-            "ext4", "ext3", "xfs", "btrfs", "vfat", "ntfs"
-        ):
+        elif fs_type in self._DEVICE_FS:
             if not self.what.startswith("/dev/"):
                 raise ValueError(
                     f"'what' doit être un device pour {fs_type} : "
@@ -241,28 +262,21 @@ class TimerConfig(BaseSystemdConfig):
             f"Unit={reject_control_chars(self.unit, 'unit')}",
         ]
 
-        if self.on_calendar:
-            lines.append(
-                f"OnCalendar="
-                f"{reject_control_chars(self.on_calendar, 'on_calendar')}"
-            )
-        if self.on_boot_sec:
-            lines.append(
-                f"OnBootSec="
-                f"{reject_control_chars(self.on_boot_sec, 'on_boot_sec')}"
-            )
-        if self.on_unit_active_sec:
-            val = reject_control_chars(
-                self.on_unit_active_sec, 'on_unit_active_sec'
-            )
-            lines.append(f"OnUnitActiveSec={val}")
-        if self.persistent:
-            lines.append("Persistent=true")
-        if self.randomized_delay_sec:
-            val = reject_control_chars(
-                self.randomized_delay_sec, 'randomized_delay_sec'
-            )
-            lines.append(f"RandomizedDelaySec={val}")
+        lines.extend(filter(None, [
+            _optional_line("OnCalendar", self.on_calendar, "on_calendar"),
+            _optional_line("OnBootSec", self.on_boot_sec, "on_boot_sec"),
+            _optional_line(
+                "OnUnitActiveSec",
+                self.on_unit_active_sec,
+                "on_unit_active_sec",
+            ),
+            "Persistent=true" if self.persistent else None,
+            _optional_line(
+                "RandomizedDelaySec",
+                self.randomized_delay_sec,
+                "randomized_delay_sec",
+            ),
+        ]))
 
         lines.extend([
             "",
@@ -354,22 +368,19 @@ class ServiceConfig(BaseSystemdConfig):
             "",
             "[Service]",
             f"Type={self.type}",
-            f"ExecStart={reject_control_chars(self.exec_start, 'exec_start')}",
+            f"ExecStart="
+            f"{reject_control_chars(self.exec_start, 'exec_start')}",
         ]
 
-        if self.user:
-            lines.append(
-                f"User={reject_control_chars(self.user, 'user')}"
-            )
-        if self.group:
-            lines.append(
-                f"Group={reject_control_chars(self.group, 'group')}"
-            )
-        if self.working_directory:
-            val = reject_control_chars(
-                self.working_directory, 'working_directory'
-            )
-            lines.append(f"WorkingDirectory={val}")
+        lines.extend(filter(None, [
+            _optional_line("User", self.user, "user"),
+            _optional_line("Group", self.group, "group"),
+            _optional_line(
+                "WorkingDirectory",
+                self.working_directory,
+                "working_directory",
+            ),
+        ]))
 
         for key, value in self.environment.items():
             lines.append(f"Environment={key}={value}")
@@ -382,7 +393,8 @@ class ServiceConfig(BaseSystemdConfig):
         lines.extend([
             "",
             "[Install]",
-            f"WantedBy={reject_control_chars(self.wanted_by, 'wanted_by')}",
+            f"WantedBy="
+            f"{reject_control_chars(self.wanted_by, 'wanted_by')}",
         ])
 
         return "\n".join(lines) + "\n"

@@ -15,6 +15,35 @@ _EXTENSIONS_VALIDES = frozenset(
 )
 
 
+def _validate_name(
+    name: str,
+    pattern: re.Pattern[str],
+    entity: str,
+) -> str:
+    """Valide un nom selon un pattern et un label d'entité.
+
+    Args:
+        name: Nom à valider.
+        pattern: Expression régulière de validation.
+        entity: Label pour les messages d'erreur.
+
+    Returns:
+        Le nom validé.
+
+    Raises:
+        ValueError: Si le nom est invalide.
+    """
+    if not name:
+        raise ValueError(f"Le nom {entity} ne peut pas être vide")
+    if '..' in name or '/' in name:
+        raise ValueError(
+            f"Nom {entity} invalide (traversée interdite) : {name!r}"
+        )
+    if not pattern.match(name):
+        raise ValueError(f"Nom {entity} invalide : {name!r}")
+    return name
+
+
 def reject_control_chars(value: str, champ: str) -> str:
     """Rejette les caractères de contrôle dans une valeur de champ unit.
 
@@ -101,17 +130,7 @@ def validate_unit_name(name: str) -> str:
     Raises:
         ValueError: Si le nom est invalide.
     """
-    if not name:
-        raise ValueError("Le nom d'unité ne peut pas être vide")
-    if '..' in name or '/' in name:
-        raise ValueError(
-            f"Nom d'unité invalide (traversée interdite) : {name!r}"
-        )
-    if not _UNIT_NAME_RE.match(name):
-        raise ValueError(
-            f"Nom d'unité invalide : {name!r}"
-        )
-    return name
+    return _validate_name(name, _UNIT_NAME_RE, "d'unité")
 
 
 def validate_service_name(name: str) -> str:
@@ -129,15 +148,4 @@ def validate_service_name(name: str) -> str:
     Raises:
         ValueError: Si le nom est invalide.
     """
-    if not name:
-        raise ValueError("Le nom de service ne peut pas être vide")
-    if '..' in name or '/' in name:
-        raise ValueError(
-            f"Nom de service invalide (traversée interdite) : "
-            f"{name!r}"
-        )
-    if not _SERVICE_NAME_RE.match(name):
-        raise ValueError(
-            f"Nom de service invalide : {name!r}"
-        )
-    return name
+    return _validate_name(name, _SERVICE_NAME_RE, "de service")
