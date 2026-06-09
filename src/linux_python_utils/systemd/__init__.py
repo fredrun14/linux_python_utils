@@ -1,28 +1,37 @@
 """Module de gestion des unités systemd.
 
-Ce module fournit des classes pour gérer les unités systemd:
+Ce module fournit des classes pour gérer les unités systemd :
 
-Unités système (root):
-- SystemdExecutor: Exécuteur de commandes systemctl
+Exécuteurs systemctl:
+- SystemdExecutor: Exécuteur de commandes systemctl (mode système)
+- UserSystemdExecutor: Exécuteur de commandes systemctl --user
+
+Unités système (root, /etc/systemd/system):
 - LinuxMountUnitManager: Gestion des unités .mount et .automount
 - LinuxTimerUnitManager: Gestion des unités .timer
 - LinuxServiceUnitManager: Gestion des unités .service
 
-Unités utilisateur (sans root):
-- UserSystemdExecutor: Exécuteur de commandes systemctl --user
+Unités utilisateur (sans root, ~/.config/systemd/user):
 - LinuxUserTimerUnitManager: Gestion des unités .timer utilisateur
 - LinuxUserServiceUnitManager: Gestion des unités .service utilisateur
 
-Architecture:
-    SystemdExecutor/UserSystemdExecutor est injecté dans les différents
-    UnitManagers pour centraliser les opérations systemctl.
+Orchestration:
+- SystemdScheduledTaskInstaller: Installation complète script + service + timer
+
+Export / restauration portables:
+- SystemdUnitExporter: Exporte un fichier unit existant vers TOML (verbatim)
+- SystemdUnitRestorer: Restaure un fichier unit depuis TOML
+
+Chargeurs de configuration (TOML/JSON → dataclass):
+- ServiceConfigLoader, TimerConfigLoader, MountConfigLoader
+- BashScriptConfigLoader
 
 Exemple d'utilisation (système):
     from linux_python_utils import FileLogger
     from linux_python_utils.systemd import (
         SystemdExecutor,
         LinuxMountUnitManager,
-        MountConfig
+        MountConfig,
     )
 
     logger = FileLogger("/var/log/app.log")
@@ -34,7 +43,7 @@ Exemple d'utilisation (système):
         what="192.168.1.10:/share",
         where="/media/nas",
         type="nfs",
-        options="rw,soft"
+        options="rw,soft",
     )
     mount_manager.install_mount_unit(config, with_automount=True)
 
@@ -43,7 +52,7 @@ Exemple d'utilisation (utilisateur):
     from linux_python_utils.systemd import (
         UserSystemdExecutor,
         LinuxUserTimerUnitManager,
-        TimerConfig
+        TimerConfig,
     )
 
     logger = FileLogger("~/.local/log/app.log")
@@ -54,7 +63,7 @@ Exemple d'utilisation (utilisateur):
         description="Backup quotidien",
         unit="backup.service",
         on_calendar="daily",
-        persistent=True
+        persistent=True,
     )
     timer_manager.install_timer_unit(config)
 """

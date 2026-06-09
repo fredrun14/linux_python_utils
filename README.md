@@ -1457,6 +1457,8 @@ LinuxMountUnitMgr  LinuxTimerUnitMgr  LinuxServiceUnitMgr  LinuxUserTimerUnitMgr
   │  start/stop/restart/enable/disable_ │   │  enable/disable/remove_timer_unit,  │
   │  service, get_service_status,       │   │  get_timer_status, list_timers      │
   │  remove_service_unit                │   │  (+ fallback texte si JSON absent)  │
+  │  contrat : _ServiceOperationsHost   │   │  contrat : _TimerOperationsHost     │
+  │  (Protocol + if TYPE_CHECKING:)     │   │  (Protocol + if TYPE_CHECKING:)     │
   └────────────────┬────────────────────┘   └────────────────┬────────────────────┘
                    │ hérité par                                │ hérité par
         LinuxServiceUnitManager                     LinuxTimerUnitManager
