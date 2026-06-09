@@ -6,39 +6,39 @@ Ce module suit le principe SRP en isolant la gestion des exceptions.
 
 
 class ApplicationError(Exception):
-    """Exception de base pour toutes les applications."""
+    """Exception de base pour toutes les erreurs applicatives."""
 
 
 class ConfigurationError(ApplicationError):
-    """Exception de base pour toutes les Configurations."""
+    """Exception levée lors d'une erreur de configuration."""
 
 
 class FileConfigurationError(ConfigurationError):
-    """Exception de base pour tous les fichiers de configurations."""
+    """Exception levée lors d'une erreur dans un fichier de configuration."""
 
 
 class SystemRequirementError(ApplicationError):
-    """Exception de base pour tous les systèmes de dépendances."""
+    """Exception levée quand un prérequis système est manquant."""
 
 
 class MissingDependencyError(SystemRequirementError):
-    """Exception de base pour toutes les dépendances manquantes."""
+    """Exception levée quand une dépendance requise est absente."""
 
 
 class ValidationError(ApplicationError):
-    """Exception de base pour toutes les validations."""
+    """Exception levée lors d'un échec de validation."""
 
 
 class InstallationError(ApplicationError):
-    """Exception de base pour toutes les installations."""
+    """Exception levée lors d'un échec d'installation."""
 
 
 class AppPermissionError(ApplicationError):
-    """Exception de base pour toutes les permissions applicatives."""
+    """Exception levée en cas de permissions insuffisantes."""
 
 
 class RollbackError(ApplicationError):
-    """Exception de base pour toutes les Rollback."""
+    """Exception levée quand une ou plusieurs actions de rollback échouent."""
 
 
 class IntegrityError(ApplicationError):

@@ -153,6 +153,21 @@ class TestErrorHandlerChain(unittest.TestCase):
         handler1.handle.assert_called_once_with(error)
         handler2.handle.assert_called_once_with(error)
 
+    def test_handle_continues_after_handler_failure(self) -> None:
+        """Un handler qui lève ne doit pas bloquer les suivants."""
+        chain = ErrorHandlerChain()
+        handler1 = MagicMock()
+        handler1.handle.side_effect = RuntimeError("handler failed")
+        handler2 = MagicMock()
+        chain.add_handler(handler1)
+        chain.add_handler(handler2)
+
+        error = RuntimeError("test")
+        chain.handle(error)
+
+        handler1.handle.assert_called_once_with(error)
+        handler2.handle.assert_called_once_with(error)
+
     def test_handle_and_exit(self) -> None:
         """Vérifie que handle_and_exit appelle sys.exit."""
         chain = ErrorHandlerChain()
@@ -178,7 +193,8 @@ class TestErrorContext(unittest.TestCase):
         """Vérifie l'ajout d'une action de rollback."""
         action = MagicMock()
         self.context.add_rollback_action(action, "test action")
-        self.assertEqual(len(self.context.rollback_actions), 1)
+        self.context.execute_rollback()
+        action.assert_called_once()
 
     def test_execute_rollback_success(self) -> None:
         """Vérifie l'exécution réussie du rollback."""
@@ -260,9 +276,11 @@ class TestErrorContext(unittest.TestCase):
 
     def test_clear_rollback_actions(self) -> None:
         """Vérifie la suppression de toutes les actions."""
-        self.context.add_rollback_action(MagicMock(), "action")
+        action = MagicMock()
+        self.context.add_rollback_action(action, "action")
         self.context.clear_rollback_actions()
-        self.assertEqual(len(self.context.rollback_actions), 0)
+        self.context.execute_rollback()
+        action.assert_not_called()
 
 
 class TestConsoleErrorHandlerInjectees(unittest.TestCase):

@@ -33,7 +33,7 @@ class ErrorHandlerChain:
 
     def __init__(self) -> None:
         """Initialise la chaîne avec une liste vide de handlers."""
-        self.handlers: list[ErrorHandler] = []
+        self._handlers: list[ErrorHandler] = []
 
     def add_handler(self, handler: ErrorHandler) -> None:
         """Ajoute un handler à la chaîne.
@@ -41,16 +41,26 @@ class ErrorHandlerChain:
         Args:
             handler: Le handler d'erreurs à ajouter.
         """
-        self.handlers.append(handler)
+        self._handlers.append(handler)
 
     def handle(self, error: Exception) -> None:
         """Fait passer l'erreur à travers tous les handlers.
 
+        Chaque handler est invoqué en best-effort : si un handler lève
+        une exception, l'erreur est signalée sur stderr et les handlers
+        suivants continuent de s'exécuter.
+
         Args:
             error: L'exception à diffuser.
         """
-        for handler in self.handlers:
-            handler.handle(error)
+        for handler in self._handlers:
+            try:
+                handler.handle(error)
+            except Exception as handler_exc:
+                sys.stderr.write(
+                    f"[ErrorHandlerChain] {type(handler).__name__}"
+                    f" a échoué : {handler_exc}\n"
+                )
 
     def handle_and_exit(self, error: Exception, exit_code: int = 1) -> None:
         """Gère l'erreur et termine le programme.

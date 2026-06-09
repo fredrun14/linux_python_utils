@@ -1,3 +1,5 @@
+"""Contexte d'erreur avec rollback ordonné (LIFO)."""
+
 from collections.abc import Callable
 
 from linux_python_utils import Logger
@@ -18,7 +20,7 @@ class ErrorContext:
             logger: Instance de Logger pour tracer les opérations de rollback.
         """
         self._logger = logger
-        self.rollback_actions: list[tuple[Callable[[], None], str]] = []
+        self._rollback_actions: list[tuple[Callable[[], None], str]] = []
 
     def add_rollback_action(
         self, action: Callable[[], None], label: str
@@ -29,7 +31,7 @@ class ErrorContext:
             action: Callable à exécuter lors du rollback.
             label: Description de l'action pour les logs.
         """
-        self.rollback_actions.append((action, label))
+        self._rollback_actions.append((action, label))
 
     def execute_rollback(self) -> None:
         """Exécute toutes les actions de rollback en ordre inverse.
@@ -43,7 +45,7 @@ class ErrorContext:
             self._logger.log_info("Début du rollback...")
 
         rollback_errors: list[str] = []
-        for action, label in reversed(self.rollback_actions):
+        for action, label in reversed(self._rollback_actions):
             try:
                 action()
                 if self._logger:
@@ -82,7 +84,7 @@ class ErrorContext:
                 f"Erreur nécessitant rollback: {error}"
             )
 
-        if self.rollback_actions:
+        if self._rollback_actions:
             try:
                 self.execute_rollback()
             except RollbackError:
@@ -93,4 +95,4 @@ class ErrorContext:
 
     def clear_rollback_actions(self) -> None:
         """Efface toutes les actions de rollback enregistrées."""
-        self.rollback_actions.clear()
+        self._rollback_actions.clear()
