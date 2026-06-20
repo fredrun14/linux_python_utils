@@ -42,7 +42,7 @@ Fournit des classes réutilisables et extensibles pour le logging, la configurat
 
 - **📝 Logging robuste** — `FileLogger` (fichier + console, UTF-8), `RotatingFileLogger` (rotation par taille, TOCTOU-safe), `ConsoleLogger` (stdout/stderr sans fichier), `SecurityLogger` (JSON structuré pour audit trail), `build_logger` (factory pilotée par config TOML)
 - **⚙️ Configuration flexible** — Support TOML/JSON avec fusion profonde et profils
-- **📁 Gestion de fichiers** — CRUD fichiers et sauvegardes TOCTOU-safe (contenu uniquement, métadonnées non préservées)
+- **📁 Gestion de fichiers** — CRUD fichiers et sauvegardes TOCTOU-safe, copie récursive sécurisée (`copytree_secure`)
 - **🔧 Systemd complet** — Gestion services, timers et unités de montage (système et utilisateur)
 - **📄 Chargeurs de config** — Loaders typés pour créer des dataclasses depuis TOML ou JSON
 - **🔐 Vérification d'intégrité** — Checksums SHA256/SHA512/MD5 pour fichiers et répertoires
@@ -273,9 +273,9 @@ linux-python-utils/
 │   │   └── manager.py           # ConfigurationManager
 │   ├── filesystem/
 │   │   ├── __init__.py
-│   │   ├── base.py              # ABCs FileManager, FileBackup
-│   │   ├── linux.py             # LinuxFileManager
-│   │   └── backup.py            # LinuxFileBackup
+│   │   ├── base.py              # ABC FileManager
+│   │   ├── linux.py             # LinuxFileManager, write_text_secure
+│   │   └── backup.py            # FileBackup, LinuxFileBackup, copytree_secure
 │   ├── systemd/
 │   │   ├── __init__.py          # Exports module systemd
 │   │   ├── base.py              # ABCs + dataclasses (configs)
@@ -1101,6 +1101,24 @@ backup.backup("/etc/myapp.conf", "/etc/myapp.conf.bak")
 backup.restore("/etc/myapp.conf", "/etc/myapp.conf.bak")
 ```
 
+Copie récursive sécurisée (alternative TOCTOU-safe à `shutil.copytree`) :
+
+```python
+from linux_python_utils.filesystem import copytree_secure
+from shutil import ignore_patterns
+
+# Copie récursive — O_NOFOLLOW sur chaque fichier destination,
+# symlinks source ignorés par défaut
+copytree_secure("/etc/myapp", "/media/backup/myapp", dirs_exist_ok=True)
+
+# Avec filtre et résolution des symlinks source
+copytree_secure(
+    "/home/user/project", "/media/backup/project",
+    ignore=ignore_patterns("*.pyc", "__pycache__"),
+    follow_symlinks=True,  # résout les symlinks source, O_NOFOLLOW côté dest
+)
+```
+
 Pipeline backup + vérification d'intégrité :
 
 ```python
@@ -1125,6 +1143,7 @@ if backup.backup(src, bak):
 |-----------------|----------------|-------------|
 | `FileManager` | `LinuxFileManager` | CRUD fichiers |
 | `FileBackup` | `LinuxFileBackup` | Sauvegarde/restauration |
+| — | `copytree_secure()` | Copie récursive TOCTOU-safe (O_NOFOLLOW) |
 
 ### Architecture des Classes
 
@@ -1146,6 +1165,10 @@ if backup.backup(src, bak):
   │  + read_file(path)              │    │     les métadonnées)             │
   │  (TOCTOU-safe: O_NOFOLLOW)      │    │  + restore(bak, dst)             │
   └─────────────────────────────────┘    └──────────────────────────────────┘
+
+  copytree_secure(src, dst, *, dirs_exist_ok, ignore, follow_symlinks)
+  └── Copie récursive TOCTOU-safe — délègue à _copy_secure() par fichier
+      O_NOFOLLOW côté destination, symlinks source ignorés ou résolus
 ```
 
 ---
