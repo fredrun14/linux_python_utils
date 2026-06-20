@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from linux_python_utils.errors import IntegrityError
 from linux_python_utils.integrity import (
     SHA256IntegrityChecker,
     calculate_checksum,
@@ -298,3 +299,155 @@ class TestSHA256IntegrityChecker:
         mock_logger.log_warning.assert_called_once()
         warning_msg = mock_logger.log_warning.call_args[0][0]
         assert "vide" in warning_msg.lower() or "0" in warning_msg
+
+
+class TestSHA256IntegrityCheckerOrRaise:
+    """Tests pour verify_file_or_raise et verify_or_raise."""
+
+    @pytest.fixture
+    def logger(self, tmp_path):
+        """Fixture fournissant un FileLogger pour les tests."""
+        log_file = tmp_path / "test.log"
+        return FileLogger(str(log_file))
+
+    def test_verify_file_or_raise_succes_ne_leve_pas(
+        self, tmp_path, logger
+    ) -> None:
+        """verify_file_or_raise ne lève rien si les fichiers sont identiques."""
+        # Arrange
+        source = tmp_path / "source.txt"
+        dest = tmp_path / "dest.txt"
+        source.write_text("contenu")
+        dest.write_text("contenu")
+        checker = SHA256IntegrityChecker(logger)
+
+        # Act / Assert — ne doit pas lever
+        checker.verify_file_or_raise(source, dest)
+
+    def test_verify_file_or_raise_leve_integrity_error(
+        self, tmp_path, logger
+    ) -> None:
+        """verify_file_or_raise lève IntegrityError si les checksums diffèrent."""
+        # Arrange
+        source = tmp_path / "source.txt"
+        dest = tmp_path / "dest.txt"
+        source.write_text("original")
+        dest.write_text("modifié")
+        checker = SHA256IntegrityChecker(logger)
+
+        # Act / Assert
+        with pytest.raises(IntegrityError):
+            checker.verify_file_or_raise(source, dest)
+
+    def test_verify_file_or_raise_attributs_integrity_error(
+        self, tmp_path, logger
+    ) -> None:
+        """IntegrityError expose path, expected et actual non nuls."""
+        # Arrange
+        source = tmp_path / "source.txt"
+        dest = tmp_path / "dest.txt"
+        source.write_text("A")
+        dest.write_text("B")
+        checker = SHA256IntegrityChecker(logger)
+
+        # Act
+        with pytest.raises(IntegrityError) as exc_info:
+            checker.verify_file_or_raise(source, dest)
+
+        # Assert
+        err = exc_info.value
+        assert err.path == dest
+        assert err.expected is not None
+        assert err.actual is not None
+        assert err.expected != err.actual
+
+    def test_verify_file_or_raise_oserror_propage(
+        self, tmp_path, logger
+    ) -> None:
+        """verify_file_or_raise ne capture pas OSError."""
+        # Arrange
+        checker = SHA256IntegrityChecker(logger)
+
+        # Act / Assert
+        with pytest.raises(OSError):
+            checker.verify_file_or_raise(
+                tmp_path / "inexistant.txt",
+                tmp_path / "dest.txt",
+            )
+
+    def test_verify_or_raise_succes_retourne_count(
+        self, tmp_path, logger
+    ) -> None:
+        """verify_or_raise retourne le nombre de fichiers vérifiés."""
+        # Arrange
+        source_dir = tmp_path / "source"
+        source_dir.mkdir()
+        (source_dir / "a.txt").write_text("A")
+        (source_dir / "b.txt").write_text("B")
+        dest_dir = tmp_path / "dest" / "source"
+        dest_dir.mkdir(parents=True)
+        (dest_dir / "a.txt").write_text("A")
+        (dest_dir / "b.txt").write_text("B")
+        checker = SHA256IntegrityChecker(logger)
+
+        # Act
+        count = checker.verify_or_raise(
+            str(source_dir), str(tmp_path / "dest")
+        )
+
+        # Assert
+        assert count == 2
+
+    def test_verify_or_raise_fichier_manquant_leve_integrity_error(
+        self, tmp_path, logger
+    ) -> None:
+        """verify_or_raise lève IntegrityError si un fichier est absent."""
+        # Arrange
+        source_dir = tmp_path / "source"
+        source_dir.mkdir()
+        (source_dir / "file.txt").write_text("contenu")
+        dest_dir = tmp_path / "dest" / "source"
+        dest_dir.mkdir(parents=True)  # vide — fichier manquant
+        checker = SHA256IntegrityChecker(logger)
+
+        # Act / Assert
+        with pytest.raises(IntegrityError):
+            checker.verify_or_raise(
+                str(source_dir), str(tmp_path / "dest")
+            )
+
+    def test_verify_or_raise_checksum_different_leve_integrity_error(
+        self, tmp_path, logger
+    ) -> None:
+        """verify_or_raise lève IntegrityError si un checksum diffère."""
+        # Arrange
+        source_dir = tmp_path / "source"
+        source_dir.mkdir()
+        (source_dir / "file.txt").write_text("original")
+        dest_dir = tmp_path / "dest" / "source"
+        dest_dir.mkdir(parents=True)
+        (dest_dir / "file.txt").write_text("modifié")
+        checker = SHA256IntegrityChecker(logger)
+
+        # Act / Assert
+        with pytest.raises(IntegrityError):
+            checker.verify_or_raise(
+                str(source_dir), str(tmp_path / "dest")
+            )
+
+    def test_verify_or_raise_source_vide_retourne_zero(
+        self, tmp_path, logger
+    ) -> None:
+        """verify_or_raise retourne 0 si la source est vide."""
+        # Arrange
+        source_dir = tmp_path / "source_vide"
+        source_dir.mkdir()
+        dest_dir = tmp_path / "dest"
+        dest_dir.mkdir()
+        checker = SHA256IntegrityChecker(logger)
+
+        # Act
+        count = checker.verify_or_raise(str(source_dir), str(dest_dir))
+
+        # Assert
+        assert count == 0
