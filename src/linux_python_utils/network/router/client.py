@@ -93,9 +93,10 @@ class RouterConfig:
         timeout: Timeout des requetes HTTP en secondes.
         username: Nom d'utilisateur admin du routeur.
         password: Mot de passe admin du routeur.
-            Les variables d'environnement ASUS_ROUTER_USER
-            et ASUS_ROUTER_PASSWORD ont priorite sur ces
-            valeurs si elles sont definies.
+            La surcharge via les variables d'environnement
+            ASUS_ROUTER_USER / ASUS_ROUTER_PASSWORD est
+            appliquee par l'appelant (ex. CredentialChain),
+            pas par RouterConfig elle-meme.
     """
 
     url: str = "http://192.168.50.1"
