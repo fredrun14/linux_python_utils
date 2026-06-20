@@ -2,6 +2,7 @@
 
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 
 from linux_python_utils.filesystem.linux import _open_secure
@@ -37,6 +38,74 @@ def _copy_secure(src: str | Path, dst: str | Path) -> None:
             os.close(dst_fd)
     finally:
         os.close(src_fd)
+
+
+def copytree_secure(
+    src: str | Path,
+    dst: str | Path,
+    *,
+    dirs_exist_ok: bool = False,
+    ignore: Callable[[str, list[str]], set[str]] | None = None,
+) -> Path:
+    """Copie récursive d'un répertoire avec protection symlink.
+
+    Parcourt src récursivement. Les fichiers sont copiés via
+    _copy_secure (O_NOFOLLOW, permissions 0o644). Les répertoires
+    sont créés avec permissions 0o755. Les symlinks sont ignorés
+    silencieusement.
+
+    Args:
+        src: Répertoire source.
+        dst: Répertoire destination.
+        dirs_exist_ok: Si True, ne lève pas d'erreur si dst
+            existe déjà.
+        ignore: Callable compatible shutil.ignore_patterns.
+            Reçoit (dirpath, entries) et retourne un set de
+            noms à ignorer.
+
+    Returns:
+        Path de la destination.
+
+    Raises:
+        FileNotFoundError: Si src n'existe pas.
+        FileExistsError: Si dst existe et dirs_exist_ok=False.
+        NotADirectoryError: Si src n'est pas un répertoire.
+        OSError: Si src est un symlink, ou erreur d'E/S.
+    """
+    src = Path(src)
+    dst = Path(dst)
+
+    if not src.exists():
+        raise FileNotFoundError(f"Source absente : {src}")
+    if src.is_symlink():
+        raise OSError(f"Source est un symlink : {src}")
+    if not src.is_dir():
+        raise NotADirectoryError(f"Source n'est pas un répertoire : {src}")
+    if dst.exists() and not dirs_exist_ok:
+        raise FileExistsError(f"Destination existe déjà : {dst}")
+
+    dst.mkdir(parents=True, exist_ok=dirs_exist_ok)
+    os.chmod(dst, 0o755)
+
+    entries = sorted(src.iterdir())
+    names = [e.name for e in entries]
+    ignored = ignore(str(src), names) if ignore else set()
+
+    for entry in entries:
+        if entry.name in ignored:
+            continue
+        if entry.is_symlink():
+            continue
+        dest_entry = dst / entry.name
+        if entry.is_dir():
+            copytree_secure(
+                entry, dest_entry,
+                dirs_exist_ok=dirs_exist_ok, ignore=ignore,
+            )
+        elif entry.is_file():
+            _copy_secure(entry, dest_entry)
+
+    return dst
 
 
 class FileBackup(ABC):

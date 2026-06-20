@@ -1,12 +1,16 @@
 """Tests pour les modules filesystem.linux et filesystem.backup."""
 
 import os
+import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from linux_python_utils.filesystem.backup import LinuxFileBackup
+from linux_python_utils.filesystem.backup import (
+    LinuxFileBackup,
+    copytree_secure,
+)
 from linux_python_utils.filesystem.linux import LinuxFileManager
 
 
@@ -247,3 +251,136 @@ class TestLinuxFileBackup:
         backup = LinuxFileBackup()
         backup.restore(str(dest), str(bak))
         assert dest.read_text() == "sauvegardé"
+
+
+class TestCopytreeSecure:
+    """Tests pour copytree_secure."""
+
+    def _make_tree(self, root: Path) -> Path:
+        """Crée un arbre source : a.txt, sub/b.txt."""
+        root.mkdir()
+        (root / "a.txt").write_text("contenu a")
+        sub = root / "sub"
+        sub.mkdir()
+        (sub / "b.txt").write_text("contenu b")
+        return root
+
+    def test_copie_arbre_complet(self, tmp_path):
+        """Copie un arbre et vérifie contenu + structure."""
+        src = self._make_tree(tmp_path / "src")
+        dst = tmp_path / "dst"
+        result = copytree_secure(src, dst)
+        assert (dst / "a.txt").read_text() == "contenu a"
+        assert (dst / "sub" / "b.txt").read_text() == "contenu b"
+        assert result == dst
+
+    def test_fichiers_ont_permissions_0644(self, tmp_path):
+        """Fichiers copiés avec permissions 0o644."""
+        src = self._make_tree(tmp_path / "src")
+        dst = tmp_path / "dst"
+        copytree_secure(src, dst)
+        assert os.stat(dst / "a.txt").st_mode & 0o777 == 0o644
+        assert os.stat(dst / "sub" / "b.txt").st_mode & 0o777 == 0o644
+
+    def test_repertoires_ont_permissions_0755(self, tmp_path):
+        """Répertoires créés avec permissions 0o755."""
+        src = self._make_tree(tmp_path / "src")
+        dst = tmp_path / "dst"
+        copytree_secure(src, dst)
+        assert os.stat(dst).st_mode & 0o777 == 0o755
+        assert os.stat(dst / "sub").st_mode & 0o777 == 0o755
+
+    def test_dirs_exist_ok_false_leve_FileExistsError(self, tmp_path):
+        """Lève FileExistsError si dst existe et dirs_exist_ok=False."""
+        src = self._make_tree(tmp_path / "src")
+        dst = tmp_path / "dst"
+        dst.mkdir()
+        with pytest.raises(FileExistsError):
+            copytree_secure(src, dst, dirs_exist_ok=False)
+
+    def test_dirs_exist_ok_true_fusionne(self, tmp_path):
+        """Fusionne dans un répertoire existant."""
+        src = self._make_tree(tmp_path / "src")
+        dst = tmp_path / "dst"
+        dst.mkdir()
+        (dst / "existant.txt").write_text("garde-moi")
+        copytree_secure(src, dst, dirs_exist_ok=True)
+        assert (dst / "existant.txt").read_text() == "garde-moi"
+        assert (dst / "a.txt").read_text() == "contenu a"
+
+    def test_ignore_filtre_fichiers(self, tmp_path):
+        """ignore exclut les fichiers correspondants."""
+        src = self._make_tree(tmp_path / "src")
+        (src / "cache.pyc").write_text("bytecode")
+        dst = tmp_path / "dst"
+        copytree_secure(
+            src, dst,
+            ignore=shutil.ignore_patterns("*.pyc"),
+        )
+        assert not (dst / "cache.pyc").exists()
+        assert (dst / "a.txt").exists()
+
+    def test_ignore_filtre_repertoires(self, tmp_path):
+        """ignore exclut les répertoires correspondants."""
+        src = self._make_tree(tmp_path / "src")
+        pycache = src / "__pycache__"
+        pycache.mkdir()
+        (pycache / "mod.pyc").write_text("bytecode")
+        dst = tmp_path / "dst"
+        copytree_secure(
+            src, dst,
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+        assert not (dst / "__pycache__").exists()
+
+    def test_symlinks_ignores_silencieusement(self, tmp_path):
+        """Symlinks dans l'arbre source sont ignorés."""
+        src = self._make_tree(tmp_path / "src")
+        (src / "lien.txt").symlink_to(src / "a.txt")
+        dst = tmp_path / "dst"
+        copytree_secure(src, dst)
+        assert not (dst / "lien.txt").exists()
+        assert (dst / "a.txt").exists()
+
+    def test_source_absente_leve_FileNotFoundError(self, tmp_path):
+        """Lève FileNotFoundError si src n'existe pas."""
+        with pytest.raises(FileNotFoundError):
+            copytree_secure(
+                tmp_path / "inexistant", tmp_path / "dst"
+            )
+
+    def test_source_pas_repertoire_leve_NotADirectoryError(
+        self, tmp_path
+    ):
+        """Lève NotADirectoryError si src est un fichier."""
+        src = tmp_path / "fichier.txt"
+        src.write_text("pas un répertoire")
+        with pytest.raises(NotADirectoryError):
+            copytree_secure(src, tmp_path / "dst")
+
+    def test_source_symlink_leve_OSError(self, tmp_path):
+        """Lève OSError si src est un symlink vers un répertoire."""
+        real = tmp_path / "real"
+        real.mkdir()
+        link = tmp_path / "link"
+        link.symlink_to(real)
+        with pytest.raises(OSError):
+            copytree_secure(link, tmp_path / "dst")
+
+    def test_repertoire_vide(self, tmp_path):
+        """Copie un répertoire vide."""
+        src = tmp_path / "src"
+        src.mkdir()
+        dst = tmp_path / "dst"
+        copytree_secure(src, dst)
+        assert dst.is_dir()
+        assert list(dst.iterdir()) == []
+
+    def test_retourne_path_destination(self, tmp_path):
+        """Retourne Path(dst)."""
+        src = tmp_path / "src"
+        src.mkdir()
+        dst = tmp_path / "dst"
+        result = copytree_secure(src, dst)
+        assert result == Path(dst)
+        assert isinstance(result, Path)

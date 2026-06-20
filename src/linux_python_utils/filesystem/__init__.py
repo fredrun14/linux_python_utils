@@ -1,6 +1,10 @@
 """Module de gestion des fichiers."""
 
-from linux_python_utils.filesystem.backup import FileBackup, LinuxFileBackup
+from linux_python_utils.filesystem.backup import (
+    FileBackup,
+    LinuxFileBackup,
+    copytree_secure,
+)
 from linux_python_utils.filesystem.base import FileManager
 from linux_python_utils.filesystem.linux import (
     LinuxFileManager,
@@ -13,4 +17,5 @@ __all__ = [
     "write_text_secure",
     "FileBackup",
     "LinuxFileBackup",
+    "copytree_secure",
 ]
