@@ -168,6 +168,36 @@ class TestNotificationConfigValidationControle:
                 message_failure="msg\tmalicieux",
             )
 
+    def test_icon_success_avec_newline_leve_valueerror(self):
+        """icon_success contenant \\n lève ValueError."""
+        with pytest.raises(ValueError, match="Caractère de contrôle"):
+            NotificationConfig(
+                title="Titre",
+                message_success="OK",
+                message_failure="KO",
+                icon_success="icone\nmalicieuse",
+            )
+
+    def test_icon_failure_avec_caractere_controle_leve_valueerror(self):
+        """icon_failure contenant \\x01 lève ValueError."""
+        with pytest.raises(ValueError, match="Caractère de contrôle"):
+            NotificationConfig(
+                title="Titre",
+                message_success="OK",
+                message_failure="KO",
+                icon_failure="icone\x01malicieuse",
+            )
+
+    def test_icon_success_vide_leve_valueerror(self):
+        """icon_success vide lève ValueError."""
+        with pytest.raises(ValueError, match="icon_success est requis"):
+            NotificationConfig(
+                title="Titre",
+                message_success="OK",
+                message_failure="KO",
+                icon_success="",
+            )
+
     def test_to_bash_call_echappe_entree_hostile(self):
         """shlex.quote neutralise les entrées hostiles dans to_bash_call_success."""
         config = NotificationConfig(

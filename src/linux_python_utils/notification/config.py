@@ -13,9 +13,8 @@ class NotificationConfig:
     """Configuration pour les notifications desktop Linux.
 
     Génère du code bash via ``to_bash_function()`` et ``to_bash_call_*()``.
-    Les champs texte (title, message_*, app_name) ne doivent pas contenir
-    de caractères de contrôle (ord < 32 : ``\\n``, ``\\t``, ``\\x00``…)
-    ni être vides.
+    Tous les champs texte ne doivent pas contenir de caractères de contrôle
+    (ord < 32 : ``\\n``, ``\\t``, ``\\x00``…) ni être vides.
 
     Attributes:
         title: Titre de la notification.
@@ -44,6 +43,8 @@ class NotificationConfig:
             ("title", self.title),
             ("message_success", self.message_success),
             ("message_failure", self.message_failure),
+            ("icon_success", self.icon_success),
+            ("icon_failure", self.icon_failure),
             ("app_name", self.app_name),
         ):
             if not valeur:
