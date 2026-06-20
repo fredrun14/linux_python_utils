@@ -60,6 +60,24 @@ class TestSystemdExecutorValidation:
         with pytest.raises(ValueError, match="invalide"):
             executor.is_enabled("bad;cmd.timer")
 
+    def test_mask_unit_rejette_nom_invalide(self):
+        """Vérifie le rejet d'un nom invalide dans mask_unit."""
+        executor = self._make_executor()
+        with pytest.raises(ValueError, match="invalide"):
+            executor.mask_unit("bad;name.service")
+
+    def test_unmask_unit_rejette_nom_invalide(self):
+        """Vérifie le rejet d'un nom invalide dans unmask_unit."""
+        executor = self._make_executor()
+        with pytest.raises(ValueError, match="invalide"):
+            executor.unmask_unit("../etc.service")
+
+    def test_is_masked_rejette_nom_invalide(self):
+        """Vérifie le rejet d'un nom invalide dans is_masked."""
+        executor = self._make_executor()
+        with pytest.raises(ValueError, match="invalide"):
+            executor.is_masked("bad;cmd.service")
+
     def test_nom_valide_accepte(self):
         """Vérifie que les noms valides passent la validation."""
         executor = self._make_executor()
@@ -328,6 +346,75 @@ class TestSystemdExecutorMocked:
         mock_run.side_effect = subprocess.SubprocessError("erreur")
         executor, logger = self._make_executor()
         result = executor.is_enabled("backup.service")
+        assert result is False
+        logger.log_error.assert_called_once()
+
+    @patch("linux_python_utils.systemd.executor.subprocess.run")
+    def test_is_masked_retourne_true(self, mock_run):
+        """is_masked() retourne True si stdout == masked."""
+        mock_result = MagicMock()
+        mock_result.stdout = "masked\n"
+        mock_run.return_value = mock_result
+        executor, _ = self._make_executor()
+        assert executor.is_masked("packagekit.service") is True
+
+    @patch("linux_python_utils.systemd.executor.subprocess.run")
+    def test_is_masked_retourne_false(self, mock_run):
+        """is_masked() retourne False si stdout != masked."""
+        mock_result = MagicMock()
+        mock_result.stdout = "enabled\n"
+        mock_run.return_value = mock_result
+        executor, _ = self._make_executor()
+        assert executor.is_masked("packagekit.service") is False
+
+    @patch("linux_python_utils.systemd.executor.subprocess.run")
+    def test_is_masked_erreur(self, mock_run):
+        """is_masked() retourne False en cas d erreur."""
+        import subprocess
+        mock_run.side_effect = subprocess.SubprocessError("erreur")
+        executor, logger = self._make_executor()
+        assert executor.is_masked("packagekit.service") is False
+        logger.log_error.assert_called_once()
+
+    @patch("linux_python_utils.systemd.executor.subprocess.run")
+    def test_mask_unit_succes(self, mock_run):
+        """mask_unit() retourne True en cas de succes."""
+        mock_run.return_value = self._mock_success()
+        executor, logger = self._make_executor()
+        result = executor.mask_unit("packagekit.service")
+        assert result is True
+        logger.log_info.assert_called_once()
+
+    @patch("linux_python_utils.systemd.executor.subprocess.run")
+    def test_mask_unit_echec(self, mock_run):
+        """mask_unit() retourne False en cas d erreur."""
+        import subprocess
+        mock_run.side_effect = subprocess.CalledProcessError(
+            1, ["systemctl", "mask", "packagekit.service"]
+        )
+        executor, logger = self._make_executor()
+        result = executor.mask_unit("packagekit.service")
+        assert result is False
+        logger.log_error.assert_called_once()
+
+    @patch("linux_python_utils.systemd.executor.subprocess.run")
+    def test_unmask_unit_succes(self, mock_run):
+        """unmask_unit() retourne True en cas de succes."""
+        mock_run.return_value = self._mock_success()
+        executor, logger = self._make_executor()
+        result = executor.unmask_unit("packagekit.service")
+        assert result is True
+        logger.log_info.assert_called_once()
+
+    @patch("linux_python_utils.systemd.executor.subprocess.run")
+    def test_unmask_unit_echec(self, mock_run):
+        """unmask_unit() retourne False en cas d erreur."""
+        import subprocess
+        mock_run.side_effect = subprocess.CalledProcessError(
+            1, ["systemctl", "unmask", "packagekit.service"]
+        )
+        executor, logger = self._make_executor()
+        result = executor.unmask_unit("packagekit.service")
         assert result is False
         logger.log_error.assert_called_once()
 

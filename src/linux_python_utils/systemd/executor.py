@@ -271,6 +271,63 @@ class SystemdExecutor:
             )
             return False
 
+    def is_masked(self, unit_name: str) -> bool:
+        """Vérifie si une unité systemd est masquée.
+
+        Args:
+            unit_name: Nom complet de l'unité
+                (ex: ``packagekit.service``).
+
+        Returns:
+            True si masquée, False sinon.
+        """
+        validate_full_unit_name(unit_name)
+        try:
+            result = self._run_systemctl(
+                ["is-enabled", unit_name],
+                check=False
+            )
+            return result.stdout.strip() == "masked"
+        except (subprocess.SubprocessError, OSError) as e:
+            self.logger.log_error(
+                f"Erreur lors de la vérification de {unit_name}: {e}"
+            )
+            return False
+
+    def mask_unit(self, unit_name: str) -> bool:
+        """Masque une unité systemd.
+
+        Args:
+            unit_name: Nom complet de l'unité
+                (ex: ``packagekit.service``).
+
+        Returns:
+            True si succès, False sinon.
+        """
+        validate_full_unit_name(unit_name)
+        return self._simple_action(
+            "mask", unit_name,
+            f"Unité {unit_name} masquée.",
+            f"Erreur lors du masquage de {unit_name}",
+        )
+
+    def unmask_unit(self, unit_name: str) -> bool:
+        """Démasque une unité systemd.
+
+        Args:
+            unit_name: Nom complet de l'unité
+                (ex: ``packagekit.service``).
+
+        Returns:
+            True si succès, False sinon.
+        """
+        validate_full_unit_name(unit_name)
+        return self._simple_action(
+            "unmask", unit_name,
+            f"Unité {unit_name} démasquée.",
+            f"Erreur lors du démasquage de {unit_name}",
+        )
+
 
 class UserSystemdExecutor(SystemdExecutor):
     """Exécuteur de commandes systemctl --user.
