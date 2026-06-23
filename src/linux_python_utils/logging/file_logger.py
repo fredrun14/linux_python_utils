@@ -89,7 +89,67 @@ class _ColoredFormatter(logging.Formatter):
         return f"{color}{super().format(record)}{AnsiColors.RESET}"
 
 
-class FileLogger(Logger):
+class _BaseFileLogger(Logger):
+    """Base commune pour les loggers avec fichier (Template Method).
+
+    Factorise la mécanique de log partagée par ``FileLogger`` et
+    ``RotatingFileLogger`` : dispatch par niveau, flush immédiat,
+    écriture brute. Les sous-classes fournissent uniquement la
+    construction du handler via leur ``__init__``.
+
+    Attributes:
+        log_file: Chemin du fichier de log (str).
+        logger: Logger stdlib sous-jacent.
+        handler: Handler principal (fichier ou rotating).
+    """
+
+    log_file: str
+    logger: logging.Logger
+    handler: logging.StreamHandler[Any]
+
+    def _flush(self) -> None:
+        """Force l'écriture immédiate sur le disque."""
+        self.handler.flush()
+
+    def _log(self, level: int, message: str) -> None:
+        """Émet un log au niveau donné et force le flush."""
+        self.logger.log(level, message)
+        self._flush()
+
+    def log_info(self, message: str) -> None:
+        """Log un message d'information."""
+        self._log(logging.INFO, message)
+
+    def log_warning(self, message: str) -> None:
+        """Log un avertissement."""
+        self._log(logging.WARNING, message)
+
+    def log_error(self, message: str) -> None:
+        """Log une erreur."""
+        self._log(logging.ERROR, message)
+
+    def log_success(self, message: str) -> None:
+        """Log un message de succès (niveau INFO avec préfixe SUCCESS).
+
+        Args:
+            message: Message de succès à enregistrer.
+        """
+        self._log(logging.INFO, f"SUCCESS: {message}")
+
+    def log_to_file(self, message: str) -> None:
+        """Écrit directement dans le fichier via le handler existant.
+
+        Utile pour les logs bruts sans formatage.
+
+        Args:
+            message: Message brut à écrire dans le fichier.
+        """
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        self.handler.stream.write(f"{timestamp} - {message}\n")
+        self.handler.stream.flush()
+
+
+class FileLogger(_BaseFileLogger):
     """Logger qui écrit dans un fichier avec option console.
 
     Caractéristiques :
@@ -128,7 +188,6 @@ class FileLogger(Logger):
             raise ValueError(f"Niveau de log invalide : {log_level_str!r}")
         log_level = getattr(logging, niveau)
 
-        # Attribut public pour l'accès aux handlers (ex: tests, réutilisation)
         self.logger = logging.getLogger(self.log_file)
         self.logger.setLevel(log_level)
         self.handler: logging.StreamHandler[Any]
@@ -207,44 +266,3 @@ class FileLogger(Logger):
         )
         handler.setFormatter(formatter)
         return handler
-
-    def _flush(self) -> None:
-        """Force l'écriture immédiate sur le disque."""
-        self.handler.flush()
-
-    def _log(self, level: int, message: str) -> None:
-        """Émet un log au niveau donné et force le flush."""
-        self.logger.log(level, message)
-        self._flush()
-
-    def log_info(self, message: str) -> None:
-        """Log un message d'information."""
-        self._log(logging.INFO, message)
-
-    def log_warning(self, message: str) -> None:
-        """Log un avertissement."""
-        self._log(logging.WARNING, message)
-
-    def log_error(self, message: str) -> None:
-        """Log une erreur."""
-        self._log(logging.ERROR, message)
-
-    def log_success(self, message: str) -> None:
-        """Log un message de succès (niveau INFO avec préfixe SUCCESS).
-
-        Args:
-            message: Message de succès à enregistrer.
-        """
-        self._log(logging.INFO, f"SUCCESS: {message}")
-
-    def log_to_file(self, message: str) -> None:
-        """Écrit directement dans le fichier via le handler existant.
-
-        Utile pour les logs bruts sans formatage.
-
-        Args:
-            message: Message brut à écrire dans le fichier.
-        """
-        timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
-        self.handler.stream.write(f"{timestamp} - {message}\n")
-        self.handler.stream.flush()

@@ -19,11 +19,34 @@ from linux_python_utils.logging import (
     RotatingFileLogger,
     TeeStream,
 )
+from linux_python_utils.logging.file_logger import _BaseFileLogger
 from linux_python_utils.logging.security_logger import (
     SecurityEvent,
     SecurityEventType,
     SecurityLogger,
 )
+
+
+class TestBaseFileLogger:
+    """Tests pour _BaseFileLogger."""
+
+    def test_file_logger_est_base_file_logger(self, tmp_path: Path) -> None:
+        """FileLogger est une instance de _BaseFileLogger."""
+        logger = FileLogger(str(tmp_path / "test.log"))
+        assert isinstance(logger, _BaseFileLogger)
+
+    def test_rotating_file_logger_est_base_file_logger(
+        self, tmp_path: Path,
+    ) -> None:
+        """RotatingFileLogger est une instance de _BaseFileLogger."""
+        logger = RotatingFileLogger(tmp_path / "test.log")
+        assert isinstance(logger, _BaseFileLogger)
+
+    def test_base_file_logger_est_logger(self, tmp_path: Path) -> None:
+        """_BaseFileLogger hérite de Logger (transitivité)."""
+        logger = FileLogger(str(tmp_path / "test.log"))
+        assert isinstance(logger, Logger)
+        assert isinstance(logger, _BaseFileLogger)
 
 
 class TestFileLogger:

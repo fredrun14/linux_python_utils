@@ -3,15 +3,13 @@
 import logging
 import logging.handlers
 import os
-from datetime import UTC, datetime
 from io import TextIOWrapper
 from pathlib import Path
 from typing import Any, TextIO
 
-from linux_python_utils.logging.base import Logger
 from linux_python_utils.logging.file_logger import (
+    _BaseFileLogger,
     _ColoredFormatter,
-    _DEFAULT_FORMAT,
     _NIVEAUX,
     _resolve_config,
 )
@@ -35,14 +33,13 @@ class _SecureRotatingHandler(logging.handlers.RotatingFileHandler):
         return os.fdopen(fd, "a", encoding=self.encoding or "utf-8")
 
 
-class RotatingFileLogger(Logger):
+class RotatingFileLogger(_BaseFileLogger):
     """Logger qui fait pivoter le fichier de log quand il dépasse la taille.
 
     Caractéristiques :
     - Rotation par taille avec conservation de ``backup_count`` archives
     - Ouverture sécurisée (O_NOFOLLOW, 0o600) sur chaque nouveau fichier
-    - API identique à ``FileLogger`` (log_info, log_warning, log_error,
-      log_success, log_to_file)
+    - API identique à ``FileLogger`` (héritée de ``_BaseFileLogger``)
     - Sortie console colorée optionnelle
 
     Exemple ::
@@ -118,45 +115,3 @@ class RotatingFileLogger(Logger):
             self.handler = self.logger.handlers[0]  # type: ignore[assignment]
 
         self.logger.propagate = False
-
-    def _flush(self) -> None:
-        """Force l'écriture immédiate sur le disque."""
-        self.handler.flush()
-
-    def _log(self, level: int, message: str) -> None:
-        """Émet un log au niveau donné et force le flush."""
-        self.logger.log(level, message)
-        self._flush()
-
-    def log_info(self, message: str) -> None:
-        """Log un message d'information."""
-        self._log(logging.INFO, message)
-
-    def log_warning(self, message: str) -> None:
-        """Log un avertissement."""
-        self._log(logging.WARNING, message)
-
-    def log_error(self, message: str) -> None:
-        """Log une erreur."""
-        self._log(logging.ERROR, message)
-
-    def log_success(self, message: str) -> None:
-        """Log un message de succès (niveau INFO avec préfixe SUCCESS).
-
-        Args:
-            message: Message de succès à enregistrer.
-        """
-        self._log(logging.INFO, f"SUCCESS: {message}")
-
-    def log_to_file(self, message: str) -> None:
-        """Écrit directement dans le fichier courant via le handler existant.
-
-        Contourne la rotation (pas de vérification de taille).
-        Utile pour les logs bruts sans formatage.
-
-        Args:
-            message: Message brut à écrire dans le fichier.
-        """
-        timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
-        self.handler.stream.write(f"{timestamp} - {message}\n")
-        self.handler.stream.flush()
